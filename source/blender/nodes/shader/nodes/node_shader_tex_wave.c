@@ -47,8 +47,8 @@ static bNodeSocketTemplate sh_node_tex_wave_out[] = {
 static void node_shader_init_tex_wave(bNodeTree *UNUSED(ntree), bNode *node)
 {
 	NodeTexWave *tex = MEM_callocN(sizeof(NodeTexWave), "NodeTexWave");
-	default_tex_mapping(&tex->base.tex_mapping, TEXMAP_TYPE_POINT);
-	default_color_mapping(&tex->base.color_mapping);
+	BKE_texture_mapping_default(&tex->base.tex_mapping, TEXMAP_TYPE_POINT);
+	BKE_texture_colormapping_default(&tex->base.color_mapping);
 	tex->wave_type = SHD_WAVE_BANDS;
 
 	node->storage = tex;
@@ -56,12 +56,18 @@ static void node_shader_init_tex_wave(bNodeTree *UNUSED(ntree), bNode *node)
 
 static int node_shader_gpu_tex_wave(GPUMaterial *mat, bNode *node, bNodeExecData *UNUSED(execdata), GPUNodeStack *in, GPUNodeStack *out)
 {
-	if (!in[0].link)
+	if (!in[0].link) {
 		in[0].link = GPU_attribute(CD_ORCO, "");
+		GPU_link(mat, "generated_from_orco", in[0].link, &in[0].link);
+	}
 
 	node_shader_gpu_tex_mapping(mat, node, in, out);
 
-	return GPU_stack_link(mat, "node_tex_wave", in, out);
+	NodeTexWave *tex = (NodeTexWave *)node->storage;
+	float wave_type = tex->wave_type;
+	float wave_profile = tex->wave_profile;
+
+	return GPU_stack_link(mat, "node_tex_wave", in, out, GPU_uniform(&wave_type), GPU_uniform(&wave_profile));
 }
 
 /* node type definition */

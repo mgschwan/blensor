@@ -36,13 +36,15 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BLI_listbase.h"
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
 
+#include "BKE_camera.h"
 #include "BKE_global.h"
+#include "BKE_colortools.h"
 #include "BKE_report.h"
 #include "BKE_scene.h"
 
@@ -60,13 +62,14 @@
 #include "renderpipeline.h"
 #include "render_types.h"
 #include "render_result.h"
+#include "rendercore.h"
 
 /* Render Engine Types */
 
 static RenderEngineType internal_render_type = {
 	NULL, NULL,
 	"BLENDER_RENDER", N_("Blender Render"), RE_INTERNAL,
-	NULL, NULL, NULL, NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL, NULL, NULL, render_internal_update_passes,
 	{NULL, NULL, NULL}
 };
 
@@ -75,7 +78,7 @@ static RenderEngineType internal_render_type = {
 static RenderEngineType internal_game_type = {
 	NULL, NULL,
 	"BLENDER_GAME", N_("Blender Game"), RE_INTERNAL | RE_GAME,
-	NULL, NULL, NULL, NULL, NULL, NULL,
+	NULL, NULL, NULL, NULL, NULL, NULL, NULL,
 	{NULL, NULL, NULL}
 };
 
@@ -181,7 +184,7 @@ static RenderPart *get_part_from_result(Render *re, RenderResult *result)
 	return NULL;
 }
 
-RenderResult *RE_engine_begin_result(RenderEngine *engine, int x, int y, int w, int h, const char *layername)
+RenderResult *RE_engine_begin_result(RenderEngine *engine, int x, int y, int w, int h, const char *layername, const char *viewname)
 {
 	Render *re = engine->re;
 	RenderResult *result;
@@ -204,12 +207,14 @@ RenderResult *RE_engine_begin_result(RenderEngine *engine, int x, int y, int w, 
 	disprect.ymin = y;
 	disprect.ymax = y + h;
 
-	result = render_result_new(re, &disprect, 0, RR_USE_MEM, layername);
+	result = render_result_new(re, &disprect, 0, RR_USE_MEM, layername, viewname);
 
 	/* todo: make this thread safe */
 
 	/* can be NULL if we CLAMP the width or height to 0 */
 	if (result) {
+		render_result_clone_passes(re, result, viewname);
+
 		RenderPart *pa;
 
 		/* Copy EXR tile settings, so pipeline knows whether this is a result
@@ -243,7 +248,18 @@ void RE_engine_update_result(RenderEngine *engine, RenderResult *result)
 	}
 }
 
-void RE_engine_end_result(RenderEngine *engine, RenderResult *result, int cancel, int merge_results)
+void RE_engine_add_pass(RenderEngine *engine, const char *name, int channels, const char *chan_id, const char *layername)
+{
+	Render *re = engine->re;
+
+	if (!re || !re->result) {
+		return;
+	}
+
+	render_result_add_pass(re->result, name, channels, chan_id, layername, NULL);
+}
+
+void RE_engine_end_result(RenderEngine *engine, RenderResult *result, int cancel, int highlight, int merge_results)
 {
 	Render *re = engine->re;
 
@@ -252,7 +268,7 @@ void RE_engine_end_result(RenderEngine *engine, RenderResult *result, int cancel
 	}
 
 	/* merge. on break, don't merge in result for preview renders, looks nicer */
-	if (!cancel) {
+	if (!highlight) {
 		/* for exr tile render, detect tiles that are done */
 		RenderPart *pa = get_part_from_result(re, result);
 
@@ -269,7 +285,7 @@ void RE_engine_end_result(RenderEngine *engine, RenderResult *result, int cancel
 	if (!cancel || merge_results) {
 		if (re->result->do_exr_tile) {
 			if (!cancel) {
-				render_result_exr_file_merge(re->result, result);
+				render_result_exr_file_merge(re->result, result, re->viewname);
 			}
 		}
 		else if (!(re->test_break(re->tbh) && (re->r.scemode & R_BUTS_PREVIEW)))
@@ -360,15 +376,57 @@ void RE_engine_set_error_message(RenderEngine *engine, const char *msg)
 	Render *re = engine->re;
 	if (re != NULL) {
 		RenderResult *rr = RE_AcquireResultRead(re);
-		if (rr->error != NULL) {
-			MEM_freeN(rr->error);
+		if (rr) {
+			if (rr->error != NULL) {
+				MEM_freeN(rr->error);
+			}
+			rr->error = BLI_strdup(msg);
 		}
-		rr->error = BLI_strdup(msg);
 		RE_ReleaseResult(re);
 	}
 }
 
-rcti* RE_engine_get_current_tiles(Render *re, int *total_tiles_r, bool *r_needs_free)
+const char *RE_engine_active_view_get(RenderEngine *engine)
+{
+	Render *re = engine->re;
+	return RE_GetActiveRenderView(re);
+}
+
+void RE_engine_active_view_set(RenderEngine *engine, const char *viewname)
+{
+	Render *re = engine->re;
+	RE_SetActiveRenderView(re, viewname);
+}
+
+float RE_engine_get_camera_shift_x(RenderEngine *engine, Object *camera, int use_spherical_stereo)
+{
+	Render *re = engine->re;
+
+	/* when using spherical stereo, get camera shift without multiview, leaving stereo to be handled by the engine */
+	if (use_spherical_stereo)
+		re = NULL;
+
+	return BKE_camera_multiview_shift_x(re ? &re->r : NULL, camera, re->viewname);
+}
+
+void RE_engine_get_camera_model_matrix(RenderEngine *engine, Object *camera, int use_spherical_stereo, float *r_modelmat)
+{
+	Render *re = engine->re;
+
+	/* when using spherical stereo, get model matrix without multiview, leaving stereo to be handled by the engine */
+	if (use_spherical_stereo)
+		re = NULL;
+
+	BKE_camera_multiview_model_matrix(re ? &re->r : NULL, camera, re->viewname, (float (*)[4])r_modelmat);
+}
+
+int RE_engine_get_spherical_stereo(RenderEngine *engine, Object *camera)
+{
+	Render *re = engine->re;
+	return BKE_camera_multiview_spherical_stereo(re ? &re->r : NULL, camera) ? 1 : 0;
+}
+
+rcti* RE_engine_get_current_tiles(Render *re, int *r_total_tiles, bool *r_needs_free)
 {
 	static rcti tiles_static[BLENDER_MAX_THREADS];
 	const int allocation_step = BLENDER_MAX_THREADS;
@@ -382,7 +440,7 @@ rcti* RE_engine_get_current_tiles(Render *re, int *total_tiles_r, bool *r_needs_
 	*r_needs_free = false;
 
 	if (re->engine && (re->engine->flag & RE_ENGINE_HIGHLIGHT_TILES) == 0) {
-		*total_tiles_r = 0;
+		*r_total_tiles = 0;
 		BLI_rw_mutex_unlock(&re->partsmutex);
 		return NULL;
 	}
@@ -393,15 +451,18 @@ rcti* RE_engine_get_current_tiles(Render *re, int *total_tiles_r, bool *r_needs_
 				/* Just in case we're using crazy network rendering with more
 				 * slaves as BLENDER_MAX_THREADS.
 				 */
-				if (tiles == tiles_static)
-					tiles = MEM_mallocN(allocation_step * sizeof(rcti), "current engine tiles");
-				else
-					tiles = MEM_reallocN(tiles, (total_tiles + allocation_step) * sizeof(rcti));
-
 				allocation_size += allocation_step;
+				if (tiles == tiles_static) {
+					/* Can not realloc yet, tiles are pointing to a
+					 * stack memory.
+					 */
+					tiles = MEM_mallocN(allocation_size * sizeof(rcti), "current engine tiles");
+				}
+				else {
+					tiles = MEM_reallocN(tiles, allocation_size * sizeof(rcti));
+				}
 				*r_needs_free = true;
 			}
-
 			tiles[total_tiles] = pa->disprect;
 
 			if (pa->crop) {
@@ -415,7 +476,7 @@ rcti* RE_engine_get_current_tiles(Render *re, int *total_tiles_r, bool *r_needs_
 		}
 	}
 	BLI_rw_mutex_unlock(&re->partsmutex);
-	*total_tiles_r = total_tiles;
+	*r_total_tiles = total_tiles;
 	return tiles;
 }
 
@@ -429,12 +490,7 @@ void RE_bake_engine_set_engine_parameters(Render *re, Main *bmain, Scene *scene)
 {
 	re->scene = scene;
 	re->main = bmain;
-	re->r = scene->r;
-
-	/* prevent crash when freeing the scene
-	 * but it potentially leaves unfreed memory blocks
-	 * not sure how to fix this yet -- dfelinto */
-	BLI_listbase_clear(&re->r.layers);
+	render_copy_renderdata(&re->r, &scene->r);
 }
 
 bool RE_bake_has_engine(Render *re)
@@ -444,9 +500,11 @@ bool RE_bake_has_engine(Render *re)
 }
 
 bool RE_bake_engine(
-        Render *re, Object *object, const BakePixel pixel_array[],
+        Render *re, Object *object,
+        const int object_id, const BakePixel pixel_array[],
         const size_t num_pixels, const int depth,
-        const ScenePassType pass_type, float result[])
+        const ScenePassType pass_type, const int pass_filter,
+        float result[])
 {
 	RenderEngineType *type = RE_engines_find(re->r.engine);
 	RenderEngine *engine;
@@ -482,7 +540,7 @@ bool RE_bake_engine(
 		type->update(engine, re->main, re->scene);
 
 	if (type->bake)
-		type->bake(engine, re->scene, object, pass_type, pixel_array, num_pixels, depth, result);
+		type->bake(engine, re->scene, object, pass_type, pass_filter, object_id, pixel_array, num_pixels, depth, result);
 
 	engine->tile_x = 0;
 	engine->tile_y = 0;
@@ -575,7 +633,7 @@ int RE_engine_render(Render *re, int do_all)
 			if (re->r.scemode & R_SINGLE_LAYER) {
 				srl = BLI_findlink(&re->r.layers, re->r.actlay);
 				if (srl) {
-					non_excluded_lay |= ~srl->lay_exclude;
+					non_excluded_lay |= ~(srl->lay_exclude & ~srl->lay_zmask);
 
 					/* in this case we must update all because animation for
 					 * the scene has not been updated yet, and so may not be
@@ -587,7 +645,7 @@ int RE_engine_render(Render *re, int do_all)
 			else {
 				for (srl = re->r.layers.first; srl; srl = srl->next) {
 					if (!(srl->layflag & SCE_LAY_DISABLE)) {
-						non_excluded_lay |= ~srl->lay_exclude;
+						non_excluded_lay |= ~(srl->lay_exclude & ~srl->lay_zmask);
 
 						if (render_layer_exclude_animated(re->scene, srl))
 							non_excluded_lay |= ~0;
@@ -612,7 +670,7 @@ int RE_engine_render(Render *re, int do_all)
 
 		if ((type->flag & RE_USE_SAVE_BUFFERS) && (re->r.scemode & R_EXR_TILE_FILE))
 			savebuffers = RR_USE_EXR;
-		re->result = render_result_new(re, &re->disprect, 0, savebuffers, RR_ALL_LAYERS);
+		re->result = render_result_new(re, &re->disprect, 0, savebuffers, RR_ALL_LAYERS, RR_ALL_VIEWS);
 	}
 	BLI_rw_mutex_unlock(&re->resultmutex);
 
@@ -621,6 +679,11 @@ int RE_engine_render(Render *re, int do_all)
 		if (re->draw_lock) {
 			re->draw_lock(re->dlh, 0);
 		}
+		/* Too small image is handled earlier, here it could only happen if
+		 * there was no sufficient memory to allocate all passes.
+		 */
+		BKE_report(re->reports, RPT_ERROR, "Failed allocate render result, out of memory");
+		G.is_break = true;
 		return 1;
 	}
 
@@ -686,6 +749,7 @@ int RE_engine_render(Render *re, int do_all)
 
 	if (re->result->do_exr_tile) {
 		BLI_rw_mutex_lock(&re->resultmutex, THREAD_LOCK_WRITE);
+		render_result_save_empty_result_tiles(re);
 		render_result_exr_file_end(re);
 		BLI_rw_mutex_unlock(&re->resultmutex);
 	}
@@ -710,3 +774,22 @@ int RE_engine_render(Render *re, int do_all)
 	return 1;
 }
 
+void RE_engine_register_pass(struct RenderEngine *engine, struct Scene *scene, struct SceneRenderLayer *srl,
+                             const char *name, int UNUSED(channels), const char *UNUSED(chanid), int type)
+{
+	/* The channel information is currently not used, but is part of the API in case it's needed in the future. */
+
+	if (!(scene && srl && engine)) {
+		return;
+	}
+
+	/* Register the pass in all scenes that have a render layer node for this layer.
+	 * Since multiple scenes can be used in the compositor, the code must loop over all scenes
+	 * and check whether their nodetree has a node that needs to be updated. */
+	Scene *sce;
+	for (sce = G.main->scene.first; sce; sce = sce->id.next) {
+		if (sce->nodetree) {
+			ntreeCompositRegisterPass(sce->nodetree, scene, srl, name, type);
+		}
+	}
+}

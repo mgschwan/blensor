@@ -183,9 +183,9 @@ LogImageFile *dpxOpen(const unsigned char *byteStuff, int fromMemory, size_t buf
 		if (verbose) printf("DPX: File is LSB.\n");
 	}
 	else {
-		if (verbose)  {
-			printf("DPX: Bad magic number %lu in \"%s\".\n",
-			       (uintptr_t)header.fileHeader.magic_num, byteStuff);
+		if (verbose) {
+			printf("DPX: Bad magic number %u in \"%s\".\n",
+			       header.fileHeader.magic_num, byteStuff);
 		}
 		logImageClose(dpx);
 		return NULL;
@@ -366,7 +366,7 @@ LogImageFile *dpxOpen(const unsigned char *byteStuff, int fromMemory, size_t buf
 			printf("  Transfer characteristics: %d\n", dpx->element[i].transfer);
 			printf("  Packing: %d\n", dpx->element[i].packing);
 			printf("  Descriptor: %d\n", dpx->element[i].descriptor);
-			printf("  Data offset: %u\n", dpx->element[i].dataOffset);
+			printf("  Data offset: %d\n", dpx->element[i].dataOffset);
 			printf("  Reference low data: %u\n", dpx->element[i].refLowData);
 			printf("  Reference low quantity: %f\n", dpx->element[i].refLowQuantity);
 			printf("  Reference high data: %u\n", dpx->element[i].refHighData);

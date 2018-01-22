@@ -98,7 +98,7 @@
 #include "BLI_utildefines.h"
 #include "BLI_listbase.h"
 
-#include "BlenderWorldInfo.h"
+#include "KX_WorldInfo.h"
 
 #include "KX_KetsjiEngine.h"
 #include "KX_BlenderSceneConverter.h"
@@ -228,17 +228,7 @@ static std::map<int, SCA_IInputDevice::KX_EnumInputs> create_translate_table()
 	m[EKEY				] = SCA_IInputDevice::KX_EKEY;                  
 	m[FKEY				] = SCA_IInputDevice::KX_FKEY;                  
 	m[GKEY				] = SCA_IInputDevice::KX_GKEY;                  
-
-//XXX clean up
-#ifdef WIN32
-#define HKEY	'h'
-#endif
 	m[HKEY				] = SCA_IInputDevice::KX_HKEY;                  
-//XXX clean up
-#ifdef WIN32
-#undef HKEY
-#endif
-
 	m[IKEY				] = SCA_IInputDevice::KX_IKEY;                  
 	m[JKEY				] = SCA_IInputDevice::KX_JKEY;                  
 	m[KKEY				] = SCA_IInputDevice::KX_KKEY;                  
@@ -291,7 +281,8 @@ static std::map<int, SCA_IInputDevice::KX_EnumInputs> create_translate_table()
 	m[QUOTEKEY			] = SCA_IInputDevice::KX_QUOTEKEY;                  
 	m[ACCENTGRAVEKEY	] = SCA_IInputDevice::KX_ACCENTGRAVEKEY;                  
 	m[MINUSKEY			] = SCA_IInputDevice::KX_MINUSKEY;                  
-	m[SLASHKEY			] = SCA_IInputDevice::KX_SLASHKEY;                  
+	m[PLUSKEY			] = SCA_IInputDevice::KX_PLUSKEY;
+	m[SLASHKEY			] = SCA_IInputDevice::KX_SLASHKEY;
 	m[BACKSLASHKEY		] = SCA_IInputDevice::KX_BACKSLASHKEY;                  
 	m[EQUALKEY			] = SCA_IInputDevice::KX_EQUALKEY;                  
 	m[LEFTBRACKETKEY	] = SCA_IInputDevice::KX_LEFTBRACKETKEY;                  
@@ -562,11 +553,11 @@ static void GetUVs(BL_Material *material, MTF_localLayer *layers, MFace *mface, 
 // ------------------------------------
 static bool ConvertMaterial(
 	BL_Material *material,
-	Material *mat, 
-	MTFace* tface,  
+	Material *mat,
+	MTFace *tface,
 	const char *tfaceName,
-	MFace* mface, 
-	MCol* mmcol,
+	MFace *mface,
+	MCol *mmcol,
 	bool glslmat)
 {
 	material->Initialize();
@@ -583,41 +574,41 @@ static bool ConvertMaterial(
 	if (validmat) {
 
 		// use lighting?
-		material->ras_mode |= ( mat->mode & MA_SHLESS )?0:USE_LIGHT;
-		material->ras_mode |= ( mat->game.flag & GEMAT_BACKCULL )?0:TWOSIDED;
+		material->ras_mode |= (mat->mode & MA_SHLESS) ? 0 : USE_LIGHT;
+		material->ras_mode |= (mat->game.flag & GEMAT_BACKCULL) ? 0 : TWOSIDED;
 
 		// cast shadows?
-		material->ras_mode |= ( (mat->mode2 & MA_CASTSHADOW) && (mat->mode & MA_SHADBUF) )?CAST_SHADOW:0;
+		material->ras_mode |= ((mat->mode2 & MA_CASTSHADOW) && (mat->mode & MA_SHADBUF)) ? CAST_SHADOW : 0;
 
 		// only shadows?
-		material->ras_mode |= ( mat->mode & MA_ONLYCAST )?ONLY_SHADOW:0;
+		material->ras_mode |= (mat->mode & MA_ONLYCAST) ? ONLY_SHADOW : 0;
 
-		MTex *mttmp = 0;
+		MTex *mttmp = NULL;
 		int valid_index = 0;
-		
+
 		/* In Multitexture use the face texture if and only if
 		 * it is set in the buttons
 		 * In GLSL is not working yet :/ 3.2011 */
 		bool facetex = false;
-		if (validface && mat->mode &MA_FACETEXTURE) 
+		if (validface && mat->mode & MA_FACETEXTURE) {
 			facetex = true;
-	
-		// foreach MTex
-		for (int i=0; i<MAXTEX; i++) {
-			// use face tex
+		}
 
-			if (i==0 && facetex ) {
+		// foreach MTex
+		for (int i = 0; i < MAXTEX; i++) {
+			// use face tex
+			if (i == 0 && facetex ) {
 				facetex = false;
-				Image*tmp = (Image*)(tface->tpage);
+				Image *tmp = (Image *)(tface->tpage);
 
 				if (tmp) {
 					material->img[i] = tmp;
 					material->texname[i] = material->img[i]->id.name;
 					material->flag[i] |= MIPMAP;
 
-					material->flag[i] |= ( mat->game.alpha_blend & GEMAT_ALPHA_SORT )?USEALPHA:0;
-					material->flag[i] |= ( mat->game.alpha_blend & GEMAT_ALPHA )?USEALPHA:0;
-					material->flag[i] |= ( mat->game.alpha_blend & GEMAT_ADD )?CALCALPHA:0;
+					material->flag[i] |= (mat->game.alpha_blend & GEMAT_ALPHA_SORT) ? USEALPHA : 0;
+					material->flag[i] |= (mat->game.alpha_blend & GEMAT_ALPHA) ? USEALPHA : 0;
+					material->flag[i] |= (mat->game.alpha_blend & GEMAT_ADD) ? CALCALPHA : 0;
 
 					if (material->img[i]->flag & IMA_REFLECT) {
 						material->mapping[i].mapping |= USEREFL;
@@ -643,44 +634,43 @@ static bool ConvertMaterial(
 			mttmp = getMTexFromMaterial(mat, i);
 			if (mttmp) {
 				if (mttmp->tex) {
-					if ( mttmp->tex->type == TEX_IMAGE ) {
+					if (mttmp->tex->type == TEX_IMAGE) {
 						material->mtexname[i] = mttmp->tex->id.name;
 						material->img[i] = mttmp->tex->ima;
-						if ( material->img[i] ) {
+						if (material->img[i]) {
 
 							material->texname[i] = material->img[i]->id.name;
-							material->flag[i] |= ( mttmp->tex->imaflag &TEX_MIPMAP )?MIPMAP:0;
-							// -----------------------
-							if (material->img[i] && (material->img[i]->flag & IMA_IGNORE_ALPHA) == 0)
-								material->flag[i]	|= USEALPHA;
-							// -----------------------
-							if ( mttmp->tex->imaflag &TEX_CALCALPHA ) {
-								material->flag[i]	|= CALCALPHA;
+							material->flag[i] |= (mttmp->tex->imaflag &TEX_MIPMAP) ? MIPMAP : 0;
+							if (material->img[i] && (material->img[i]->flag & IMA_IGNORE_ALPHA) == 0) {
+								material->flag[i] |= USEALPHA;
 							}
-							else if (mttmp->tex->flag &TEX_NEGALPHA) {
-								material->flag[i]	|= USENEGALPHA;
+							if (mttmp->tex->imaflag & TEX_CALCALPHA) {
+								material->flag[i] |= CALCALPHA;
+							}
+							else if (mttmp->tex->flag & TEX_NEGALPHA) {
+								material->flag[i] |= USENEGALPHA;
 							}
 
 							material->color_blend[i] = mttmp->colfac;
-							material->flag[i] |= ( mttmp->mapto  & MAP_ALPHA		)?TEXALPHA:0;
-							material->flag[i] |= ( mttmp->texflag& MTEX_NEGATIVE	)?TEXNEG:0;
+							material->flag[i] |= (mttmp->mapto & MAP_ALPHA) ? TEXALPHA : 0;
+							material->flag[i] |= (mttmp->texflag & MTEX_NEGATIVE) ? TEXNEG : 0;
 
-							if (!glslmat && (material->flag[i] & TEXALPHA))
+							if (!glslmat && (material->flag[i] & TEXALPHA)) {
 								texalpha = 1;
+							}
 						}
 					}
 					else if (mttmp->tex->type == TEX_ENVMAP) {
-						if ( mttmp->tex->env->stype == ENV_LOAD ) {
-					
-							material->mtexname[i]     = mttmp->tex->id.name;
+						if (mttmp->tex->env->stype == ENV_LOAD) {
+							material->mtexname[i] = mttmp->tex->id.name;
 							EnvMap *env = mttmp->tex->env;
 							env->ima = mttmp->tex->ima;
 							material->cubemap[i] = env;
 
-							if (material->cubemap[i])
-							{
-								if (!material->cubemap[i]->cube[0])
+							if (material->cubemap[i]) {
+								if (!material->cubemap[i]->cube[0]) {
 									BL_Texture::SplitEnvMap(material->cubemap[i]);
+								}
 
 								material->texname[i] = material->cubemap[i]->ima->id.name;
 								material->mapping[i].mapping |= USEENV;
@@ -695,29 +685,36 @@ static bool ConvertMaterial(
 					if (mat->septex & (1 << i)) {
 						// If this texture slot isn't in use, set it to disabled to prevent multi-uv problems
 						material->mapping[i].mapping = DISABLE;
-					} else {
-						material->mapping[i].mapping |= ( mttmp->texco  & TEXCO_REFL	)?USEREFL:0;
+					} 
+					else {
+						material->mapping[i].mapping |= (mttmp->texco & TEXCO_REFL) ? USEREFL : 0;
 
 						if (mttmp->texco & TEXCO_OBJECT) {
 							material->mapping[i].mapping |= USEOBJ;
-							if (mttmp->object)
+							if (mttmp->object) {
 								material->mapping[i].objconame = mttmp->object->id.name;
+							}
 						}
-						else if (mttmp->texco &TEXCO_REFL)
+						else if (mttmp->texco & TEXCO_REFL) {
 							material->mapping[i].mapping |= USEREFL;
-						else if (mttmp->texco &(TEXCO_ORCO|TEXCO_GLOB))
+						}
+						else if (mttmp->texco & (TEXCO_ORCO | TEXCO_GLOB)) {
 							material->mapping[i].mapping |= USEORCO;
+						}
 						else if (mttmp->texco & TEXCO_UV) {
 							/* string may be "" but thats detected as empty after */
 							material->mapping[i].uvCoName = mttmp->uvname;
 							material->mapping[i].mapping |= USEUV;
 						}
-						else if (mttmp->texco &TEXCO_NORM)
+						else if (mttmp->texco & TEXCO_NORM) {
 							material->mapping[i].mapping |= USENORM;
-						else if (mttmp->texco &TEXCO_TANGENT)
+						}
+						else if (mttmp->texco & TEXCO_TANGENT) {
 							material->mapping[i].mapping |= USETANG;
-						else
+						}
+						else {
 							material->mapping[i].mapping |= DISABLE;
+						}
 
 						material->mapping[i].scale[0] = mttmp->size[0];
 						material->mapping[i].scale[1] = mttmp->size[1];
@@ -771,59 +768,60 @@ static bool ConvertMaterial(
 
 		material->num_enabled = valid_index;
 
-		material->speccolor[0]	= mat->specr;
-		material->speccolor[1]	= mat->specg;
-		material->speccolor[2]	= mat->specb;
-		material->hard			= (float)mat->har/4.0f;
-		material->matcolor[0]	= mat->r;
-		material->matcolor[1]	= mat->g;
-		material->matcolor[2]	= mat->b;
-		material->matcolor[3]	= mat->alpha;
-		material->alpha			= mat->alpha;
-		material->emit			= mat->emit;
-		material->spec_f		= mat->spec;
-		material->ref			= mat->ref;
-		material->amb			= mat->amb;
+		material->speccolor[0] = mat->specr;
+		material->speccolor[1] = mat->specg;
+		material->speccolor[2] = mat->specb;
+		material->hard = (float)mat->har / 4.0f;
+		material->matcolor[0] = mat->r;
+		material->matcolor[1] = mat->g;
+		material->matcolor[2] = mat->b;
+		material->matcolor[3] = mat->alpha;
+		material->alpha = mat->alpha;
+		material->emit = mat->emit;
+		material->spec_f = mat->spec;
+		material->ref = mat->ref;
+		material->amb = mat->amb;
 
-		material->ras_mode |= (mat->material_type == MA_TYPE_WIRE)? WIRE: 0;
+		material->ras_mode |= (mat->material_type == MA_TYPE_WIRE) ? WIRE : 0;
 	}
 	else { // No Material
 		int valid = 0;
 
 		// check for tface tex to fallback on
-		if ( validface ) {
-			material->img[0] = (Image*)(tface->tpage);
+		if (validface) {
+			material->img[0] = (Image *)(tface->tpage);
 			// ------------------------
 			if (material->img[0]) {
 				material->texname[0] = material->img[0]->id.name;
-				material->mapping[0].mapping |= ( (material->img[0]->flag & IMA_REFLECT)!=0 )?USEREFL:0;
+				material->mapping[0].mapping |= ((material->img[0]->flag & IMA_REFLECT) != 0) ? USEREFL : 0;
 
 				/* see if depth of the image is 32bits */
 				if (BKE_image_has_alpha(material->img[0])) {
 					material->flag[0] |= USEALPHA;
 					material->alphablend = GEMAT_ALPHA;
 				}
-				else
+				else {
 					material->alphablend = GEMAT_SOLID;
-
+				}
 				valid++;
 			}
 		}
-		else
+		else {
 			material->alphablend = GEMAT_SOLID;
+		}
 
 		material->SetUsers(-1);
-		material->num_enabled	= valid;
-		material->IdMode		= TEXFACE;
-		material->speccolor[0]	= 1.f;
-		material->speccolor[1]	= 1.f;
-		material->speccolor[2]	= 1.f;
-		material->hard			= 35.f;
-		material->matcolor[0]	= 0.5f;
-		material->matcolor[1]	= 0.5f;
-		material->matcolor[2]	= 0.5f;
-		material->spec_f		= 0.5f;
-		material->ref			= 0.8f;
+		material->num_enabled = valid;
+		material->IdMode = TEXFACE;
+		material->speccolor[0] = 1.0f;
+		material->speccolor[1] = 1.0f;
+		material->speccolor[2] = 1.0f;
+		material->hard = 35.0f;
+		material->matcolor[0] = 0.5f;
+		material->matcolor[1] = 0.5f;
+		material->matcolor[2] = 0.5f;
+		material->spec_f = 0.5f;
+		material->ref = 0.8f;
 
 		// No material - old default TexFace properties
 		material->ras_mode |= USE_LIGHT;
@@ -831,13 +829,13 @@ static bool ConvertMaterial(
 
 	/* No material, what to do? let's see what is in the UV and set the material accordingly
 	 * light and visible is always on */
-	if ( validface ) {
-		material->tile	= tface->tile;
+	if (validface) {
+		material->tile = tface->tile;
 	}
 	else {
 		// nothing at all
-		material->alphablend	= GEMAT_SOLID;
-		material->tile		= 0;
+		material->alphablend = GEMAT_SOLID;
+		material->tile = 0;
 	}
 
 	if (validmat && validface) {
@@ -845,13 +843,14 @@ static bool ConvertMaterial(
 	}
 
 	// with ztransp enabled, enforce alpha blending mode
-	if (validmat && (mat->mode & MA_TRANSP) && (mat->mode & MA_ZTRANSP) && (material->alphablend == GEMAT_SOLID))
+	if (validmat && (mat->mode & MA_TRANSP) && (mat->mode & MA_ZTRANSP) && (material->alphablend == GEMAT_SOLID)) {
 		material->alphablend = GEMAT_ALPHA;
+	}
 
 	// always zsort alpha + add
-	if ((ELEM(material->alphablend, GEMAT_ALPHA, GEMAT_ALPHA_SORT, GEMAT_ADD) || texalpha) && (material->alphablend != GEMAT_CLIP )) {
+	if ((ELEM(material->alphablend, GEMAT_ALPHA, GEMAT_ALPHA_SORT, GEMAT_ADD) || texalpha) && (material->alphablend != GEMAT_CLIP)) {
 		material->ras_mode |= ALPHA;
-		material->ras_mode |= (mat && (mat->game.alpha_blend & GEMAT_ALPHA_SORT))? ZSORT: 0;
+		material->ras_mode |= (mat && (mat->game.alpha_blend & GEMAT_ALPHA_SORT)) ? ZSORT : 0;
 	}
 
 	// XXX The RGB values here were meant to be temporary storage for the conversion process,
@@ -860,24 +859,24 @@ static bool ConvertMaterial(
 	GetRGB(use_vcol, mface, mmcol, mat, rgb);
 
 	// swap the material color, so MCol on bitmap font works
-	if (validmat && (use_vcol == false) && (mat->game.flag & GEMAT_TEXT))
-	{
+	if (validmat && (use_vcol == false) && (mat->game.flag & GEMAT_TEXT)) {
 		material->rgb[0] = KX_rgbaint2uint_new(rgb[0]);
 		material->rgb[1] = KX_rgbaint2uint_new(rgb[1]);
 		material->rgb[2] = KX_rgbaint2uint_new(rgb[2]);
 		material->rgb[3] = KX_rgbaint2uint_new(rgb[3]);
 	}
 
-	if (validmat)
-		material->matname	=(mat->id.name);
+	if (validmat) {
+		material->matname =(mat->id.name);
+	}
 
 	if (tface) {
-		material->tface		= *tface;
+		ME_MTEXFACE_CPY(&material->mtexpoly, tface);
 	}
 	else {
-		memset(&material->tface, 0, sizeof(material->tface));
+		memset(&material->mtexpoly, 0, sizeof(material->mtexpoly));
 	}
-	material->material	= mat;
+	material->material = mat;
 	return true;
 }
 
@@ -959,8 +958,16 @@ RAS_MeshObject* BL_ConvertMesh(Mesh* mesh, Object* blenderobj, KX_Scene* scene, 
 	int totface = dm->getNumTessFaces(dm);
 	const char *tfaceName = "";
 
+	/* needs to be rewritten for loopdata */
 	if (tface) {
-		DM_add_tangent_layer(dm);
+		if (CustomData_get_layer_index(&dm->faceData, CD_TANGENT) == -1) {
+			bool generate_data = false;
+			if (CustomData_get_layer_index(&dm->loopData, CD_TANGENT) == -1) {
+				DM_calc_loop_tangents(dm, true, NULL, 0);
+				generate_data = true;
+			}
+			DM_generate_tangent_tessface_data(dm, generate_data);
+		}
 		tangent = (float(*)[4])dm->getTessFaceDataArray(dm, CD_TANGENT);
 	}
 
@@ -995,7 +1002,6 @@ RAS_MeshObject* BL_ConvertMesh(Mesh* mesh, Object* blenderobj, KX_Scene* scene, 
 	meshobj->m_sharedvertex_map.resize(totvert);
 
 	Material* ma = 0;
-	bool collider = true;
 	MT_Point2 uvs[4][RAS_TexVert::MAX_UNIT];
 	unsigned int rgb[4] = {0};
 
@@ -1065,29 +1071,19 @@ RAS_MeshObject* BL_ConvertMesh(Mesh* mesh, Object* blenderobj, KX_Scene* scene, 
 		else
 			ma = mesh->mat ? mesh->mat[mface->mat_nr]:NULL;
 
-		/* ckeck for texface since texface _only_ is used as a fallback */
-		if (ma == NULL && tface == NULL) {
+		// Check for blender material
+		if (ma == NULL) {
 			ma= &defmaterial;
 		}
 
 		{
-			bool visible = true;
-			bool twoside = false;
 
 			RAS_MaterialBucket* bucket = material_from_mesh(ma, mface, tface, mcol, layers, lightlayer, rgb, uvs, tfaceName, scene, converter);
 
 			// set render flags
-			if (ma)
-			{
-				visible = ((ma->game.flag & GEMAT_INVISIBLE)==0);
-				twoside = ((ma->game.flag  & GEMAT_BACKCULL)==0);
-				collider = ((ma->game.flag & GEMAT_NOPHYSICS)==0);
-			}
-			else {
-				visible = true;
-				twoside = false;
-				collider = true;
-			}
+			bool visible = ((ma->game.flag & GEMAT_INVISIBLE)==0);
+			bool twoside = ((ma->game.flag  & GEMAT_BACKCULL)==0);
+			bool collider = ((ma->game.flag & GEMAT_NOPHYSICS)==0);
 
 			/* mark face as flat, so vertices are split */
 			bool flat = (mface->flag & ME_SMOOTH) == 0;
@@ -1211,12 +1207,15 @@ static PHY_ShapeProps *CreateShapePropsFromBlenderObject(struct Object* blendero
 //	velocity clamping XXX
 	shapeProps->m_clamp_vel_min = blenderobject->min_vel;
 	shapeProps->m_clamp_vel_max = blenderobject->max_vel;
-	
+	shapeProps->m_clamp_angvel_min = blenderobject->min_angvel;
+	shapeProps->m_clamp_angvel_max = blenderobject->max_angvel;
+
 //  Character physics properties
 	shapeProps->m_step_height = blenderobject->step_height;
 	shapeProps->m_jump_speed = blenderobject->jump_speed;
 	shapeProps->m_fall_speed = blenderobject->fall_speed;
-	
+	shapeProps->m_max_jumps = blenderobject->max_jumps;
+
 	return shapeProps;
 }
 
@@ -1347,8 +1346,8 @@ static void BL_CreatePhysicsObjectNew(KX_GameObject* gameobj,
 	if (!(blenderobject->gameflag & OB_COLLISION)) {
 		// Respond to all collisions so that Near sensors work on No Collision
 		// objects.
-		gameobj->SetUserCollisionGroup(0xff);
-		gameobj->SetUserCollisionMask(0xff);
+		gameobj->SetUserCollisionGroup(0xffff);
+		gameobj->SetUserCollisionMask(0xffff);
 		return;
 	}
 
@@ -1367,7 +1366,7 @@ static void BL_CreatePhysicsObjectNew(KX_GameObject* gameobj,
 	/* When the parent is not OB_DYNAMIC and has no OB_COLLISION then it gets no bullet controller
 	 * and cant be apart of the parents compound shape, same goes for OB_SOFT_BODY */
 	if (parent && (parent->gameflag & (OB_DYNAMIC | OB_COLLISION))) {
-		if( (parent->gameflag & OB_CHILD)!=0 && (blenderobject->gameflag & OB_CHILD) && !(parent->gameflag & OB_SOFT_BODY)) {
+		if ((parent->gameflag & OB_CHILD)!=0 && (blenderobject->gameflag & OB_CHILD) && !(parent->gameflag & OB_SOFT_BODY)) {
 			isCompoundChild = true;
 		}
 	}
@@ -1400,16 +1399,6 @@ static void BL_CreatePhysicsObjectNew(KX_GameObject* gameobj,
 	if ((blenderobject->gameflag & OB_RECORD_ANIMATION) != 0)
 		gameobj->SetRecordAnimation(true);
 
-	// store materialname in auxinfo, needed for touchsensors
-	if (meshobj)
-	{
-		const STR_String& matname=meshobj->GetMaterialName(0);
-		gameobj->getClientInfo()->m_auxilary_info = (matname.Length() ? (void*)(matname.ReadPtr()+2) : NULL);
-	} else
-	{
-		gameobj->getClientInfo()->m_auxilary_info = 0;
-	}
-
 	delete shapeprops;
 	delete smmaterial;
 	if (dm) {
@@ -1429,11 +1418,23 @@ static KX_LightObject *gamelight_from_blamp(Object *ob, Lamp *la, unsigned int l
 	
 	lightobj->m_att1 = la->att1;
 	lightobj->m_att2 = (la->mode & LA_QUAD) ? la->att2 : 0.0f;
+	lightobj->m_coeff_const = la->coeff_const;
+	lightobj->m_coeff_lin = la->coeff_lin;
+	lightobj->m_coeff_quad = la->coeff_quad;
 	lightobj->m_color[0] = la->r;
 	lightobj->m_color[1] = la->g;
 	lightobj->m_color[2] = la->b;
 	lightobj->m_distance = la->dist;
 	lightobj->m_energy = la->energy;
+	lightobj->m_shadowclipstart = la->clipsta;
+	lightobj->m_shadowclipend = la->clipend;
+	lightobj->m_shadowbias = la->bias;
+	lightobj->m_shadowbleedbias = la->bleedbias;
+	lightobj->m_shadowmaptype = la->shadowmap_type;
+	lightobj->m_shadowfrustumsize = la->shadow_frustum_size;
+	lightobj->m_shadowcolor[0] = la->shdwr;
+	lightobj->m_shadowcolor[1] = la->shdwg;
+	lightobj->m_shadowcolor[2] = la->shdwb;
 	lightobj->m_layer = layerflag;
 	lightobj->m_spotblend = la->spotblend;
 	lightobj->m_spotsize = la->spotsize;
@@ -1470,7 +1471,7 @@ static KX_LightObject *gamelight_from_blamp(Object *ob, Lamp *la, unsigned int l
 static KX_Camera *gamecamera_from_bcamera(Object *ob, KX_Scene *kxscene, KX_BlenderSceneConverter *converter)
 {
 	Camera* ca = static_cast<Camera*>(ob->data);
-	RAS_CameraData camdata(ca->lens, ca->ortho_scale, ca->sensor_x, ca->sensor_y, ca->sensor_fit, ca->clipsta, ca->clipend, ca->type == CAM_PERSP, ca->YF_dofdist);
+	RAS_CameraData camdata(ca->lens, ca->ortho_scale, ca->sensor_x, ca->sensor_y, ca->sensor_fit, ca->shiftx, ca->shifty, ca->clipsta, ca->clipend, ca->type == CAM_PERSP, ca->YF_dofdist);
 	KX_Camera *gamecamera;
 	
 	gamecamera= new KX_Camera(kxscene, KX_Scene::m_callbacks, camdata);
@@ -1553,6 +1554,10 @@ static KX_GameObject *gameobject_from_blenderobject(
 					lodmatob = lod->source;
 				}
 				gameobj->AddLodMesh(BL_ConvertMesh(lodmesh, lodmatob, kxscene, converter, libloading));
+			}
+			if (blenderscene->gm.lodflag & SCE_LOD_USE_HYST) {
+				kxscene->SetLodHysteresis(true);
+				kxscene->SetLodHysteresisValue(blenderscene->gm.scehysteresis);
 			}
 		}
 	
@@ -1647,7 +1652,7 @@ static KX_GameObject *gameobject_from_blenderobject(
 
 	case OB_FONT:
 	{
-		bool do_color_management = !(blenderscene->gm.flag & GAME_GLSL_NO_COLOR_MANAGEMENT);
+		bool do_color_management = BKE_scene_check_color_management_enabled(blenderscene);
 		/* font objects have no bounding box */
 		gameobj = new KX_FontObject(kxscene,KX_Scene::m_callbacks, rendertools, ob, do_color_management);
 
@@ -1727,6 +1732,18 @@ static void UNUSED_FUNCTION(print_active_constraints2)(Object *ob) //not used, u
 	}
 }
 
+// Copy base layer to object layer like in BKE_scene_set_background
+static void blenderSceneSetBackground(Scene *blenderscene)
+{
+	Scene *it;
+	Base *base;
+
+	for (SETLOOPER(blenderscene, it, base)) {
+		base->object->lay = base->lay;
+		base->object->flag = base->flag;
+	}
+}
+
 static KX_GameObject* getGameOb(STR_String busc,CListValue* sumolist)
 {
 
@@ -1739,6 +1756,16 @@ static KX_GameObject* getGameOb(STR_String busc,CListValue* sumolist)
 	
 	return 0;
 
+}
+
+static bool bl_isConstraintInList(KX_GameObject *gameobj, set<KX_GameObject*> convertedlist)
+{
+	set<KX_GameObject*>::iterator gobit;
+	for (gobit = convertedlist.begin(); gobit != convertedlist.end(); gobit++) {
+		if ((*gobit)->GetName() == gameobj->GetName())
+			return true;
+	}
+	return false;
 }
 
 /* helper for BL_ConvertBlenderObjects, avoids code duplication
@@ -1900,6 +1927,12 @@ void BL_ConvertBlenderObjects(struct Main* maggie,
 	// is not in a separate thread.
 	BL_Texture::GetMaxUnits();
 
+	/* We have to ensure that group definitions are only converted once
+	 * push all converted group members to this set.
+	 * This will happen when a group instance is made from a linked group instance
+	 * and both are on the active layer. */
+	set<KX_GameObject*> convertedlist;
+
 	if (alwaysUseExpandFraming) {
 		frame_type = RAS_FrameSettings::e_frame_extend;
 		aspect_width = canvas->GetWidth();
@@ -1963,6 +1996,9 @@ void BL_ConvertBlenderObjects(struct Main* maggie,
 	}
 
 	SetDefaultLightMode(blenderscene);
+
+	blenderSceneSetBackground(blenderscene);
+
 	// Let's support scene set.
 	// Beware of name conflict in linked data, it will not crash but will create confusion
 	// in Python scripting and in certain actuators (replace mesh). Linked scene *should* have
@@ -2032,8 +2068,12 @@ void BL_ConvertBlenderObjects(struct Main* maggie,
 														libloading);
 
 						bool isInActiveLayer = false;
-						if (gameobj)
-						{
+						if (gameobj) {
+							/* Insert object to the constraint game object list
+							 * so we can check later if there is a instance in the scene or
+							 * an instance and its actual group definition. */
+							convertedlist.insert((KX_GameObject*)gameobj->AddRef());
+
 							/* macro calls object conversion funcs */
 							BL_CONVERTBLENDEROBJECT_SINGLE;
 
@@ -2158,8 +2198,6 @@ void BL_ConvertBlenderObjects(struct Main* maggie,
 			case PARSKEL: // skinned - ignore
 				break;
 			case PAROBJECT:
-			case PARCURVE:
-			case PARKEY:
 			case PARVERT3:
 			default:
 				// unhandled
@@ -2270,97 +2308,60 @@ void BL_ConvertBlenderObjects(struct Main* maggie,
 	// create physics joints
 	for (i=0;i<sumolist->GetCount();i++)
 	{
-		KX_GameObject* gameobj = (KX_GameObject*) sumolist->GetValue(i);
-		struct Object* blenderobject = gameobj->GetBlenderObject();
-		ListBase *conlist;
+		PHY_IPhysicsEnvironment *physEnv = kxscene->GetPhysicsEnvironment();
+		KX_GameObject *gameobj = (KX_GameObject *)sumolist->GetValue(i);
+		struct Object *blenderobject = gameobj->GetBlenderObject();
+		ListBase *conlist = get_active_constraints2(blenderobject);
 		bConstraint *curcon;
 
-		if ((gameobj->GetLayer()&activeLayerBitInfo)==0)
+		if (!conlist)
 			continue;
 
-		conlist = get_active_constraints2(blenderobject);
-		if (conlist) {
-			for (curcon = (bConstraint *)conlist->first; curcon; curcon = (bConstraint *)curcon->next) {
-				if (curcon->type==CONSTRAINT_TYPE_RIGIDBODYJOINT) {
+		for (curcon = (bConstraint *)conlist->first; curcon; curcon = (bConstraint *)curcon->next) {
+			if (curcon->type != CONSTRAINT_TYPE_RIGIDBODYJOINT)
+				continue;
 
-					bRigidBodyJointConstraint *dat=(bRigidBodyJointConstraint *)curcon->data;
+			bRigidBodyJointConstraint *dat = (bRigidBodyJointConstraint *)curcon->data;
+					
+			/* Skip if no target or a child object is selected or constraints are deactivated */
+			if (!dat->tar || dat->child || (curcon->flag & CONSTRAINT_OFF))
+				continue;
 
-					if (!dat->child && !(curcon->flag & CONSTRAINT_OFF)) {
+			/* Store constraints of grouped and instanced objects for all layers */
+			gameobj->AddConstraint(dat);
 
-						PHY_IPhysicsController* physctr2 = 0;
+			/** if it's during libload we only add constraints in the object but
+			 * doesn't create it. Constraint will be replicated later in scene->MergeScene
+			 */
+			if (libloading)
+				continue;
 
-						if (dat->tar) {
-							KX_GameObject *gotar=getGameOb(dat->tar->id.name+2,sumolist);
-							if (gotar && ((gotar->GetLayer()&activeLayerBitInfo)!=0) && gotar->GetPhysicsController())
-								physctr2 = gotar->GetPhysicsController();
-						}
+			/* Skipped already converted constraints. 
+			 * This will happen when a group instance is made from a linked group instance
+			 * and both are on the active layer. */
+			if (bl_isConstraintInList(gameobj, convertedlist))
+				continue;
 
-						if (gameobj->GetPhysicsController()) {
-							PHY_IPhysicsController* physctrl = gameobj->GetPhysicsController();
-							//we need to pass a full constraint frame, not just axis
+			KX_GameObject *gotar = getGameOb(dat->tar->id.name + 2, sumolist);
 
-							//localConstraintFrameBasis
-							MT_Matrix3x3 localCFrame(MT_Vector3(dat->axX,dat->axY,dat->axZ));
-							MT_Vector3 axis0 = localCFrame.getColumn(0);
-							MT_Vector3 axis1 = localCFrame.getColumn(1);
-							MT_Vector3 axis2 = localCFrame.getColumn(2);
-
-							int constraintId = kxscene->GetPhysicsEnvironment()->CreateConstraint(physctrl,physctr2,(PHY_ConstraintType)dat->type,(float)dat->pivX,
-								(float)dat->pivY,(float)dat->pivZ,
-								(float)axis0.x(),(float)axis0.y(),(float)axis0.z(),
-								(float)axis1.x(),(float)axis1.y(),(float)axis1.z(),
-								(float)axis2.x(),(float)axis2.y(),(float)axis2.z(),dat->flag);
-							if (constraintId) {
-								//if it is a generic 6DOF constraint, set all the limits accordingly
-								if (dat->type == PHY_GENERIC_6DOF_CONSTRAINT) {
-									int dof;
-									int dofbit=1;
-									for (dof=0;dof<6;dof++) {
-										if (dat->flag & dofbit) {
-											kxscene->GetPhysicsEnvironment()->SetConstraintParam(constraintId,dof,dat->minLimit[dof],dat->maxLimit[dof]);
-										} else {
-											//minLimit > maxLimit means free(disabled limit) for this degree of freedom
-											kxscene->GetPhysicsEnvironment()->SetConstraintParam(constraintId,dof,1,-1);
-										}
-										dofbit<<=1;
-									}
-								} else if (dat->type == PHY_CONE_TWIST_CONSTRAINT) {
-									int dof;
-									int dofbit = 1<<3; // bitflag use_angular_limit_x
-
-									for (dof=3;dof<6;dof++) {
-										if (dat->flag & dofbit) {
-											kxscene->GetPhysicsEnvironment()->SetConstraintParam(constraintId,dof,dat->minLimit[dof],dat->maxLimit[dof]);
-										} else {
-											//maxLimit < 0 means free(disabled limit) for this degree of freedom
-											kxscene->GetPhysicsEnvironment()->SetConstraintParam(constraintId,dof,1,-1);
-										}
-										dofbit<<=1;
-									}
-								} else if (dat->type == PHY_LINEHINGE_CONSTRAINT) {
-									int dof = 3; // dof for angular x
-									int dofbit = 1<<3; // bitflag use_angular_limit_x
-
-									if (dat->flag & dofbit) {
-										kxscene->GetPhysicsEnvironment()->SetConstraintParam(constraintId,dof,
-												dat->minLimit[dof],dat->maxLimit[dof]);
-									} else {
-										//minLimit > maxLimit means free(disabled limit) for this degree of freedom
-										kxscene->GetPhysicsEnvironment()->SetConstraintParam(constraintId,dof,1,-1);
-									}
-								}
-							}
-						}
-					}
-				}
+			if (gotar && (gotar->GetLayer()&activeLayerBitInfo) && gotar->GetPhysicsController() &&
+				(gameobj->GetLayer()&activeLayerBitInfo) && gameobj->GetPhysicsController())
+			{
+				physEnv->SetupObjectConstraints(gameobj, gotar, dat);
 			}
 		}
 	}
 
+	/* cleanup converted set of group objects */
+	set<KX_GameObject*>::iterator gobit;
+	for (gobit = convertedlist.begin(); gobit != convertedlist.end(); gobit++)
+		(*gobit)->Release();
+		
+	convertedlist.clear();
 	sumolist->Release();
 
 	// convert world
-	KX_WorldInfo* worldinfo = new BlenderWorldInfo(blenderscene, blenderscene->world);
+	KX_WorldInfo* worldinfo = new KX_WorldInfo(blenderscene, blenderscene->world);
 	converter->RegisterWorldInfo(worldinfo);
 	kxscene->SetWorldInfo(worldinfo);
 

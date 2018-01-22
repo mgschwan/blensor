@@ -200,8 +200,9 @@ enum {
 	TH_SEQ_EFFECT,
 	TH_SEQ_TRANSITION,
 	TH_SEQ_META,
+	TH_SEQ_TEXT,
 	TH_SEQ_PREVIEW,
-	
+
 	TH_EDGE_SHARP,
 	TH_EDITMESH_ACTIVE,
 	
@@ -294,14 +295,19 @@ enum {
 	TH_INFO_DEBUG_TEXT,
 	TH_VIEW_OVERLAY,
 	
-	TH_V3D_CLIPPING_BORDER
+	TH_V3D_CLIPPING_BORDER,
+
+	TH_METADATA_BG,
+	TH_METADATA_TEXT,
+
+	TH_EDGE_BEVEL,
+	TH_VERTEX_BEVEL
 };
 /* XXX WARNING: previous is saved in file, so do not change order! */
 
 /* specific defines per space should have higher define values */
 
 struct bTheme;
-struct PointerRNA;
 
 struct bThemeState {
 	struct bTheme *theme;
@@ -332,6 +338,9 @@ void    UI_ThemeColorBlendShadeAlpha(int colorid1, int colorid2, float fac, int 
 float   UI_GetThemeValuef(int colorid);
 int     UI_GetThemeValue(int colorid);
 
+float   UI_GetThemeValueTypef(int colorid, int spacetype);
+int     UI_GetThemeValueType(int colorid, int spacetype);
+
 // get three color values, scaled to 0.0-1.0 range
 void    UI_GetThemeColor3fv(int colorid, float col[3]);
 void    UI_GetThemeColorBlend3ubv(int colorid1, int colorid2, float fac, unsigned char col[3]);
@@ -341,6 +350,8 @@ void    UI_GetThemeColorShade3ubv(int colorid, int offset, unsigned char col[3])
 
 // get four color values, scaled to 0.0-1.0 range
 void    UI_GetThemeColor4fv(int colorid, float col[4]);
+// get four color values, range 0.0-1.0, complete with shading offset for the RGB components
+void    UI_GetThemeColorShade4fv(int colorid, int offset, float col[4]);
 
 // get the 3 or 4 byte values
 void UI_GetThemeColor3ubv(int colorid, unsigned char col[3]);

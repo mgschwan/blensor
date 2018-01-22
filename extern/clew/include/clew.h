@@ -78,13 +78,13 @@ extern "C" {
     #define CL_API_SUFFIX__VERSION_1_0              AVAILABLE_MAC_OS_X_VERSION_10_6_AND_LATER
     #define CL_EXT_SUFFIX__VERSION_1_0              CL_EXTENSION_WEAK_LINK AVAILABLE_MAC_OS_X_VERSION_10_6_AND_LATER
     #define CL_EXT_SUFFIX__VERSION_1_0_DEPRECATED   CL_EXTENSION_WEAK_LINK AVAILABLE_MAC_OS_X_VERSION_10_6_AND_LATER
-	#define CL_EXT_PREFIX__VERSION_1_0_DEPRECATED   CL_EXTENSION_WEAK_LINK AVAILABLE_MAC_OS_X_VERSION_10_6_AND_LATER
-	#define CL_API_SUFFIX__VERSION_1_1              CL_EXTENSION_WEAK_LINK
-	#define CL_EXT_SUFFIX__VERSION_1_1              CL_EXTENSION_WEAK_LINK
-	#define CL_EXT_SUFFIX__VERSION_1_1_DEPRECATED   CL_EXTENSION_WEAK_LINK AVAILABLE_MAC_OS_X_VERSION_10_7_AND_LATER
-	#define CL_EXT_PREFIX__VERSION_1_1_DEPRECATED   CL_EXTENSION_WEAK_LINK AVAILABLE_MAC_OS_X_VERSION_10_7_AND_LATER
-	#define CL_API_SUFFIX__VERSION_1_2              CL_EXTENSION_WEAK_LINK
-	#define CL_EXT_SUFFIX__VERSION_1_2              CL_EXTENSION_WEAK_LINK
+    #define CL_EXT_PREFIX__VERSION_1_0_DEPRECATED   CL_EXTENSION_WEAK_LINK AVAILABLE_MAC_OS_X_VERSION_10_6_AND_LATER
+    #define CL_API_SUFFIX__VERSION_1_1              CL_EXTENSION_WEAK_LINK
+    #define CL_EXT_SUFFIX__VERSION_1_1              CL_EXTENSION_WEAK_LINK
+    #define CL_EXT_SUFFIX__VERSION_1_1_DEPRECATED   CL_EXTENSION_WEAK_LINK AVAILABLE_MAC_OS_X_VERSION_10_7_AND_LATER
+    #define CL_EXT_PREFIX__VERSION_1_1_DEPRECATED   CL_EXTENSION_WEAK_LINK AVAILABLE_MAC_OS_X_VERSION_10_7_AND_LATER
+    #define CL_API_SUFFIX__VERSION_1_2              CL_EXTENSION_WEAK_LINK
+    #define CL_EXT_SUFFIX__VERSION_1_2              CL_EXTENSION_WEAK_LINK
 #else
     #define CL_EXTENSION_WEAK_LINK
     #define CL_API_SUFFIX__VERSION_1_0
@@ -369,7 +369,8 @@ typedef unsigned int cl_GLenum;
 #endif
 
 /* Define basic vector types */
-#if defined( __VEC__ )
+/* Workaround for ppc64el platform: conflicts with bool from C++. */
+#if defined( __VEC__ ) && !(defined(__PPC64__) && defined(__LITTLE_ENDIAN__))
    #include <altivec.h>   /* may be omitted depending on compiler. AltiVec spec provides no way to detect whether the header is required. */
    typedef vector unsigned char     __cl_uchar16;
    typedef vector signed char       __cl_char16;
@@ -2484,7 +2485,7 @@ PFNCLCREATEFROMGLTEXTURE3D)(cl_context      /* context */,
 #ifdef __APPLE__
 #  pragma GCC diagnostic pop // ignored "-Wignored-attributes"
 #endif
-	
+
 /* cl_khr_gl_sharing extension  */
 
 #define cl_khr_gl_sharing 1
@@ -2751,13 +2752,66 @@ CLEW_FUN_EXPORT     PFNCLGETGLCONTEXTINFOKHR            __clewGetGLContextInfoKH
 #endif
 #define	clGetGLContextInfoKHR           CLEW_GET_FUN(__clewGetGLContextInfoKHR           )
 
+/* cl_ext */
+
+/******************************************
+ * cl_nv_device_attribute_query extension *
+ ******************************************/
+/* cl_nv_device_attribute_query extension - no extension #define since it has no functions */
+#define CL_DEVICE_COMPUTE_CAPABILITY_MAJOR_NV       0x4000
+#define CL_DEVICE_COMPUTE_CAPABILITY_MINOR_NV       0x4001
+#define CL_DEVICE_REGISTERS_PER_BLOCK_NV            0x4002
+#define CL_DEVICE_WARP_SIZE_NV                      0x4003
+#define CL_DEVICE_GPU_OVERLAP_NV                    0x4004
+#define CL_DEVICE_KERNEL_EXEC_TIMEOUT_NV            0x4005
+#define CL_DEVICE_INTEGRATED_MEMORY_NV              0x4006
+#define CL_DEVICE_ATTRIBUTE_ASYNC_ENGINE_COUNT_NV   0x4007
+#define CL_DEVICE_PCI_BUS_ID_NV                     0x4008
+#define CL_DEVICE_PCI_SLOT_ID_NV                    0x4009
+
+/*********************************
+ * cl_amd_device_attribute_query *
+ *********************************/
+#define CL_DEVICE_PROFILING_TIMER_OFFSET_AMD        0x4036
+#define CL_DEVICE_TOPOLOGY_AMD                      0x4037
+#define CL_DEVICE_BOARD_NAME_AMD                    0x4038
+#define CL_DEVICE_GLOBAL_FREE_MEMORY_AMD            0x4039
+#define CL_DEVICE_SIMD_PER_COMPUTE_UNIT_AMD         0x4040
+#define CL_DEVICE_SIMD_WIDTH_AMD                    0x4041
+#define CL_DEVICE_SIMD_INSTRUCTION_WIDTH_AMD        0x4042
+#define CL_DEVICE_WAVEFRONT_WIDTH_AMD               0x4043
+#define CL_DEVICE_GLOBAL_MEM_CHANNELS_AMD           0x4044
+#define CL_DEVICE_GLOBAL_MEM_CHANNEL_BANKS_AMD      0x4045
+#define CL_DEVICE_GLOBAL_MEM_CHANNEL_BANK_WIDTH_AMD    0x4046
+#define CL_DEVICE_LOCAL_MEM_SIZE_PER_COMPUTE_UNIT_AMD  0x4047
+#define CL_DEVICE_LOCAL_MEM_BANKS_AMD               0x4048
+#define CL_DEVICE_THREAD_TRACE_SUPPORTED_AMD        0x4049
+#define CL_DEVICE_GFXIP_MAJOR_AMD                   0x404A
+#define CL_DEVICE_GFXIP_MINOR_AMD                   0x404B
+#define CL_DEVICE_AVAILABLE_ASYNC_QUEUES_AMD        0x404C
+
+#ifndef CL_DEVICE_TOPOLOGY_TYPE_PCIE_AMD
+#define CL_DEVICE_TOPOLOGY_TYPE_PCIE_AMD            1
+
+typedef union
+{
+    struct { cl_uint type; cl_uint data[5]; } raw;
+    struct { cl_uint type; cl_char unused[17]; cl_char bus; cl_char device; cl_char function; } pcie;
+} cl_device_topology_amd;
+#endif
+
+/*********************************
+ * cl_arm_printf extension
+ *********************************/
+#define CL_PRINTF_CALLBACK_ARM                      0x40B0
+#define CL_PRINTF_BUFFERSIZE_ARM                    0x40B1
 
 #define CLEW_SUCCESS                0       //!<    Success error code
 #define CLEW_ERROR_OPEN_FAILED      -1      //!<    Error code for failing to open the dynamic library
 #define CLEW_ERROR_ATEXIT_FAILED    -2      //!<    Error code for failing to queue the closing of the dynamic library to atexit()
 
 //! \brief Load OpenCL dynamic library and set function entry points
-int         clewInit        ();
+int         clewInit        (void);
 //! \brief Convert an OpenCL error code to its string equivalent
 const char* clewErrorString (cl_int error);
 

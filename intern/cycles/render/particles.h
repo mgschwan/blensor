@@ -17,8 +17,8 @@
 #ifndef __PARTICLES_H__
 #define __PARTICLES_H__
 
-#include "util_types.h"
-#include "util_vector.h"
+#include "util/util_types.h"
+#include "util/util_vector.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -47,7 +47,7 @@ public:
 
 	void tag_update(Scene *scene);
 
-	vector<Particle> particles;
+	array<Particle> particles;
 };
 
 /* ParticleSystem Manager */

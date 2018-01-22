@@ -55,6 +55,10 @@
 #include "BIF_gl.h"
 #include "BLF_api.h"
 
+#ifndef BLF_STANDALONE
+#include "GPU_basic_shader.h"
+#endif
+
 #include "blf_internal_types.h"
 #include "blf_internal.h"
 
@@ -113,6 +117,10 @@ GlyphCacheBLF *blf_glyph_cache_new(FontBLF *font)
 		gc->max_glyph_height = (int)(((float)font->face->size->metrics.height) / 64.0f);
 	}
 
+	/* can happen with size 1 fonts */
+	CLAMP_MIN(gc->max_glyph_width, 1);
+	CLAMP_MIN(gc->max_glyph_height, 1);
+
 	gc->p2_width = 0;
 	gc->p2_height = 0;
 
@@ -127,6 +135,7 @@ void blf_glyph_cache_clear(FontBLF *font)
 	while ((gc = BLI_pophead(&font->cache))) {
 		blf_glyph_cache_free(gc);
 	}
+	font->glyph_cache = NULL;
 }
 
 void blf_glyph_cache_free(GlyphCacheBLF *gc)
@@ -170,12 +179,22 @@ static void blf_glyph_cache_texture(FontBLF *font, GlyphCacheBLF *gc)
 
 	glGenTextures(1, &gc->textures[gc->cur_tex]);
 	glBindTexture(GL_TEXTURE_2D, (font->tex_bind_state = gc->textures[gc->cur_tex]));
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, gc->p2_width, gc->p2_height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, NULL);
+#ifndef BLF_STANDALONE
+	/* needed since basic shader doesn't support alpha-only textures,
+	 * while we could add support this is only used in a few places
+	 * (an alternative could be to have a simple shader for BLF). */
+	if (GLEW_ARB_texture_swizzle && GPU_basic_shader_use_glsl_get()) {
+		GLint swizzle_mask[] = {GL_ONE, GL_ONE, GL_ONE, GL_ALPHA};
+		glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzle_mask);
+	}
+#endif
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA8, gc->p2_width, gc->p2_height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, NULL);
 }
 
 GlyphBLF *blf_glyph_search(GlyphCacheBLF *gc, unsigned int c)
@@ -199,7 +218,7 @@ GlyphBLF *blf_glyph_add(FontBLF *font, unsigned int index, unsigned int c)
 	GlyphBLF *g;
 	FT_Error err;
 	FT_Bitmap bitmap, tempbitmap;
-	int sharp = (U.text_render & USER_TEXT_DISABLE_AA);
+	const bool is_sharp = (U.text_render & USER_TEXT_DISABLE_AA) != 0;
 	int flags = FT_LOAD_TARGET_NORMAL | FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP;
 	FT_BBox bbox;
 	unsigned int key;
@@ -224,7 +243,7 @@ GlyphBLF *blf_glyph_add(FontBLF *font, unsigned int index, unsigned int c)
 	if (font->flags & BLF_HINTING)
 		flags &= ~FT_LOAD_NO_HINTING;
 	
-	if (sharp)
+	if (is_sharp)
 		err = FT_Load_Glyph(font->face, (FT_UInt)index, FT_LOAD_TARGET_MONO);
 	else
 		err = FT_Load_Glyph(font->face, (FT_UInt)index, flags);  
@@ -237,7 +256,7 @@ GlyphBLF *blf_glyph_add(FontBLF *font, unsigned int index, unsigned int c)
 	/* get the glyph. */
 	slot = font->face->glyph;
 
-	if (sharp) {
+	if (is_sharp) {
 		err = FT_Render_Glyph(slot, FT_RENDER_MODE_MONO);
 
 		/* Convert result from 1 bit per pixel to 8 bit per pixel */
@@ -266,7 +285,7 @@ GlyphBLF *blf_glyph_add(FontBLF *font, unsigned int index, unsigned int c)
 	g->height = (int)bitmap.rows;
 
 	if (g->width && g->height) {
-		if (sharp) {
+		if (is_sharp) {
 			/* Font buffer uses only 0 or 1 values, Blender expects full 0..255 range */
 			int i;
 			for (i = 0; i < (g->width * g->height); i++) {

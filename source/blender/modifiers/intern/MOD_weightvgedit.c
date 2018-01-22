@@ -42,12 +42,17 @@
 #include "BKE_colortools.h"       /* CurveMapping. */
 #include "BKE_deform.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
 #include "BKE_modifier.h"
 #include "BKE_texture.h"          /* Texture masking. */
 
 #include "depsgraph_private.h"
+#include "DEG_depsgraph_build.h"
+
 #include "MEM_guardedalloc.h"
+
 #include "MOD_weightvg_util.h"
+#include "MOD_modifiertypes.h"
 
 /**************************************
  * Modifiers functions.               *
@@ -120,19 +125,17 @@ static bool dependsOnTime(ModifierData *md)
 	return false;
 }
 
-static void foreachObjectLink(ModifierData *md, Object *ob,
-                              void (*walk)(void *userData, Object *ob, Object **obpoin),
-                              void *userData)
+static void foreachObjectLink(ModifierData *md, Object *ob, ObjectWalkFunc walk, void *userData)
 {
 	WeightVGEditModifierData *wmd = (WeightVGEditModifierData *) md;
-	walk(userData, ob, &wmd->mask_tex_map_obj);
+	walk(userData, ob, &wmd->mask_tex_map_obj, IDWALK_CB_NOP);
 }
 
 static void foreachIDLink(ModifierData *md, Object *ob, IDWalkFunc walk, void *userData)
 {
 	WeightVGEditModifierData *wmd = (WeightVGEditModifierData *) md;
 
-	walk(userData, ob, (ID **)&wmd->mask_texture);
+	walk(userData, ob, (ID **)&wmd->mask_texture, IDWALK_CB_USER);
 
 	foreachObjectLink(md, ob, (ObjectWalkFunc)walk, userData);
 }
@@ -160,6 +163,21 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 	if (wmd->mask_tex_mapping == MOD_DISP_MAP_GLOBAL)
 		dag_add_relation(forest, obNode, obNode, DAG_RL_DATA_DATA | DAG_RL_OB_DATA,
 		                 "WeightVGEdit Modifier");
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *ob,
+                            struct DepsNodeHandle *node)
+{
+	WeightVGEditModifierData *wmd = (WeightVGEditModifierData *)md;
+	if (wmd->mask_tex_map_obj != NULL && wmd->mask_tex_mapping == MOD_DISP_MAP_OBJECT) {
+		DEG_add_object_relation(node, wmd->mask_tex_map_obj, DEG_OB_COMP_TRANSFORM, "WeightVGEdit Modifier");
+	}
+	if (wmd->mask_tex_mapping == MOD_DISP_MAP_GLOBAL) {
+		DEG_add_object_relation(node, ob, DEG_OB_COMP_TRANSFORM, "WeightVGEdit Modifier");
+	}
 }
 
 static bool isDisabled(ModifierData *md, int UNUSED(useRenderParams))
@@ -210,8 +228,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		if (!do_add)
 			return dm;
 		/* Else, add a valid data layer! */
-		dvert = CustomData_add_layer_named(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
-		                                   NULL, numVerts, wmd->defgrp_name);
+		dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, numVerts);
 		/* Ultimate security check. */
 		if (!dvert)
 			return dm;
@@ -292,6 +309,7 @@ ModifierTypeInfo modifierType_WeightVGEdit = {
 	/* freeData */          freeData,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     dependsOnTime,
 	/* dependsOnNormals */  NULL,
 	/* foreachObjectLink */ foreachObjectLink,

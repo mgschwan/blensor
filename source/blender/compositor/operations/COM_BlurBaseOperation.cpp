@@ -39,6 +39,7 @@ BlurBaseOperation::BlurBaseOperation(DataType data_type) : NodeOperation()
 	memset(&m_data, 0, sizeof(NodeBlurData));
 	this->m_size = 1.0f;
 	this->m_sizeavailable = false;
+	this->m_extend_bounds = false;
 }
 void BlurBaseOperation::initExecution()
 {
@@ -92,7 +93,7 @@ float *BlurBaseOperation::make_gausstab(float rad, int size)
 }
 
 #ifdef __SSE2__
-__m128 *BlurBaseOperation::convert_gausstab_sse(const float *gausstab, float rad, int size)
+__m128 *BlurBaseOperation::convert_gausstab_sse(const float *gausstab, int size)
 {
 	int n = 2 * size + 1;
 	__m128 *gausstab_sse = (__m128 *) MEM_mallocN_aligned(sizeof(__m128) * n, 16, "gausstab sse");
@@ -118,7 +119,7 @@ float *BlurBaseOperation::make_dist_fac_inverse(float rad, int size, int falloff
 	for (i = -size; i <= size; i++) {
 		val = 1.0f - fabsf((float)i * fac);
 
-		/* keep in sync with proportional_falloff_curve_only_items */
+		/* keep in sync with rna_enum_proportional_falloff_curve_only_items */
 		switch (falloff) {
 			case PROP_SMOOTH:
 				/* ease - gives less hard lines for dilate/erode feather */
@@ -132,6 +133,9 @@ float *BlurBaseOperation::make_dist_fac_inverse(float rad, int size, int falloff
 				break;
 			case PROP_SHARP:
 				val = val * val;
+				break;
+			case PROP_INVSQUARE:
+				val = val * (2.0f - val);
 				break;
 			case PROP_LIN:
 				/* fall-through */
@@ -169,5 +173,16 @@ void BlurBaseOperation::updateSize()
 		this->getInputSocketReader(1)->readSampled(result, 0, 0, COM_PS_NEAREST);
 		this->m_size = result[0];
 		this->m_sizeavailable = true;
+	}
+}
+
+void BlurBaseOperation::determineResolution(unsigned int resolution[2],
+                                            unsigned int preferredResolution[2])
+{
+	NodeOperation::determineResolution(resolution,
+	                                   preferredResolution);
+	if (this->m_extend_bounds) {
+		resolution[0] += 2 * this->m_size * m_data.sizex;
+		resolution[1] += 2 * this->m_size * m_data.sizey;
 	}
 }

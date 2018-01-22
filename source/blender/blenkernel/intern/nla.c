@@ -40,12 +40,12 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_utildefines.h"
-#include "BLI_path_util.h"
 #include "BLI_listbase.h"
 #include "BLI_string.h"
+#include "BLI_string_utils.h"
 #include "BLI_ghash.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "DNA_anim_types.h"
 #include "DNA_scene_types.h"
@@ -59,7 +59,7 @@
 #include "BKE_library.h"
 
 #ifdef WITH_AUDASPACE
-#  include "AUD_C-API.h"
+#  include AUD_SPECIAL_H
 #endif
 
 #include "RNA_access.h"
@@ -183,7 +183,7 @@ NlaStrip *copy_nlastrip(NlaStrip *strip, const bool use_same_action)
 		}
 		else {
 			/* use a copy of the action instead (user count shouldn't have changed yet) */
-			strip_d->act = BKE_action_copy(strip_d->act);
+			strip_d->act = BKE_action_copy(G.main, strip_d->act);
 		}
 	}
 		
@@ -535,9 +535,14 @@ float BKE_nla_tweakedit_remap(AnimData *adt, float cframe, short mode)
 	/* if the active-strip info has been stored already, access this, otherwise look this up
 	 * and store for (very probable) future usage
 	 */
+	if (adt->act_track == NULL) {
+		if (adt->actstrip)
+			adt->act_track = BKE_nlatrack_find_tweaked(adt);
+		else
+			adt->act_track = BKE_nlatrack_find_active(&adt->nla_tracks);
+	}
 	if (adt->actstrip == NULL) {
-		NlaTrack *nlt = BKE_nlatrack_find_active(&adt->nla_tracks);
-		adt->actstrip = BKE_nlastrip_find_active(nlt);
+		adt->actstrip = BKE_nlastrip_find_active(adt->act_track);
 	}
 	strip = adt->actstrip;
 	
@@ -926,6 +931,39 @@ NlaTrack *BKE_nlatrack_find_active(ListBase *tracks)
 	return NULL;
 }
 
+/* Get the NLA Track that the active action/action strip comes from,
+ * since this info is not stored in AnimData. It also isn't as simple
+ * as just using the active track, since multiple tracks may have been
+ * entered at the same time.
+ */
+NlaTrack *BKE_nlatrack_find_tweaked(AnimData *adt)
+{
+	NlaTrack *nlt;
+	
+	/* sanity check */
+	if (adt == NULL)
+		return NULL;
+	
+	/* Since the track itself gets disabled, we want the first disabled... */
+	for (nlt = adt->nla_tracks.first; nlt; nlt = nlt->next) {
+		if (nlt->flag & (NLATRACK_ACTIVE | NLATRACK_DISABLED)) {
+			/* For good measure, make sure that strip actually exists there */
+			if (BLI_findindex(&nlt->strips, adt->actstrip) != -1) {
+				return nlt;
+			}
+			else if (G.debug & G_DEBUG) {
+				printf("%s: Active strip (%p, %s) not in NLA track found (%p, %s)\n",
+				       __func__, 
+				       adt->actstrip, (adt->actstrip) ? adt->actstrip->name : "<None>",
+				       nlt,           nlt->name);
+			}
+		}
+	}
+	
+	/* Not found! */
+	return NULL;
+}
+
 /* Toggle the 'solo' setting for the given NLA-track, making sure that it is the only one
  * that has this status in its AnimData block.
  */
@@ -1140,7 +1178,34 @@ static void nlastrip_fix_resize_overlaps(NlaStrip *strip)
 		NlaStrip *nls = strip->next;
 		float offset = 0.0f;
 		
-		if (strip->end > nls->start) {
+		if (nls->type == NLASTRIP_TYPE_TRANSITION) {
+			/* transition strips should grow/shrink to accomodate the resized strip,
+			 * but if the strip's bounds now exceed the transition, we're forced to
+			 * offset everything to maintain the balance
+			 */
+			if (strip->end <= nls->start) {
+				/* grow the transition to fill the void */
+				nls->start = strip->end;
+			}
+			else if (strip->end < nls->end) {
+				/* shrink the transition to give the strip room */
+				nls->start = strip->end;
+			}
+			else {
+				/* shrink transition down to 1 frame long (so that it can still be found),
+				 * then offset everything else by the remaining defict to give the strip room
+				 */
+				nls->start = nls->end - 1.0f;
+				offset     = ceilf(strip->end - nls->start);  /* XXX: review whether preventing fractionals is good here... */
+				
+				/* apply necessary offset to ensure that the strip has enough space */
+				for (; nls; nls = nls->next) {
+					nls->start += offset;
+					nls->end   += offset;
+				}
+			}
+		}
+		else if (strip->end > nls->start) {
 			/* NOTE: need to ensure we don't have a fractional frame offset, even if that leaves a gap,
 			 * otherwise it will be very hard to get rid of later
 			 */
@@ -1160,7 +1225,34 @@ static void nlastrip_fix_resize_overlaps(NlaStrip *strip)
 		NlaStrip *nls = strip->prev;
 		float offset = 0.0f;
 		
-		if (strip->start < nls->end) {
+		if (nls->type == NLASTRIP_TYPE_TRANSITION) {
+			/* transition strips should grow/shrink to accomodate the resized strip,
+			 * but if the strip's bounds now exceed the transition, we're forced to
+			 * offset everything to maintain the balance
+			 */
+			if (strip->start >= nls->end) {
+				/* grow the transition to fill the void */
+				nls->end = strip->start;
+			}
+			else if (strip->start > nls->start) {
+				/* shrink the transition to give the strip room */
+				nls->end = strip->start;
+			}
+			else {
+				/* shrink transition down to 1 frame long (so that it can still be found),
+				 * then offset everything else by the remaining defict to give the strip room
+				 */
+				nls->end = nls->start + 1.0f;
+				offset   = ceilf(nls->end - strip->start);  /* XXX: review whether preventing fractionals is good here... */
+				
+				/* apply necessary offset to ensure that the strip has enough space */
+				for (; nls; nls = nls->next) {
+					nls->start -= offset;
+					nls->end   -= offset;
+				}
+			}
+		}
+		else if (strip->start < nls->end) {
 			/* NOTE: need to ensure we don't have a fractional frame offset, even if that leaves a gap,
 			 * otherwise it will be very hard to get rid of later
 			 */
@@ -1199,7 +1291,7 @@ void BKE_nlastrip_recalculate_bounds(NlaStrip *strip)
 	if (IS_EQF(mapping, 0.0f) == 0)
 		strip->end = (actlen * mapping) + strip->start;
 	
-	/* make sure we don't overlap our neighbours */
+	/* make sure we don't overlap our neighbors */
 	nlastrip_fix_resize_overlaps(strip);
 }
 
@@ -1584,6 +1676,12 @@ bool BKE_nla_action_stash(AnimData *adt)
 	nlt = add_nlatrack(adt, prev_track);
 	BLI_assert(nlt != NULL);
 	
+	/* we need to ensure that if there wasn't any previous instance, it must go to tbe bottom of the stack */
+	if (prev_track == NULL) {
+		BLI_remlink(&adt->nla_tracks, nlt);
+		BLI_addhead(&adt->nla_tracks, nlt);
+	}
+	
 	BLI_strncpy(nlt->name, STASH_TRACK_NAME, sizeof(nlt->name));
 	BLI_uniquename(&adt->nla_tracks, nlt, STASH_TRACK_NAME, '.', offsetof(NlaTrack, name), sizeof(nlt->name));
 	
@@ -1604,6 +1702,12 @@ bool BKE_nla_action_stash(AnimData *adt)
 	 */
 	nlt->flag = (NLATRACK_MUTED | NLATRACK_PROTECTED);
 	strip->flag &= ~(NLASTRIP_FLAG_SELECT | NLASTRIP_FLAG_ACTIVE);
+	
+	/* also mark the strip for auto syncing the length, so that the strips accurately
+	 * reflect the length of the action
+	 * XXX: we could do with some extra flags here to prevent repeats/scaling options from working!
+	 */
+	strip->flag |= NLASTRIP_FLAG_SYNC_LENGTH;
 	
 	/* succeeded */
 	return true;
@@ -1728,7 +1832,7 @@ bool BKE_nla_tweakmode_enter(AnimData *adt)
 		}
 		return false;
 	}
-		
+	
 	/* go over all the tracks up to the active one, tagging each strip that uses the same 
 	 * action as the active strip, but leaving everything else alone
 	 */
@@ -1741,6 +1845,13 @@ bool BKE_nla_tweakmode_enter(AnimData *adt)
 		}
 	}
 	
+	/* tag all other strips in active track that uses the same action as the active strip */
+	for (strip = activeTrack->strips.first; strip; strip = strip->next) {
+		if ((strip->act == activeStrip->act) && (strip != activeStrip))
+			strip->flag |= NLASTRIP_FLAG_TWEAKUSER;
+		else
+			strip->flag &= ~NLASTRIP_FLAG_TWEAKUSER;
+	}
 	
 	/* go over all the tracks after AND INCLUDING the active one, tagging them as being disabled 
 	 *	- the active track needs to also be tagged, otherwise, it'll overlap with the tweaks going on
@@ -1756,6 +1867,7 @@ bool BKE_nla_tweakmode_enter(AnimData *adt)
 	 */
 	adt->tmpact = adt->action;
 	adt->action = activeStrip->act;
+	adt->act_track = activeTrack;
 	adt->actstrip = activeStrip;
 	id_us_plus(&activeStrip->act->id);
 	adt->flag |= ADT_NLA_EDIT_ON;
@@ -1801,8 +1913,19 @@ void BKE_nla_tweakmode_exit(AnimData *adt)
 	for (nlt = adt->nla_tracks.first; nlt; nlt = nlt->next) {
 		nlt->flag &= ~NLATRACK_DISABLED;
 		
-		for (strip = nlt->strips.first; strip; strip = strip->next)
+		for (strip = nlt->strips.first; strip; strip = strip->next) {
+			/* sync strip extents if this strip uses the same action */
+			if ((adt->actstrip) && (adt->actstrip->act == strip->act) && (strip->flag & NLASTRIP_FLAG_SYNC_LENGTH)) {
+				/* recalculate the length of the action */
+				calc_action_range(strip->act, &strip->actstart, &strip->actend, 0);
+				
+				/* adjust the strip extents in response to this */
+				BKE_nlastrip_recalculate_bounds(strip);
+			}
+			
+			/* clear tweakuser flag */
 			strip->flag &= ~NLASTRIP_FLAG_TWEAKUSER;
+		}
 	}
 	
 	/* handle AnimData level changes:
@@ -1812,9 +1935,11 @@ void BKE_nla_tweakmode_exit(AnimData *adt)
 	 *	- editing-flag for this AnimData block should also get turned off
 	 *	- clear pointer to active strip
 	 */
-	if (adt->action) adt->action->id.us--;
+	if (adt->action)
+		id_us_min(&adt->action->id);
 	adt->action = adt->tmpact;
 	adt->tmpact = NULL;
+	adt->act_track = NULL;
 	adt->actstrip = NULL;
 	adt->flag &= ~ADT_NLA_EDIT_ON;
 }

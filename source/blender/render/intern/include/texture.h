@@ -56,6 +56,11 @@
 		_hsv[1] *= tex->saturation;                                           \
 		hsv_to_rgb(_hsv[0], _hsv[1], _hsv[2],                                 \
 		           &texres->tr, &texres->tg, &texres->tb);                    \
+		if ((tex->saturation > 1.0f) && !(tex->flag & TEX_NO_CLAMP)) {        \
+			if (texres->tr < 0.0f) texres->tr= 0.0f;                          \
+			if (texres->tg < 0.0f) texres->tg= 0.0f;                          \
+			if (texres->tb < 0.0f) texres->tb= 0.0f;                          \
+		}                                                                     \
 	}                                                                         \
 
 struct HaloRen;
@@ -69,7 +74,9 @@ struct ImagePool;
 /* texture.h */
 
 void do_halo_tex(struct HaloRen *har, float xn, float yn, float col_r[4]);
-void do_sky_tex(const float rco[3], float lo[3], const float dxyview[2], float hor[3], float zen[3], float *blend, int skyflag, short thread);
+void do_sky_tex(
+        const float rco[3], const float view[3], const float lo[3], const float dxyview[2],
+        float hor[3], float zen[3], float *blend, int skyflag, short thread);
 void do_material_tex(struct ShadeInput *shi, struct Render *re);
 void do_lamp_tex(LampRen *la, const float lavec[3], struct ShadeInput *shi, float col_r[3], int effect);
 void do_volume_tex(struct ShadeInput *shi, const float xyz[3], int mapto_flag, float col_r[3], float *val, struct Render *re);

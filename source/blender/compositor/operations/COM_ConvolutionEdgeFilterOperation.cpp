@@ -28,7 +28,7 @@ ConvolutionEdgeFilterOperation::ConvolutionEdgeFilterOperation() : ConvolutionFi
 	/* pass */
 }
 
-void ConvolutionEdgeFilterOperation::executePixel(float output[4], int x, int y, void *data)
+void ConvolutionEdgeFilterOperation::executePixel(float output[4], int x, int y, void * /*data*/)
 {
 	float in1[4], in2[4], res1[4] = {0.0}, res2[4] = {0.0};
 
@@ -94,4 +94,10 @@ void ConvolutionEdgeFilterOperation::executePixel(float output[4], int x, int y,
 	output[2] = output[2] * value[0] + in2[2] * mval;
 	
 	output[3] = in2[3];
+
+	/* Make sure we don't return negative color. */
+	output[0] = max(output[0], 0.0f);
+	output[1] = max(output[1], 0.0f);
+	output[2] = max(output[2], 0.0f);
+	output[3] = max(output[3], 0.0f);
 }

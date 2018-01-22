@@ -17,10 +17,12 @@
 #ifndef __FILM_H__
 #define __FILM_H__
 
-#include "util_string.h"
-#include "util_vector.h"
+#include "util/util_string.h"
+#include "util/util_vector.h"
 
-#include "kernel_types.h"
+#include "kernel/kernel_types.h"
+
+#include "graph/node.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -30,7 +32,10 @@ class Scene;
 
 typedef enum FilterType {
 	FILTER_BOX,
-	FILTER_GAUSSIAN
+	FILTER_GAUSSIAN,
+	FILTER_BLACKMAN_HARRIS,
+
+	FILTER_NUM_TYPES,
 } FilterType;
 
 class Pass {
@@ -41,16 +46,25 @@ public:
 	bool exposure;
 	PassType divide_type;
 
-	static void add(PassType type, vector<Pass>& passes);
-	static bool equals(const vector<Pass>& A, const vector<Pass>& B);
-	static bool contains(const vector<Pass>& passes, PassType);
+	static void add(PassType type, array<Pass>& passes);
+	static bool equals(const array<Pass>& A, const array<Pass>& B);
+	static bool contains(const array<Pass>& passes, PassType);
 };
 
-class Film {
+class Film : public Node {
 public:
+	NODE_DECLARE
+
 	float exposure;
-	vector<Pass> passes;
+	array<Pass> passes;
+	bool denoising_data_pass;
+	bool denoising_clean_pass;
+	int denoising_flags;
 	float pass_alpha_threshold;
+
+	int pass_stride;
+	int denoising_data_offset;
+	int denoising_clean_offset;
 
 	FilterType filter_type;
 	float filter_width;
@@ -72,7 +86,7 @@ public:
 	void device_free(Device *device, DeviceScene *dscene, Scene *scene);
 
 	bool modified(const Film& film);
-	void tag_passes_update(Scene *scene, const vector<Pass>& passes_);
+	void tag_passes_update(Scene *scene, const array<Pass>& passes_);
 	void tag_update(Scene *scene);
 };
 

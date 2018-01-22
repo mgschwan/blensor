@@ -40,7 +40,7 @@
 #  pragma warning (disable:4786)
 #endif
 
-#include "glew-mx.h"
+#include "GPU_glew.h"
 
 #include "KX_BlenderCanvas.h"
 #include "KX_BlenderKeyboardDevice.h"
@@ -54,7 +54,6 @@
 #include "KX_PyConstraintBinding.h"
 #include "KX_PythonMain.h"
 
-#include "RAS_GLExtensionManager.h"
 #include "RAS_OpenGLRasterizer.h"
 #include "RAS_ListRasterizer.h"
 
@@ -63,7 +62,7 @@
 #include "BL_System.h"
 
 #include "GPU_extensions.h"
-#include "Value.h"
+#include "EXP_Value.h"
 
 
 extern "C" {
@@ -79,6 +78,7 @@ extern "C" {
 	#include "BKE_ipo.h"
 	#include "BKE_main.h"
 	#include "BKE_context.h"
+	#include "BKE_sound.h"
 
 	/* avoid c++ conflict with 'new' */
 	#define new _new
@@ -101,18 +101,16 @@ typedef void * wmUIHandlerRemoveFunc;
 }
 
 #ifdef WITH_AUDASPACE
-#  include "AUD_C-API.h"
-#  include "AUD_I3DDevice.h"
-#  include "AUD_IDevice.h"
+#  include AUD_DEVICE_H
 #endif
 
-static BlendFileData *load_game_data(char *filename)
+static BlendFileData *load_game_data(const char *filename)
 {
 	ReportList reports;
 	BlendFileData *bfd;
 	
 	BKE_reports_init(&reports, RPT_STORE);
-	bfd= BLO_read_from_file(filename, &reports);
+	bfd= BLO_read_from_file(filename, &reports, BLO_READ_SKIP_USERDEF);
 
 	if (!bfd) {
 		printf("Loading %s failed: ", filename);
@@ -251,12 +249,6 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 	
 	PyObject *pyGlobalDict = PyDict_New(); /* python utility storage, spans blend file loading */
 #endif
-	
-	bgl::InitExtensions(true);
-
-	// VBO code for derived mesh is not compatible with BGE (couldn't find why), so disable
-	int disableVBO = (U.gameflags & USER_DISABLE_VBO);
-	U.gameflags |= USER_DISABLE_VBO;
 
 	// Globals to be carried on over blender files
 	GlobalSettings gs;
@@ -307,12 +299,20 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 			canvas->SetSwapInterval((startscene->gm.vsync == VSYNC_ON) ? 1 : 0);
 
 		RAS_IRasterizer* rasterizer = NULL;
+		RAS_STORAGE_TYPE raster_storage = RAS_AUTO_STORAGE;
+
+		if (startscene->gm.raster_storage == RAS_STORE_VBO) {
+			raster_storage = RAS_VBO;
+		}
+		else if (startscene->gm.raster_storage == RAS_STORE_VA) {
+			raster_storage = RAS_VA;
+		}
 		//Don't use displaylists with VBOs
 		//If auto starts using VBOs, make sure to check for that here
-		if (displaylists && startscene->gm.raster_storage != RAS_STORE_VBO)
-			rasterizer = new RAS_ListRasterizer(canvas, true, startscene->gm.raster_storage);
+		if (displaylists && raster_storage != RAS_VBO)
+			rasterizer = new RAS_ListRasterizer(canvas, true, raster_storage);
 		else
-			rasterizer = new RAS_OpenGLRasterizer(canvas, startscene->gm.raster_storage);
+			rasterizer = new RAS_OpenGLRasterizer(canvas, raster_storage);
 
 		RAS_IRasterizer::MipmapOption mipmapval = rasterizer->GetMipmapping();
 
@@ -341,6 +341,7 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 		ketsjiengine->SetUseFixedTime(usefixed);
 		ketsjiengine->SetTimingDisplay(frameRate, profile, properties);
 		ketsjiengine->SetRestrictAnimationFPS(restrictAnimFPS);
+		ketsjiengine->SetRender(true);
 		KX_KetsjiEngine::SetExitKey(ConvertKeyCode(startscene->gm.exitkey));
 
 		//set the global settings (carried over if restart/load new files)
@@ -360,25 +361,22 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 		}
 
 		// some blender stuff
-		float camzoom;
+		float camzoom = 1.0f;
 		int draw_letterbox = 0;
-		
+
 		if (rv3d->persp==RV3D_CAMOB) {
 			if (startscene->gm.framing.type == SCE_GAMEFRAMING_BARS) { /* Letterbox */
-				camzoom = 1.0f;
 				draw_letterbox = 1;
 			}
 			else {
 				camzoom = 1.0f / BKE_screen_view3d_zoom_to_fac(rv3d->camzoom);
 			}
 		}
-		else {
-			camzoom = 2.0;
-		}
 
 		rasterizer->SetDrawingMode(drawtype);
 		ketsjiengine->SetCameraZoom(camzoom);
-		
+		ketsjiengine->SetCameraOverrideZoom(2.0f);
+
 		// if we got an exitcode 3 (KX_EXIT_REQUEST_START_OTHER_GAME) load a different file
 		if (exitrequested == KX_EXIT_REQUEST_START_OTHER_GAME || exitrequested == KX_EXIT_REQUEST_RESTART_GAME)
 		{
@@ -446,7 +444,7 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 				rasterizer->SetEyeSeparation(scene->gm.eyeseparation);
 			}
 
-			rasterizer->SetBackColor(scene->gm.framing.col[0], scene->gm.framing.col[1], scene->gm.framing.col[2], 0.0f);
+			rasterizer->SetBackColor(scene->gm.framing.col);
 		}
 		
 		if (exitrequested != KX_EXIT_REQUEST_QUIT_GAME)
@@ -467,19 +465,9 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 			if (always_use_expand_framing)
 				sceneconverter->SetAlwaysUseExpandFraming(true);
 
-			bool usemat = false, useglslmat = false;
+			sceneconverter->SetMaterials(true);
 
-			if (GLEW_ARB_multitexture && GLEW_VERSION_1_1)
-				usemat = true;
-
-			if (GPU_glsl_support())
-				useglslmat = true;
-			else if (gs.matmode == GAME_MAT_GLSL)
-				usemat = false;
-
-			if (usemat)
-				sceneconverter->SetMaterials(true);
-			if (useglslmat && (gs.matmode == GAME_MAT_GLSL))
+			if (gs.matmode == GAME_MAT_GLSL)
 				sceneconverter->SetGLSLMaterials(true);
 			if (scene->gm.flag & GAME_NO_MATERIAL_CACHING)
 				sceneconverter->SetCacheMaterials(false);
@@ -502,13 +490,10 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 				ketsjiengine->InitDome(scene->gm.dome.res, scene->gm.dome.mode, scene->gm.dome.angle, scene->gm.dome.resbuf, scene->gm.dome.tilt, scene->gm.dome.warptext);
 
 			// initialize 3D Audio Settings
-			AUD_I3DDevice* dev = AUD_get3DDevice();
-			if (dev)
-			{
-				dev->setSpeedOfSound(scene->audio.speed_of_sound);
-				dev->setDopplerFactor(scene->audio.doppler_factor);
-				dev->setDistanceModel(AUD_DistanceModel(scene->audio.distance_model));
-			}
+			AUD_Device* device = BKE_sound_get_device();
+			AUD_Device_setSpeedOfSound(device, scene->audio.speed_of_sound);
+			AUD_Device_setDopplerFactor(device, scene->audio.doppler_factor);
+			AUD_Device_setDistanceModel(device, AUD_DistanceModel(scene->audio.distance_model));
 
 			// from see blender.c:
 			// FIXME: this version patching should really be part of the file-reading code,
@@ -548,6 +533,10 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 				if (python_main) {
 					char *python_code = KX_GetPythonCode(blenderdata, python_main);
 					if (python_code) {
+						// Set python environement variable.
+						KX_SetActiveScene(startscene);
+						PHY_SetActiveEnvironment(startscene->GetPhysicsEnvironment());
+
 						ketsjinextframestate.ketsjiengine = ketsjiengine;
 						ketsjinextframestate.C = C;
 						ketsjinextframestate.win = win;
@@ -675,18 +664,16 @@ extern "C" void StartKetsjiShell(struct bContext *C, struct ARegion *ar, rcti *c
 		}
 
 		// stop all remaining playing sounds
-		AUD_getDevice()->stopAll();
+		AUD_Device_stopAll(BKE_sound_get_device());
 	
 	} while (exitrequested == KX_EXIT_REQUEST_RESTART_GAME || exitrequested == KX_EXIT_REQUEST_START_OTHER_GAME);
 	
-	if (!disableVBO)
-		U.gameflags &= ~USER_DISABLE_VBO;
-
 	if (bfd) BLO_blendfiledata_free(bfd);
 
 	BLI_strncpy(G.main->name, oldsce, sizeof(G.main->name));
 
 #ifdef WITH_PYTHON
+	PyDict_Clear(pyGlobalDict);
 	Py_DECREF(pyGlobalDict);
 
 	// Release Python's GIL

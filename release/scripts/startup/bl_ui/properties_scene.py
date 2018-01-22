@@ -18,13 +18,26 @@
 
 # <pep8 compliant>
 import bpy
-from bpy.types import Panel, UIList
+from bpy.types import (
+        Menu,
+        Panel,
+        UIList,
+        )
+
 from rna_prop_ui import PropertyPanel
 
 from bl_ui.properties_physics_common import (
         point_cache_ui,
         effector_weights_ui,
         )
+
+
+class SCENE_MT_units_length_presets(Menu):
+    """Unit of measure for properties that use length values"""
+    bl_label = "Unit Presets"
+    preset_subdir = "units_length"
+    preset_operator = "script.execute_preset"
+    draw = Menu.draw_preset
 
 
 class SCENE_UL_keying_set_paths(UIList):
@@ -35,7 +48,7 @@ class SCENE_UL_keying_set_paths(UIList):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             # Do not make this one editable in uiList for now...
             layout.label(text=kspath.data_path, translate=False, icon_value=icon)
-        elif self.layout_type in {'GRID'}:
+        elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label(text="", icon_value=icon)
 
@@ -75,30 +88,50 @@ class SCENE_PT_unit(SceneButtonsPanel, Panel):
 
         unit = context.scene.unit_settings
 
-        col = layout.column()
-        col.row().prop(unit, "system", expand=True)
-        col.row().prop(unit, "system_rotation", expand=True)
+        row = layout.row(align=True)
+        row.menu("SCENE_MT_units_length_presets", text=SCENE_MT_units_length_presets.bl_label)
+        row.operator("scene.units_length_preset_add", text="", icon='ZOOMIN')
+        row.operator("scene.units_length_preset_add", text="", icon='ZOOMOUT').remove_active = True
 
-        if unit.system != 'NONE':
-            row = layout.row()
-            row.prop(unit, "scale_length", text="Scale")
-            row.prop(unit, "use_separate")
+        layout.separator()
+
+        split = layout.split(percentage=0.35)
+        split.label("Length:")
+        split.prop(unit, "system", text="")
+        split = layout.split(percentage=0.35)
+        split.label("Angle:")
+        split.prop(unit, "system_rotation", text="")
+
+        col = layout.column()
+        col.enabled = unit.system != 'NONE'
+        split = col.split(percentage=0.35)
+        split.label("Unit Scale:")
+        split.prop(unit, "scale_length", text="")
+        split = col.split(percentage=0.35)
+        split.row()
+        split.prop(unit, "use_separate")
 
 
 class SceneKeyingSetsPanel:
-    def draw_keyframing_settings(self, context, layout, ks, ksp):
-        self.draw_keyframing_setting(context, layout, ks, ksp, "Needed",
-                                     "use_insertkey_override_needed", "use_insertkey_needed",
-                                     userpref_fallback="use_keyframe_insert_needed")
 
-        self.draw_keyframing_setting(context, layout, ks, ksp, "Visual",
-                                     "use_insertkey_override_visual", "use_insertkey_visual",
-                                     userpref_fallback="use_visual_keying")
+    @staticmethod
+    def draw_keyframing_settings(context, layout, ks, ksp):
+        SceneKeyingSetsPanel._draw_keyframing_setting(
+                context, layout, ks, ksp, "Needed",
+                "use_insertkey_override_needed", "use_insertkey_needed",
+                userpref_fallback="use_keyframe_insert_needed")
 
-        self.draw_keyframing_setting(context, layout, ks, ksp, "XYZ to RGB",
-                                     "use_insertkey_override_xyz_to_rgb", "use_insertkey_xyz_to_rgb")
+        SceneKeyingSetsPanel._draw_keyframing_setting(
+                context, layout, ks, ksp, "Visual",
+                "use_insertkey_override_visual", "use_insertkey_visual",
+                userpref_fallback="use_visual_keying")
 
-    def draw_keyframing_setting(self, context, layout, ks, ksp, label, toggle_prop, prop, userpref_fallback=None):
+        SceneKeyingSetsPanel._draw_keyframing_setting(
+                context, layout, ks, ksp, "XYZ to RGB",
+                "use_insertkey_override_xyz_to_rgb", "use_insertkey_xyz_to_rgb")
+
+    @staticmethod
+    def _draw_keyframing_setting(context, layout, ks, ksp, label, toggle_prop, prop, userpref_fallback=None):
         if ksp:
             item = ksp
 
@@ -392,14 +425,17 @@ class SCENE_PT_simplify(SceneButtonsPanel, Panel):
         split = layout.split()
 
         col = split.column()
+        col.label(text="Viewport:")
         col.prop(rd, "simplify_subdivision", text="Subdivision")
         col.prop(rd, "simplify_child_particles", text="Child Particles")
 
-        col.prop(rd, "use_simplify_triangulate")
-
         col = split.column()
+        col.label(text="Render:")
+        col.prop(rd, "simplify_subdivision_render", text="Subdivision")
+        col.prop(rd, "simplify_child_particles_render", text="Child Particles")
         col.prop(rd, "simplify_shadow_samples", text="Shadow Samples")
         col.prop(rd, "simplify_ao_sss", text="AO and SSS")
+        col.prop(rd, "use_simplify_triangulate")
 
 
 class SCENE_PT_custom_props(SceneButtonsPanel, PropertyPanel, Panel):
@@ -407,5 +443,25 @@ class SCENE_PT_custom_props(SceneButtonsPanel, PropertyPanel, Panel):
     _context_path = "scene"
     _property_type = bpy.types.Scene
 
+
+classes = (
+    SCENE_MT_units_length_presets,
+    SCENE_UL_keying_set_paths,
+    SCENE_PT_scene,
+    SCENE_PT_unit,
+    SCENE_PT_keying_sets,
+    SCENE_PT_keying_set_paths,
+    SCENE_PT_color_management,
+    SCENE_PT_audio,
+    SCENE_PT_physics,
+    SCENE_PT_rigid_body_world,
+    SCENE_PT_rigid_body_cache,
+    SCENE_PT_rigid_body_field_weights,
+    SCENE_PT_simplify,
+    SCENE_PT_custom_props,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

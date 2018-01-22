@@ -46,7 +46,7 @@
 #include "BLI_listbase.h"
 #include "BLI_rect.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_brush.h"
 #include "BKE_context.h"
@@ -177,7 +177,7 @@ float paint_get_tex_pixel(MTex *mtex, float u, float v, struct ImagePool *pool, 
 	float co[3] = {u, v, 0.0f};
 
 	externtex(mtex, co, &intensity,
-	          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
+	          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false, false);
 
 	return intensity;
 }
@@ -189,7 +189,7 @@ void paint_get_tex_pixel_col(MTex *mtex, float u, float v, float rgba[4], struct
 	float intensity;
 
 	hasrgb = externtex(mtex, co, &intensity,
-	                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
+	                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false, false);
 	if (!hasrgb) {
 		rgba[0] = intensity;
 		rgba[1] = intensity;
@@ -277,25 +277,16 @@ static void imapaint_tri_weights(float matrix[4][4], GLint view[4],
 static void imapaint_pick_uv(Scene *scene, Object *ob, unsigned int faceindex, const int xy[2], float uv[2])
 {
 	DerivedMesh *dm = mesh_get_derived_final(scene, ob, CD_MASK_BAREMESH);
-	MTFace *tf_base, *tf;
-	Material *ma;
-	TexPaintSlot *slot;
-	int numfaces = dm->getNumTessFaces(dm), a, findex;
+	const int tottri = dm->getNumLoopTri(dm);
+	int i, findex;
 	float p[2], w[3], absw, minabsw;
-	MFace mf;
-	MVert mv[4];
 	float matrix[4][4], proj[4][4];
 	GLint view[4];
-	ImagePaintMode mode = scene->toolsettings->imapaint.mode;
-
-	/* compute barycentric coordinates */
-
-	/* double lookup */
-	const int *index_mf_to_mpoly = dm->getTessFaceDataArray(dm, CD_ORIGINDEX);
+	const ImagePaintMode mode = scene->toolsettings->imapaint.mode;
+	const MLoopTri *lt = dm->getLoopTriArray(dm);
+	const MPoly *mpoly = dm->getPolyArray(dm);
+	const MLoop *mloop = dm->getLoopArray(dm);
 	const int *index_mp_to_orig  = dm->getPolyDataArray(dm, CD_ORIGINDEX);
-	if (index_mf_to_mpoly == NULL) {
-		index_mp_to_orig = NULL;
-	}
 
 	/* get the needed opengl matrices */
 	glGetIntegerv(GL_VIEWPORT, view);
@@ -309,62 +300,50 @@ static void imapaint_pick_uv(Scene *scene, Object *ob, unsigned int faceindex, c
 	uv[0] = uv[1] = 0.0;
 
 	/* test all faces in the derivedmesh with the original index of the picked face */
-	for (a = 0; a < numfaces; a++) {
-		findex = index_mf_to_mpoly ? DM_origindex_mface_mpoly(index_mf_to_mpoly, index_mp_to_orig, a) : a;
+	/* face means poly here, not triangle, indeed */
+	for (i = 0; i < tottri; i++, lt++) {
+		findex = index_mp_to_orig ? index_mp_to_orig[lt->poly] : lt->poly;
 
 		if (findex == faceindex) {
-			dm->getTessFace(dm, a, &mf);
+			const MLoopUV *mloopuv;
+			const MPoly *mp = &mpoly[lt->poly];
+			const MLoopUV *tri_uv[3];
+			float  tri_co[3][3];
 
-			dm->getVert(dm, mf.v1, &mv[0]);
-			dm->getVert(dm, mf.v2, &mv[1]);
-			dm->getVert(dm, mf.v3, &mv[2]);
-			if (mf.v4)
-				dm->getVert(dm, mf.v4, &mv[3]);
+			dm->getVertCo(dm, mloop[lt->tri[0]].v, tri_co[0]);
+			dm->getVertCo(dm, mloop[lt->tri[1]].v, tri_co[1]);
+			dm->getVertCo(dm, mloop[lt->tri[2]].v, tri_co[2]);
 
 			if (mode == IMAGEPAINT_MODE_MATERIAL) {
-				ma = dm->mat[mf.mat_nr];
+				const Material *ma;
+				const TexPaintSlot *slot;
+
+				ma = dm->mat[mp->mat_nr];
 				slot = &ma->texpaintslot[ma->paint_active_slot];
 
-				if (!(slot && slot->uvname && (tf_base = CustomData_get_layer_named(&dm->faceData, CD_MTFACE, slot->uvname))))
-					tf_base = CustomData_get_layer(&dm->faceData, CD_MTFACE);
-
-				tf = &tf_base[a];
+				if (!(slot && slot->uvname &&
+				      (mloopuv = CustomData_get_layer_named(&dm->loopData, CD_MLOOPUV, slot->uvname))))
+				{
+					mloopuv = CustomData_get_layer(&dm->loopData, CD_MLOOPUV);
+				}
 			}
 			else {
-				tf_base = CustomData_get_layer(&dm->faceData, CD_MTFACE);
-				tf = &tf_base[a];
+				mloopuv = CustomData_get_layer(&dm->loopData, CD_MLOOPUV);
 			}
+
+			tri_uv[0] = &mloopuv[lt->tri[0]];
+			tri_uv[1] = &mloopuv[lt->tri[1]];
+			tri_uv[2] = &mloopuv[lt->tri[2]];
 
 			p[0] = xy[0];
 			p[1] = xy[1];
 
-			if (mf.v4) {
-				/* the triangle with the largest absolute values is the one
-				 * with the most negative weights */
-				imapaint_tri_weights(matrix, view, mv[0].co, mv[1].co, mv[3].co, p, w);
-				absw = fabsf(w[0]) + fabsf(w[1]) + fabsf(w[2]);
-				if (absw < minabsw) {
-					uv[0] = tf->uv[0][0] * w[0] + tf->uv[1][0] * w[1] + tf->uv[3][0] * w[2];
-					uv[1] = tf->uv[0][1] * w[0] + tf->uv[1][1] * w[1] + tf->uv[3][1] * w[2];
-					minabsw = absw;
-				}
-
-				imapaint_tri_weights(matrix, view, mv[1].co, mv[2].co, mv[3].co, p, w);
-				absw = fabsf(w[0]) + fabsf(w[1]) + fabsf(w[2]);
-				if (absw < minabsw) {
-					uv[0] = tf->uv[1][0] * w[0] + tf->uv[2][0] * w[1] + tf->uv[3][0] * w[2];
-					uv[1] = tf->uv[1][1] * w[0] + tf->uv[2][1] * w[1] + tf->uv[3][1] * w[2];
-					minabsw = absw;
-				}
-			}
-			else {
-				imapaint_tri_weights(matrix, view, mv[0].co, mv[1].co, mv[2].co, p, w);
-				absw = fabsf(w[0]) + fabsf(w[1]) + fabsf(w[2]);
-				if (absw < minabsw) {
-					uv[0] = tf->uv[0][0] * w[0] + tf->uv[1][0] * w[1] + tf->uv[2][0] * w[2];
-					uv[1] = tf->uv[0][1] * w[0] + tf->uv[1][1] * w[1] + tf->uv[2][1] * w[2];
-					minabsw = absw;
-				}
+			imapaint_tri_weights(matrix, view, UNPACK3(tri_co), p, w);
+			absw = fabsf(w[0]) + fabsf(w[1]) + fabsf(w[2]);
+			if (absw < minabsw) {
+				uv[0] = tri_uv[0]->uv[0] * w[0] + tri_uv[1]->uv[0] * w[1] + tri_uv[2]->uv[0] * w[2];
+				uv[1] = tri_uv[0]->uv[1] * w[0] + tri_uv[1]->uv[1] * w[1] + tri_uv[2]->uv[1] * w[2];
+				minabsw = absw;
 			}
 		}
 	}
@@ -379,7 +358,7 @@ static int imapaint_pick_face(ViewContext *vc, const int mval[2], unsigned int *
 		return 0;
 
 	/* sample only on the exact position */
-	*r_index = view3d_sample_backbuf(vc, mval[0], mval[1]);
+	*r_index = ED_view3d_backbuf_sample(vc, mval[0], mval[1]);
 
 	if ((*r_index) == 0 || (*r_index) > (unsigned int)totpoly) {
 		return 0;
@@ -395,7 +374,7 @@ static Image *imapaint_face_image(Object *ob, Mesh *me, int face_index)
 {
 	Image *ima;
 	MPoly *mp = me->mpoly + face_index;
-	Material *ma = give_current_material(ob, mp->mat_nr + 1);;
+	Material *ma = give_current_material(ob, mp->mat_nr + 1);
 	ima = ma && ma->texpaintslot ? ma->texpaintslot[ma->paint_active_slot].ima : NULL;
 
 	return ima;
@@ -418,13 +397,36 @@ void flip_v3_v3(float out[3], const float in[3], const char symm)
 		out[2] = in[2];
 }
 
+void flip_qt_qt(float out[4], const float in[4], const char symm)
+{
+	float axis[3], angle;
+
+	quat_to_axis_angle(axis, &angle, in);
+	normalize_v3(axis);
+
+	if (symm & PAINT_SYMM_X) {
+		axis[0] *= -1.0f;
+		angle *= -1.0f;
+	}
+	if (symm & PAINT_SYMM_Y) {
+		axis[1] *= -1.0f;
+		angle *= -1.0f;
+	}
+	if (symm & PAINT_SYMM_Z) {
+		axis[2] *= -1.0f;
+		angle *= -1.0f;
+	}
+
+	axis_angle_normalized_to_quat(out, axis, angle);
+}
+
 /* used for both 3d view and image window */
 void paint_sample_color(bContext *C, ARegion *ar, int x, int y, bool texpaint_proj, bool use_palette)
 {
 	Scene *scene = CTX_data_scene(C);
 	Paint *paint = BKE_paint_get_active_from_context(C);
 	Palette *palette = BKE_paint_palette(paint);
-	PaletteColor *color;
+	PaletteColor *color = NULL;
 	Brush *br = BKE_paint_brush(BKE_paint_get_active_from_context(C));
 	unsigned int col;
 	const unsigned char *cp;
@@ -458,9 +460,8 @@ void paint_sample_color(bContext *C, ARegion *ar, int x, int y, bool texpaint_pr
 			const int mval[2] = {x, y};
 			unsigned int faceindex;
 			unsigned int totpoly = me->totpoly;
-			MTFace *dm_mtface = dm->getTessFaceDataArray(dm, CD_MTFACE);
 
-			if (dm_mtface) {
+			if (dm->getLoopDataArray(dm, CD_MLOOPUV)) {
 				view3d_set_viewcontext(C, &vc);
 
 				view3d_operator_needs_opengl(C);
@@ -487,12 +488,15 @@ void paint_sample_color(bContext *C, ARegion *ar, int x, int y, bool texpaint_pr
 							if (u < 0.0f) u += 1.0f;
 							if (v < 0.0f) v += 1.0f;
 							
-							u = u * ibuf->x - 0.5f;
-							v = v * ibuf->y - 0.5f;
+							u = u * ibuf->x;
+							v = v * ibuf->y;
 							
 							if (ibuf->rect_float) {
 								float rgba_f[4];
-								bilinear_interpolation_color_wrap(ibuf, NULL, rgba_f, u, v);
+								if (U.gameflags & USER_DISABLE_MIPMAP)
+									nearest_interpolation_color_wrap(ibuf, NULL, rgba_f, u, v);
+								else
+									bilinear_interpolation_color_wrap(ibuf, NULL, rgba_f, u, v);
 								straight_to_premul_v4(rgba_f);
 								if (use_palette) {
 									linearrgb_to_srgb_v3_v3(color->rgb, rgba_f);
@@ -504,7 +508,10 @@ void paint_sample_color(bContext *C, ARegion *ar, int x, int y, bool texpaint_pr
 							}
 							else {
 								unsigned char rgba[4];
-								bilinear_interpolation_color_wrap(ibuf, rgba, NULL, u, v);
+								if (U.gameflags & USER_DISABLE_MIPMAP)
+									nearest_interpolation_color_wrap(ibuf, rgba, NULL, u, v);
+								else
+									bilinear_interpolation_color_wrap(ibuf, rgba, NULL, u, v);
 								if (use_palette) {
 									rgb_uchar_to_float(color->rgb, rgba);
 								}
@@ -588,7 +595,7 @@ void BRUSH_OT_curve_preset(wmOperatorType *ot)
 	ot->poll = brush_curve_preset_poll;
 
 	prop = RNA_def_enum(ot->srna, "shape", prop_shape_items, CURVE_PRESET_SMOOTH, "Mode", "");
-	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
+	RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
 }
 
 

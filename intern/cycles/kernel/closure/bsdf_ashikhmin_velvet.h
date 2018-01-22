@@ -35,20 +35,37 @@
 
 CCL_NAMESPACE_BEGIN
 
-ccl_device int bsdf_ashikhmin_velvet_setup(ShaderClosure *sc)
+typedef ccl_addr_space struct VelvetBsdf {
+	SHADER_CLOSURE_BASE;
+
+	float sigma;
+	float invsigma2;
+} VelvetBsdf;
+
+ccl_device int bsdf_ashikhmin_velvet_setup(VelvetBsdf *bsdf)
 {
-	float sigma = fmaxf(sc->data0, 0.01f);
-	sc->data0 = 1.0f/(sigma * sigma); /* m_invsigma2 */
+	float sigma = fmaxf(bsdf->sigma, 0.01f);
+	bsdf->invsigma2 = 1.0f/(sigma * sigma);
 	
-	sc->type = CLOSURE_BSDF_ASHIKHMIN_VELVET_ID;
+	bsdf->type = CLOSURE_BSDF_ASHIKHMIN_VELVET_ID;
 
 	return SD_BSDF|SD_BSDF_HAS_EVAL;
 }
 
+ccl_device bool bsdf_ashikhmin_velvet_merge(const ShaderClosure *a, const ShaderClosure *b)
+{
+	const VelvetBsdf *bsdf_a = (const VelvetBsdf*)a;
+	const VelvetBsdf *bsdf_b = (const VelvetBsdf*)b;
+
+	return (isequal_float3(bsdf_a->N, bsdf_b->N)) &&
+	       (bsdf_a->sigma == bsdf_b->sigma);
+}
+
 ccl_device float3 bsdf_ashikhmin_velvet_eval_reflect(const ShaderClosure *sc, const float3 I, const float3 omega_in, float *pdf)
 {
-	float m_invsigma2 = sc->data0;
-	float3 N = sc->N;
+	const VelvetBsdf *bsdf = (const VelvetBsdf*)sc;
+	float m_invsigma2 = bsdf->invsigma2;
+	float3 N = bsdf->N;
 
 	float cosNO = dot(N, I);
 	float cosNI = dot(N, omega_in);
@@ -59,7 +76,7 @@ ccl_device float3 bsdf_ashikhmin_velvet_eval_reflect(const ShaderClosure *sc, co
 		float cosHO = fabsf(dot(I, H));
 
 		if(!(fabsf(cosNH) < 1.0f-1e-5f && cosHO > 1e-5f))
-			return make_float3(0, 0, 0);
+			return make_float3(0.0f, 0.0f, 0.0f);
 
 		float cosNHdivHO = cosNH / cosHO;
 		cosNHdivHO = fmaxf(cosNHdivHO, 1e-5f);
@@ -80,7 +97,7 @@ ccl_device float3 bsdf_ashikhmin_velvet_eval_reflect(const ShaderClosure *sc, co
 		return make_float3(out, out, out);
 	}
 
-	return make_float3(0, 0, 0);
+	return make_float3(0.0f, 0.0f, 0.0f);
 }
 
 ccl_device float3 bsdf_ashikhmin_velvet_eval_transmit(const ShaderClosure *sc, const float3 I, const float3 omega_in, float *pdf)
@@ -90,8 +107,9 @@ ccl_device float3 bsdf_ashikhmin_velvet_eval_transmit(const ShaderClosure *sc, c
 
 ccl_device int bsdf_ashikhmin_velvet_sample(const ShaderClosure *sc, float3 Ng, float3 I, float3 dIdx, float3 dIdy, float randu, float randv, float3 *eval, float3 *omega_in, float3 *domega_in_dx, float3 *domega_in_dy, float *pdf)
 {
-	float m_invsigma2 = sc->data0;
-	float3 N = sc->N;
+	const VelvetBsdf *bsdf = (const VelvetBsdf*)sc;
+	float m_invsigma2 = bsdf->invsigma2;
+	float3 N = bsdf->N;
 
 	// we are viewing the surface from above - send a ray out with uniform
 	// distribution over the hemisphere
@@ -114,7 +132,7 @@ ccl_device int bsdf_ashikhmin_velvet_sample(const ShaderClosure *sc, float3 Ng, 
 
 			float sinNH2 = 1 - cosNH * cosNH;
 			float sinNH4 = sinNH2 * sinNH2;
-			float cotangent2 =  (cosNH * cosNH) / sinNH2;
+			float cotangent2 = (cosNH * cosNH) / sinNH2;
 
 			float D = expf(-cotangent2 * m_invsigma2) * m_invsigma2 * M_1_PI_F / sinNH4;
 			float G = min(1.0f, min(fac1, fac2)); // TODO: derive G from D analytically

@@ -30,19 +30,21 @@
 
 // implementation
 
-#include "PyObjectPlus.h"
+#include "EXP_PyObjectPlus.h"
 #include <structmember.h>
 #include <float.h>
 #include <math.h>
 
 
-#include "glew-mx.h"
+#include "GPU_glew.h"
 
 #include "KX_PythonInit.h"
 #include "DNA_scene_types.h"
 #include "RAS_CameraData.h"
 #include "RAS_MeshObject.h"
 #include "RAS_Polygon.h"
+#include "RAS_IOffScreen.h"
+#include "RAS_ISync.h"
 #include "BLI_math.h"
 
 #include "ImageRender.h"
@@ -51,11 +53,12 @@
 #include "Exception.h"
 #include "Texture.h"
 
-ExceptionID SceneInvalid, CameraInvalid, ObserverInvalid;
+ExceptionID SceneInvalid, CameraInvalid, ObserverInvalid, OffScreenInvalid;
 ExceptionID MirrorInvalid, MirrorSizeInvalid, MirrorNormalInvalid, MirrorHorizontal, MirrorTooSmall;
 ExpDesc SceneInvalidDesc(SceneInvalid, "Scene object is invalid");
 ExpDesc CameraInvalidDesc(CameraInvalid, "Camera object is invalid");
 ExpDesc ObserverInvalidDesc(ObserverInvalid, "Observer object is invalid");
+ExpDesc OffScreenInvalidDesc(OffScreenInvalid, "Offscreen object is invalid");
 ExpDesc MirrorInvalidDesc(MirrorInvalid, "Mirror object is invalid");
 ExpDesc MirrorSizeInvalidDesc(MirrorSizeInvalid, "Mirror has no vertex or no size");
 ExpDesc MirrorNormalInvalidDesc(MirrorNormalInvalid, "Cannot determine mirror plane");
@@ -63,24 +66,31 @@ ExpDesc MirrorHorizontalDesc(MirrorHorizontal, "Mirror is horizontal in local sp
 ExpDesc MirrorTooSmallDesc(MirrorTooSmall, "Mirror is too small");
 
 // constructor
-ImageRender::ImageRender (KX_Scene *scene, KX_Camera * camera) :
-    ImageViewport(),
+ImageRender::ImageRender (KX_Scene *scene, KX_Camera * camera, PyRASOffScreen * offscreen) :
+    ImageViewport(offscreen),
     m_render(true),
+    m_done(false),
     m_scene(scene),
     m_camera(camera),
     m_owncamera(false),
+    m_offscreen(offscreen),
+    m_sync(NULL),
     m_observer(NULL),
     m_mirror(NULL),
     m_clip(100.f),
     m_mirrorHalfWidth(0.f),
     m_mirrorHalfHeight(0.f)
 {
-	// initialize background color
-	setBackground(0, 0, 255, 255);
+	// initialize background color to scene background color as default
+	setBackgroundFromScene(m_scene);
 	// retrieve rendering objects
 	m_engine = KX_GetActiveEngine();
 	m_rasterizer = m_engine->GetRasterizer();
 	m_canvas = m_engine->GetCanvas();
+	// keep a reference to the offscreen buffer
+	if (m_offscreen) {
+		Py_INCREF(m_offscreen);
+	}
 }
 
 // destructor
@@ -88,48 +98,81 @@ ImageRender::~ImageRender (void)
 {
 	if (m_owncamera)
 		m_camera->Release();
+	if (m_sync)
+		delete m_sync;
+	Py_XDECREF(m_offscreen);
 }
 
+// get background color
+float ImageRender::getBackground (int idx)
+{
+	return (idx < 0 || idx > 3) ? 0.0f : m_background[idx] * 255.0f;
+}
 
 // set background color
-void ImageRender::setBackground (int red, int green, int blue, int alpha)
+void ImageRender::setBackground (float red, float green, float blue, float alpha)
 {
-	m_background[0] = (red < 0) ? 0.f : (red > 255) ? 1.f : float(red)/255.f;
-	m_background[1] = (green < 0) ? 0.f : (green > 255) ? 1.f : float(green)/255.f;
-	m_background[2] = (blue < 0) ? 0.f : (blue > 255) ? 1.f : float(blue)/255.f;
-	m_background[3] = (alpha < 0) ? 0.f : (alpha > 255) ? 1.f : float(alpha)/255.f;
+	m_background[0] = (red < 0.0f) ? 0.0f : (red > 255.0f) ? 1.0f : red / 255.0f;
+	m_background[1] = (green < 0.0f) ? 0.0f : (green > 255.0f) ? 1.0f : green / 255.0f;
+	m_background[2] = (blue < 0.0f) ? 0.0f : (blue > 255.0f) ? 1.0f : blue / 255.0f;
+	m_background[3] = (alpha < 0.0f) ? 0.0f : (alpha > 255.0f) ? 1.0f : alpha / 255.0f;
+}
+
+// set background color from scene
+void ImageRender::setBackgroundFromScene (KX_Scene *scene)
+{
+	if (scene) {
+		const float *background_color = scene->GetWorldInfo()->getBackColorConverted();
+		copy_v3_v3(m_background, background_color);
+		m_background[3] = 1.0f;
+	}
+	else {
+		const float blue_color[] = {0.0f, 0.0f, 1.0f, 1.0f};
+		copy_v4_v4(m_background, blue_color);
+	}
 }
 
 
 // capture image from viewport
-void ImageRender::calcImage (unsigned int texId, double ts)
+void ImageRender::calcViewport (unsigned int texId, double ts, unsigned int format)
 {
-	if (m_rasterizer->GetDrawingMode() != RAS_IRasterizer::KX_TEXTURED ||   // no need for texture
-	        m_camera->GetViewport() ||        // camera must be inactive
-	        m_camera == m_scene->GetActiveCamera())
-	{
-		// no need to compute texture in non texture rendering
-		m_avail = false;
-		return;
-	}
 	// render the scene from the camera
-	Render();
-	// get image from viewport
-	ImageViewport::calcImage(texId, ts);
-	// restore OpenGL state
-	m_canvas->EndFrame();
+	if (!m_done) {
+		if (!Render()) {
+			return;
+		}
+	}
+	else if (m_offscreen) {
+		m_offscreen->ofs->Bind(RAS_IOffScreen::RAS_OFS_BIND_READ);
+	}
+	// wait until all render operations are completed
+	WaitSync();
+	// get image from viewport (or FBO)
+	ImageViewport::calcViewport(texId, ts, format);
+	if (m_offscreen) {
+		m_offscreen->ofs->Unbind();
+	}
 }
 
-void ImageRender::Render()
+bool ImageRender::Render()
 {
-	RAS_FrameFrustum frustrum;
+	RAS_FrameFrustum frustum;
 
-	if (!m_render)
-		return;
+	if (!m_render ||
+	    m_rasterizer->GetDrawingMode() != RAS_IRasterizer::KX_TEXTURED ||   // no need for texture
+        m_camera->GetViewport() ||        // camera must be inactive
+        m_camera == m_scene->GetActiveCamera())
+	{
+		// no need to compute texture in non texture rendering
+		return false;
+	}
+
+	if (!m_scene->IsShadowDone())
+		m_engine->RenderShadowBuffers(m_scene);
 
 	if (m_mirror)
 	{
-		// mirror mode, compute camera frustrum, position and orientation
+		// mirror mode, compute camera frustum, position and orientation
 		// convert mirror position and normal in world space
 		const MT_Matrix3x3 & mirrorObjWorldOri = m_mirror->GetSGNode()->GetWorldOrientation();
 		const MT_Point3 & mirrorObjWorldPos = m_mirror->GetSGNode()->GetWorldPosition();
@@ -145,7 +188,7 @@ void ImageRender::Render()
 		MT_Scalar observerDistance = mirrorPlaneDTerm - observerWorldPos.dot(mirrorWorldZ);
 		// if distance < 0.01 => observer is on wrong side of mirror, don't render
 		if (observerDistance < 0.01)
-			return;
+			return false;
 		// set camera world position = observerPos + normal * 2 * distance
 		MT_Point3 cameraWorldPos = observerWorldPos + (MT_Scalar(2.0)*observerDistance)*mirrorWorldZ;
 		m_camera->GetSGNode()->SetLocalPosition(cameraWorldPos);
@@ -158,7 +201,7 @@ void ImageRender::Render()
 		            mirrorWorldX[2], mirrorWorldY[2], mirrorWorldZ[2]);
 		m_camera->GetSGNode()->SetLocalOrientation(cameraWorldOri);
 		m_camera->GetSGNode()->UpdateWorldData(0.0);
-		// compute camera frustrum:
+		// compute camera frustum:
 		//   get position of mirror relative to camera: offset = mirrorPos-cameraPos
 		MT_Vector3 mirrorOffset = mirrorWorldPos - cameraWorldPos;
 		//   convert to camera orientation
@@ -184,33 +227,41 @@ void ImageRender::Render()
 		//   bottom = offsety-height
 		//   near = -offsetz
 		//   far = near+100
-		frustrum.x1 = mirrorOffset[0]-width;
-		frustrum.x2 = mirrorOffset[0]+width;
-		frustrum.y1 = mirrorOffset[1]-height;
-		frustrum.y2 = mirrorOffset[1]+height;
-		frustrum.camnear = -mirrorOffset[2];
-		frustrum.camfar = -mirrorOffset[2]+m_clip;
+		frustum.x1 = mirrorOffset[0]-width;
+		frustum.x2 = mirrorOffset[0]+width;
+		frustum.y1 = mirrorOffset[1]-height;
+		frustum.y2 = mirrorOffset[1]+height;
+		frustum.camnear = -mirrorOffset[2];
+		frustum.camfar = -mirrorOffset[2]+m_clip;
 	}
 	// Store settings to be restored later
 	const RAS_IRasterizer::StereoMode stereomode = m_rasterizer->GetStereoMode();
 	RAS_Rect area = m_canvas->GetWindowArea();
 
 	// The screen area that ImageViewport will copy is also the rendering zone
-	m_canvas->SetViewPort(m_position[0], m_position[1], m_position[0]+m_capSize[0]-1, m_position[1]+m_capSize[1]-1);
+	if (m_offscreen) {
+		// bind the fbo and set the viewport to full size
+		m_offscreen->ofs->Bind(RAS_IOffScreen::RAS_OFS_BIND_RENDER);
+		// this is needed to stop crashing in canvas check
+		m_canvas->UpdateViewPort(0, 0, m_offscreen->ofs->GetWidth(), m_offscreen->ofs->GetHeight());
+	}
+	else {
+		m_canvas->SetViewPort(m_position[0], m_position[1], m_position[0]+m_capSize[0]-1, m_position[1]+m_capSize[1]-1);
+	}
 	m_canvas->ClearColor(m_background[0], m_background[1], m_background[2], m_background[3]);
 	m_canvas->ClearBuffer(RAS_ICanvas::COLOR_BUFFER|RAS_ICanvas::DEPTH_BUFFER);
 	m_rasterizer->BeginFrame(m_engine->GetClockTime());
-	m_engine->SetWorldSettings(m_scene->GetWorldInfo());
+	m_scene->GetWorldInfo()->UpdateWorldSettings();
 	m_rasterizer->SetAuxilaryClientInfo(m_scene);
 	m_rasterizer->DisplayFog();
 	// matrix calculation, don't apply any of the stereo mode
 	m_rasterizer->SetStereoMode(RAS_IRasterizer::RAS_STEREO_NOSTEREO);
 	if (m_mirror)
 	{
-		// frustrum was computed above
-		// get frustrum matrix and set projection matrix
+		// frustum was computed above
+		// get frustum matrix and set projection matrix
 		MT_Matrix4x4 projmat = m_rasterizer->GetFrustumMatrix(
-		            frustrum.x1, frustrum.x2, frustrum.y1, frustrum.y2, frustrum.camnear, frustrum.camfar);
+		            frustum.x1, frustum.x2, frustum.y1, frustum.y2, frustum.camnear, frustum.camfar);
 
 		m_camera->SetProjectionMatrix(projmat);
 	}
@@ -221,6 +272,8 @@ void ImageRender::Render()
 		float lens = m_camera->GetLens();
 		float sensor_x = m_camera->GetSensorWidth();
 		float sensor_y = m_camera->GetSensorHeight();
+		float shift_x = m_camera->GetShiftHorizontal();
+		float shift_y = m_camera->GetShiftVertical();
 		bool orthographic = !m_camera->GetCameraData()->m_perspective;
 		float nearfrust = m_camera->GetCameraNear();
 		float farfrust = m_camera->GetCameraFar();
@@ -241,11 +294,13 @@ void ImageRender::Render()
 			            m_camera->GetScale(),
 			            aspect_ratio,
 						m_camera->GetSensorFit(),
-			            frustrum
+			            shift_x,
+			            shift_y,
+			            frustum
 			            );
 
 			projmat = m_rasterizer->GetOrthoMatrix(
-			            frustrum.x1, frustrum.x2, frustrum.y1, frustrum.y2, frustrum.camnear, frustrum.camfar);
+			            frustum.x1, frustum.x2, frustum.y1, frustum.y2, frustum.camnear, frustum.camfar);
 		}
 		else {
 			RAS_FramingManager::ComputeDefaultFrustum(
@@ -255,11 +310,13 @@ void ImageRender::Render()
 			            sensor_x,
 			            sensor_y,
 			            RAS_SENSORFIT_AUTO,
+			            shift_x,
+			            shift_y,
 			            aspect_ratio,
-			            frustrum);
+			            frustum);
 			
 			projmat = m_rasterizer->GetFrustumMatrix(
-			            frustrum.x1, frustrum.x2, frustrum.y1, frustrum.y2, frustrum.camnear, frustrum.camfar);
+			            frustum.x1, frustum.x2, frustum.y1, frustum.y2, frustum.camnear, frustum.camfar);
 		}
 		m_camera->SetProjectionMatrix(projmat);
 	}
@@ -267,12 +324,22 @@ void ImageRender::Render()
 	MT_Transform camtrans(m_camera->GetWorldToCamera());
 	MT_Matrix4x4 viewmat(camtrans);
 	
-	m_rasterizer->SetViewMatrix(viewmat, m_camera->NodeGetWorldOrientation(), m_camera->NodeGetWorldPosition(), m_camera->GetCameraData()->m_perspective);
+	m_rasterizer->SetViewMatrix(viewmat, m_camera->NodeGetWorldOrientation(), m_camera->NodeGetWorldPosition(), m_camera->NodeGetLocalScaling(), m_camera->GetCameraData()->m_perspective);
 	m_camera->SetModelviewMatrix(viewmat);
 	// restore the stereo mode now that the matrix is computed
 	m_rasterizer->SetStereoMode(stereomode);
 
+	if (m_rasterizer->Stereo())	{
+		// stereo mode change render settings that disturb this render, cancel them all
+		// we don't need to restore them as they are set before each frame render.
+		glDrawBuffer(GL_BACK_LEFT);
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		glDisable(GL_POLYGON_STIPPLE);
+	}
+
 	m_scene->CalculateVisibleMeshes(m_rasterizer,m_camera);
+
+	m_engine->UpdateAnimations(m_scene);
 
 	m_scene->RenderBuckets(camtrans, m_rasterizer);
 
@@ -280,8 +347,48 @@ void ImageRender::Render()
 
 	// restore the canvas area now that the render is completed
 	m_canvas->GetWindowArea() = area;
+	m_canvas->EndFrame();
+
+	// In case multisample is active, blit the FBO
+	if (m_offscreen)
+		m_offscreen->ofs->Blit();
+	// end of all render operations, let's create a sync object just in case
+	if (m_sync) {
+		// a sync from a previous render, should not happen
+		delete m_sync;
+		m_sync = NULL;
+	}
+	m_sync = m_rasterizer->CreateSync(RAS_ISync::RAS_SYNC_TYPE_FENCE);
+	// remember that we have done render
+	m_done = true;
+	// the image is not available at this stage
+	m_avail = false;
+	return true;
 }
 
+void ImageRender::Unbind()
+{
+	if (m_offscreen)
+	{
+		m_offscreen->ofs->Unbind();
+	}
+}
+
+void ImageRender::WaitSync()
+{
+	if (m_sync) {
+		m_sync->Wait();
+		// done with it, deleted it
+		delete m_sync;
+		m_sync = NULL;
+	}
+	if (m_offscreen) {
+		// this is needed to finalize the image if the target is a texture
+		m_offscreen->ofs->MipMap();
+	}
+	// all rendered operation done and complete, invalidate render for next time
+	m_done = false;
+}
 
 // cast Image pointer to ImageRender
 inline ImageRender * getImageRender (PyImage *self)
@@ -303,11 +410,13 @@ static int ImageRender_init(PyObject *pySelf, PyObject *args, PyObject *kwds)
 	PyObject *scene;
 	// camera object
 	PyObject *camera;
+	// offscreen buffer object
+	PyRASOffScreen *offscreen = NULL;
 	// parameter keywords
-	static const char *kwlist[] = {"sceneObj", "cameraObj", NULL};
+	static const char *kwlist[] = {"sceneObj", "cameraObj", "ofsObj", NULL};
 	// get parameters
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO",
-		const_cast<char**>(kwlist), &scene, &camera))
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|O",
+		const_cast<char**>(kwlist), &scene, &camera, &offscreen))
 		return -1;
 	try
 	{
@@ -323,11 +432,16 @@ static int ImageRender_init(PyObject *pySelf, PyObject *args, PyObject *kwds)
 		// throw exception if camera is not available
 		if (cameraPtr == NULL) THRWEXCP(CameraInvalid, S_OK);
 
+		if (offscreen) {
+			if (Py_TYPE(offscreen) != &PyRASOffScreen_Type) {
+				THRWEXCP(OffScreenInvalid, S_OK);
+			}
+		}
 		// get pointer to image structure
 		PyImage *self = reinterpret_cast<PyImage*>(pySelf);
 		// create source object
 		if (self->m_image != NULL) delete self->m_image;
-		self->m_image = new ImageRender(scenePtr, cameraPtr);
+		self->m_image = new ImageRender(scenePtr, cameraPtr, offscreen);
 	}
 	catch (Exception & exp)
 	{
@@ -338,11 +452,60 @@ static int ImageRender_init(PyObject *pySelf, PyObject *args, PyObject *kwds)
 	return 0;
 }
 
+static PyObject *ImageRender_refresh(PyImage *self, PyObject *args)
+{
+	ImageRender *imageRender = getImageRender(self);
+
+	if (!imageRender) {
+		PyErr_SetString(PyExc_TypeError, "Incomplete ImageRender() object");
+		return NULL;
+	}
+	if (PyArg_ParseTuple(args, "")) {
+		// refresh called with no argument.
+		// For other image objects it simply invalidates the image buffer
+		// For ImageRender it triggers a render+sync
+		// Note that this only makes sense when doing offscreen render on texture
+		if (!imageRender->isDone()) {
+			if (!imageRender->Render()) {
+				Py_RETURN_FALSE;
+			}
+			// as we are not trying to read the pixels, just unbind
+			imageRender->Unbind();
+		}
+		// wait until all render operations are completed
+		// this will also finalize the texture
+		imageRender->WaitSync();
+		Py_RETURN_TRUE;
+	}
+	else {
+		// fallback on standard processing
+		PyErr_Clear();
+		return Image_refresh(self, args);
+	}
+}
+
+// refresh image
+static PyObject *ImageRender_render(PyImage *self)
+{
+	ImageRender *imageRender = getImageRender(self);
+
+	if (!imageRender) {
+		PyErr_SetString(PyExc_TypeError, "Incomplete ImageRender() object");
+		return NULL;
+	}
+	if (!imageRender->Render()) {
+		Py_RETURN_FALSE;
+	}
+	// we are not reading the pixels now, unbind
+	imageRender->Unbind();
+	Py_RETURN_TRUE;
+}
+
 
 // get background color
 static PyObject *getBackground (PyImage *self, void *closure)
 {
-	return Py_BuildValue("[BBBB]",
+	return Py_BuildValue("[ffff]",
 	                     getImageRender(self)->getBackground(0),
 	                     getImageRender(self)->getBackground(1),
 	                     getImageRender(self)->getBackground(2),
@@ -354,20 +517,20 @@ static int setBackground(PyImage *self, PyObject *value, void *closure)
 {
 	// check validity of parameter
 	if (value == NULL || !PySequence_Check(value) || PySequence_Size(value) != 4
-		|| !PyLong_Check(PySequence_Fast_GET_ITEM(value, 0))
-		|| !PyLong_Check(PySequence_Fast_GET_ITEM(value, 1))
-		|| !PyLong_Check(PySequence_Fast_GET_ITEM(value, 2))
-		|| !PyLong_Check(PySequence_Fast_GET_ITEM(value, 3)))
-	{
-		PyErr_SetString(PyExc_TypeError, "The value must be a sequence of 4 integer between 0 and 255");
+		|| (!PyFloat_Check(PySequence_Fast_GET_ITEM(value, 0)) && !PyLong_Check(PySequence_Fast_GET_ITEM(value, 0)))
+		|| (!PyFloat_Check(PySequence_Fast_GET_ITEM(value, 1)) && !PyLong_Check(PySequence_Fast_GET_ITEM(value, 1)))
+		|| (!PyFloat_Check(PySequence_Fast_GET_ITEM(value, 2)) && !PyLong_Check(PySequence_Fast_GET_ITEM(value, 2)))
+		|| (!PyFloat_Check(PySequence_Fast_GET_ITEM(value, 3)) && !PyLong_Check(PySequence_Fast_GET_ITEM(value, 3)))) {
+
+		PyErr_SetString(PyExc_TypeError, "The value must be a sequence of 4 floats or ints between 0.0 and 255.0");
 		return -1;
 	}
 	// set background color
 	getImageRender(self)->setBackground(
-	        (unsigned char)(PyLong_AsLong(PySequence_Fast_GET_ITEM(value, 0))),
-	        (unsigned char)(PyLong_AsLong(PySequence_Fast_GET_ITEM(value, 1))),
-	        (unsigned char)(PyLong_AsLong(PySequence_Fast_GET_ITEM(value, 2))),
-	        (unsigned char)(PyLong_AsLong(PySequence_Fast_GET_ITEM(value, 3))));
+	        PyFloat_AsDouble(PySequence_Fast_GET_ITEM(value, 0)),
+	        PyFloat_AsDouble(PySequence_Fast_GET_ITEM(value, 1)),
+	        PyFloat_AsDouble(PySequence_Fast_GET_ITEM(value, 2)),
+	        PyFloat_AsDouble(PySequence_Fast_GET_ITEM(value, 3)));
 	// success
 	return 0;
 }
@@ -376,7 +539,8 @@ static int setBackground(PyImage *self, PyObject *value, void *closure)
 // methods structure
 static PyMethodDef imageRenderMethods[] =
 { // methods from ImageBase class
-	{"refresh", (PyCFunction)Image_refresh, METH_NOARGS, "Refresh image - invalidate its current content"},
+	{"refresh", (PyCFunction)ImageRender_refresh, METH_VARARGS, "Refresh image - invalidate its current content after optionally transferring its content to a target buffer"},
+	{"render", (PyCFunction)ImageRender_render, METH_NOARGS, "Render scene - run before refresh() to performs asynchronous render"},
 	{NULL}
 };
 // attributes structure
@@ -514,7 +678,7 @@ static int ImageMirror_init(PyObject *pySelf, PyObject *args, PyObject *kwds)
 		exp.report();
 		return -1;
 	}
-	// initialization succeded
+	// initialization succeeded
 	return 0;
 }
 
@@ -567,13 +731,16 @@ static PyGetSetDef imageMirrorGetSets[] =
 ImageRender::ImageRender (KX_Scene *scene, KX_GameObject *observer, KX_GameObject *mirror, RAS_IPolyMaterial *mat) :
     ImageViewport(),
     m_render(false),
+    m_done(false),
     m_scene(scene),
+    m_offscreen(NULL),
+    m_sync(NULL),
     m_observer(observer),
     m_mirror(mirror),
     m_clip(100.f)
 {
 	// this constructor is used for automatic planar mirror
-	// create a camera, take all data by default, in any case we will recompute the frustrum on each frame
+	// create a camera, take all data by default, in any case we will recompute the frustum on each frame
 	RAS_CameraData camdata;
 	vector<RAS_TexVert*> mirrorVerts;
 	vector<RAS_TexVert*>::iterator it;
@@ -607,7 +774,7 @@ ImageRender::ImageRender (KX_Scene *scene, KX_GameObject *observer, KX_GameObjec
 				RAS_TexVert *v1, *v2, *v3, *v4;
 				float normal[3];
 				float area;
-				// this polygon is part of the mirror,
+				// this polygon is part of the mirror
 				v1 = polygon->GetVertex(0);
 				v2 = polygon->GetVertex(1);
 				v3 = polygon->GetVertex(2);
@@ -727,7 +894,8 @@ ImageRender::ImageRender (KX_Scene *scene, KX_GameObject *observer, KX_GameObjec
 	m_mirrorX = m_mirrorY.cross(m_mirrorZ);
 	m_render = true;
 
-	setBackground(0, 0, 255, 255);
+	// set mirror background color to scene background color as default
+	setBackgroundFromScene(m_scene);
 }
 
 

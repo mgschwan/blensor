@@ -40,6 +40,7 @@
 #include "KX_KetsjiEngine.h"
 
 class KX_KetsjiEngine;
+class KX_Scene;
 class KX_ISceneConverter;
 class NG_LoopBackNetworkDeviceInterface;
 class RAS_IRasterizer;
@@ -64,13 +65,13 @@ public:
 	bool startWindow(STR_String& title,
 	                 int windowLeft, int windowTop,
 	                 int windowWidth, int windowHeight,
-	                 const bool stereoVisual, const int stereoMode, const GHOST_TUns16 samples=0);
+	                 const bool stereoVisual, const int stereoMode, const int alphaBackground=0, const GHOST_TUns16 samples=0);
 	bool startFullScreen(int width, int height,
 	                     int bpp, int frequency,
-	                     const bool stereoVisual, const int stereoMode,
+	                     const bool stereoVisual, const int stereoMode, const int alphaBackground = 0,
 	                     const GHOST_TUns16 samples=0, bool useDesktop=false);
 	bool startEmbeddedWindow(STR_String& title, const GHOST_TEmbedderWindowID parent_window,
-	                         const bool stereoVisual, const int stereoMode, const GHOST_TUns16 samples=0);
+	                         const bool stereoVisual, const int stereoMode, const int alphaBackground=0, const GHOST_TUns16 samples=0);
 #ifdef WIN32
 	bool startScreenSaverFullScreen(int width, int height,
 	                                int bpp, int frequency,
@@ -83,6 +84,12 @@ public:
 	int getExitRequested(void);
 	const STR_String& getExitString(void);
 	GlobalSettings* getGlobalSettings(void);
+
+	inline KX_Scene *GetStartScene() const
+	{
+		return m_kxStartScene;
+	}
+
 	bool StartGameEngine(int stereoMode);
 	void StopGameEngine();
 	void EngineNextFrame();
@@ -118,6 +125,7 @@ protected:
 	STR_String				m_startSceneName;
 	struct Scene*			m_startScene;
 	struct Main*			m_maggie;
+	KX_Scene *m_kxStartScene;
 
 	/* Exit state. */
 	int						m_exitRequested;

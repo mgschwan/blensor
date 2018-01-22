@@ -70,7 +70,7 @@ class DATA_PT_metaball(DataButtonsPanel, Panel):
         col.prop(mball, "threshold", text="Threshold")
 
         layout.label(text="Update:")
-        layout.prop(mball, "update_method", expand=True)
+        layout.row().prop(mball, "update_method", expand=True)
 
 
 class DATA_PT_mball_texture_space(DataButtonsPanel, Panel):
@@ -135,5 +135,16 @@ class DATA_PT_custom_props_metaball(DataButtonsPanel, PropertyPanel, Panel):
     _context_path = "object.data"
     _property_type = bpy.types.MetaBall
 
+
+classes = (
+    DATA_PT_context_metaball,
+    DATA_PT_metaball,
+    DATA_PT_mball_texture_space,
+    DATA_PT_metaball_element,
+    DATA_PT_custom_props_metaball,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

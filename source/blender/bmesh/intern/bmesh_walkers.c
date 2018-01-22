@@ -74,10 +74,11 @@ void *BMW_begin(BMWalker *walker, void *start)
  * a given type. The elements visited are filtered
  * by the bitmask 'searchmask'.
  */
-void BMW_init(BMWalker *walker, BMesh *bm, int type,
-              short mask_vert, short mask_edge, short mask_face,
-              BMWFlag flag,
-              int layer)
+void BMW_init(
+        BMWalker *walker, BMesh *bm, int type,
+        short mask_vert, short mask_edge, short mask_face,
+        BMWFlag flag,
+        int layer)
 {
 	memset(walker, 0, sizeof(BMWalker));
 
@@ -95,7 +96,7 @@ void BMW_init(BMWalker *walker, BMesh *bm, int type,
 	if (UNLIKELY(type >= BMW_MAXWALKERS || type < 0)) {
 		fprintf(stderr,
 		        "%s: Invalid walker type in BMW_init; type: %d, "
-		        "searchmask: (v:%d, e:%d, f:%d), flag: %d, layer: %d\n",
+		        "searchmask: (v:%d, e:%d, f:%d), flag: %u, layer: %d\n",
 		        __func__, type, mask_vert, mask_edge, mask_face, flag, layer);
 		BLI_assert(0);
 		return;

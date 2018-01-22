@@ -34,19 +34,22 @@ bl_info = {
 if "bpy" in locals():
     import importlib
 else:
-    from . import geom
-    from . import model
-    from . import offset
-    from . import triquad
+    from . import (
+            geom,
+            model,
+            offset,
+            triquad,
+            )
 
 import math
 import bpy
 import bmesh
 import mathutils
-from bpy.props import (BoolProperty,
-                       EnumProperty,
-                       FloatProperty,
-                       )
+from bpy.props import (
+        BoolProperty,
+        EnumProperty,
+        FloatProperty,
+        )
 
 
 class Inset(bpy.types.Operator):
@@ -148,11 +151,13 @@ def do_inset(mesh, amount, height, region, as_percent):
     for i in range(orig_numv, len(m.points.pos)):
         bvertnew = bm.verts.new(m.points.pos[i])
     bm.verts.index_update()
+    bm.verts.ensure_lookup_table()
     new_faces = []
     start_faces = len(bm.faces)
     for i, newf in enumerate(blender_faces):
-        bm.verts.ensure_lookup_table()
-        vs = [bm.verts[j] for j in newf]
+        vs = remove_dups([bm.verts[j] for j in newf])
+        if len(vs) < 3:
+            continue
         # copy face attributes from old face that it was derived from
         bfi = blender_old_face_index[i]
         if bfi and 0 <= bfi < start_faces:
@@ -162,16 +167,19 @@ def do_inset(mesh, amount, height, region, as_percent):
             # bfacenew.copy_from_face_interp(oldface)
         else:
             bfacenew = bm.faces.new(vs)
-    # remove original faces
+        new_faces.append(bfacenew)
+    # deselect original faces
     for face in selfaces:
         face.select_set(False)
-        bm.faces.remove(face)
-    bm.faces.index_update()
-    # mesh.update(calc_edges=True)
-    # select all new faces
+    # remove original faces
+    bmesh.ops.delete(bm, geom=selfaces, context=5)  # 5 = DEL_FACES
+    # select all new faces (should only select inner faces, but that needs more surgery on rest of code)
     for face in new_faces:
         face.select_set(True)
 
+def remove_dups(vs):
+    seen = set()
+    return [x for x in vs if not (x in seen or seen.add(x))]
 
 def panel_func(self, context):
     self.layout.label(text="Inset Polygon:")

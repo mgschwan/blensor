@@ -46,12 +46,15 @@
 #include "BKE_effect.h"
 #include "BKE_global.h"
 #include "BKE_lattice.h"
+#include "BKE_library_query.h"
 #include "BKE_modifier.h"
 #include "BKE_particle.h"
 #include "BKE_pointcache.h"
 
 #include "depsgraph_private.h"
+#include "DEG_depsgraph_build.h"
 
+#include "MOD_modifiertypes.h"
 
 static void initData(ModifierData *md)
 {
@@ -127,12 +130,24 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 	}
 }
 
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *UNUSED(ob),
+                            struct DepsNodeHandle *node)
+{
+	ParticleInstanceModifierData *pimd = (ParticleInstanceModifierData *) md;
+	if (pimd->ob != NULL) {
+		DEG_add_object_relation(node, pimd->ob, DEG_OB_COMP_TRANSFORM, "Particle Instance Modifier");
+	}
+}
+
 static void foreachObjectLink(ModifierData *md, Object *ob,
                               ObjectWalkFunc walk, void *userData)
 {
 	ParticleInstanceModifierData *pimd = (ParticleInstanceModifierData *) md;
 
-	walk(userData, ob, &pimd->ob);
+	walk(userData, ob, &pimd->ob, IDWALK_CB_NOP);
 }
 
 static int particle_skip(ParticleInstanceModifierData *pimd, ParticleSystem *psys, int p)
@@ -338,7 +353,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 						ChildParticle *cpa = psys->child + (p - psys->totpart);
 						pa = psys->particles + cpa->parent;
 					}
-					psys_mat_hair_to_global(sim.ob, sim.psmd->dm, sim.psys->part->from, pa, hairmat);
+					psys_mat_hair_to_global(sim.ob, sim.psmd->dm_final, sim.psys->part->from, pa, hairmat);
 					copy_m3_m4(mat, hairmat);
 					/* to quaternion */
 					mat3_to_quat(frame, mat);
@@ -448,6 +463,7 @@ ModifierTypeInfo modifierType_ParticleInstance = {
 	/* freeData */          NULL,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */  NULL,
 	/* foreachObjectLink */ foreachObjectLink,

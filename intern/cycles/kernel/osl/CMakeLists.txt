@@ -1,11 +1,6 @@
 
 set(INC
-	.
-	..
-	../svm
-	../../render
-	../../util
-	../../device
+	../..
 )
 
 set(INC_SYS
@@ -24,7 +19,6 @@ set(SRC
 )
 
 set(HEADER_SRC
-	osl_bssrdf.h
 	osl_closures.h
 	osl_globals.h
 	osl_services.h

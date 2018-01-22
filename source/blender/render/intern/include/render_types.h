@@ -58,7 +58,6 @@ struct MemArena;
 struct VertTableNode;
 struct VlakTableNode;
 struct GHash;
-struct RenderBuckets;
 struct ObjectInstanceRen;
 struct RayObject;
 struct RayFace;
@@ -123,8 +122,7 @@ enum {
 };
 
 /* controls state of render, everything that's read-only during render stage */
-struct Render
-{
+struct Render {
 	struct Render *next, *prev;
 	char name[RE_MAXNAME];
 	int slot;
@@ -182,6 +180,7 @@ struct Render
 	float jit[32][2];
 	float mblur_jit[32][2];
 	ListBase *qmcsamplers;
+	int num_qmc_samplers;
 	
 	/* shadow counter, detect shadow-reuse for shaders */
 	int shadowsamplenr[BLENDER_MAX_THREADS];
@@ -276,6 +275,9 @@ struct Render
 
 	struct ImagePool *pool;
 	struct EvaluationContext *eval_ctx;
+
+	void **movie_ctx_arr;
+	char viewname[MAX_NAME];
 };
 
 /* ------------------------------------------------------------------------- */
@@ -333,6 +335,8 @@ typedef struct ObjectRen {
 	char (*mcol)[MAX_CUSTOMDATA_LAYER_NAME];
 	int  actmtface, actmcol, bakemtface;
 
+	short tangent_mask; /* which tangent layer should be calculated */
+
 	float obmat[4][4];	/* only used in convertblender.c, for instancing */
 
 	/* used on makeraytree */
@@ -352,6 +356,10 @@ typedef struct ObjectInstanceRen {
 
 	float mat[4][4], imat[4][4];
 	float nmat[3][3]; /* nmat is inverse mat tranposed */
+
+	float obmat[4][4], obinvmat[4][4];
+	float localtoviewmat[4][4], localtoviewinvmat[4][4];
+
 	short flag;
 
 	float dupliorco[3], dupliuv[2];
@@ -366,6 +374,16 @@ typedef struct ObjectInstanceRen {
 	struct RayObject *raytree;
 	int transform_primitives;
 
+	/* Particle info */
+	float part_index;
+	float part_age;
+	float part_lifetime;
+	float part_size;
+	float part_co[3];
+	float part_vel[3];
+	float part_avel[3];
+
+	unsigned int random_id;
 } ObjectInstanceRen;
 
 /* ------------------------------------------------------------------------- */
@@ -389,7 +407,6 @@ struct halosort {
 
 /* ------------------------------------------------------------------------- */
 struct Material;
-struct MTFace;
 struct ImagePool;
 
 typedef struct RadFace {
@@ -425,7 +442,7 @@ typedef struct HaloRen {
 	unsigned int lay;
 	struct Material *mat;
 	struct ImagePool *pool;
-	bool skip_load_image;
+	bool skip_load_image, texnode_preview;
 } HaloRen;
 
 /* ------------------------------------------------------------------------- */
@@ -557,6 +574,7 @@ typedef struct LampRen {
 	
 	short falloff_type;
 	float ld1, ld2;
+	float coeff_const, coeff_lin, coeff_quad;
 	struct CurveMapping *curfalloff;
 
 	/* copied from Lamp, to decouple more rendering stuff */

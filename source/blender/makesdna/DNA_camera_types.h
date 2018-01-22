@@ -44,6 +44,21 @@ struct Object;
 struct AnimData;
 struct Ipo;
 
+/* ------------------------------------------- */
+/* Stereo Settings */
+typedef struct CameraStereoSettings {
+	float interocular_distance;
+	float convergence_distance;
+	short convergence_mode;
+	short pivot;
+	short flag;
+	short pad;
+	/* Cut-off angle at which interocular distance start to fade down. */
+	float pole_merge_angle_from;
+	/* Cut-off angle at which interocular distance stops to fade down. */
+	float pole_merge_angle_to;
+} CameraStereoSettings;
+
 typedef struct Camera {
 	ID id;
 	struct AnimData *adt;	/* animation data (must be immediately after id for utilities to use it) */ 
@@ -69,6 +84,9 @@ typedef struct Camera {
 
 	char sensor_fit;
 	char pad[7];
+
+	/* Stereo settings */
+	struct CameraStereoSettings stereo;
 } Camera;
 
 /* **************** CAMERA ********************* */
@@ -101,14 +119,12 @@ enum {
 	CAM_SHOWNAME            = (1 << 4),
 	CAM_ANGLETOGGLE         = (1 << 5),
 	CAM_DS_EXPAND           = (1 << 6),
+#ifdef DNA_DEPRECATED
 	CAM_PANORAMA            = (1 << 7), /* deprecated */
+#endif
 	CAM_SHOWSENSOR          = (1 << 8),
 	CAM_SHOW_SAFE_CENTER    = (1 << 9),
 };
-
-#if (DNA_DEPRECATED_GCC_POISON == 1)
-#pragma GCC poison CAM_PANORAMA
-#endif
 
 /* yafray: dof sampling switch */
 /* #define CAM_YF_NO_QMC	512 */ /* deprecated */
@@ -122,6 +138,26 @@ enum {
 
 #define DEFAULT_SENSOR_WIDTH	32.0f
 #define DEFAULT_SENSOR_HEIGHT	18.0f
+
+/* stereo->convergence_mode */
+enum {
+	CAM_S3D_OFFAXIS    = 0,
+	CAM_S3D_PARALLEL   = 1,
+	CAM_S3D_TOE        = 2,
+};
+
+/* stereo->pivot */
+enum {
+	CAM_S3D_PIVOT_LEFT      = 0,
+	CAM_S3D_PIVOT_RIGHT     = 1,
+	CAM_S3D_PIVOT_CENTER    = 2,
+};
+
+/* stereo->flag */
+enum {
+	CAM_S3D_SPHERICAL       = (1 << 0),
+	CAM_S3D_POLE_MERGE      = (1 << 1),
+};
 
 #ifdef __cplusplus
 }

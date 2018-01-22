@@ -62,7 +62,7 @@
 #include "UI_resources.h"
 #include "UI_view2d.h"
 
-
+#include "nla_private.h"
 #include "nla_intern.h" /* own include */
 
 
@@ -145,6 +145,62 @@ static void nla_action_draw_keyframes(AnimData *adt, bAction *act, View2D *v2d, 
 	BLI_dlrbTree_free(&keys);
 }
 
+/* Strip Markers ------------------------ */
+
+/* Markers inside an action strip */
+static void nla_actionclip_draw_markers(NlaStrip *strip, float yminc, float ymaxc)
+{
+	bAction *act = strip->act;
+	TimeMarker *marker;
+	
+	if (ELEM(NULL, strip->act, strip->act->markers.first))
+		return;
+	
+	for (marker = act->markers.first; marker; marker = marker->next) {
+		if ((marker->frame > strip->actstart) && (marker->frame < strip->actend)) {
+			float frame = nlastrip_get_frame(strip, marker->frame, NLATIME_CONVERT_MAP);
+			
+			/* just a simple line for now */
+			// XXX: draw a triangle instead...
+			fdrawline(frame, yminc + 1, frame, ymaxc - 1);
+		}
+	}
+}
+
+/* Markers inside a NLA-Strip */
+static void nla_strip_draw_markers(NlaStrip *strip, float yminc, float ymaxc)
+{
+	glLineWidth(2.0);
+	
+	if (strip->type == NLASTRIP_TYPE_CLIP) {
+		/* try not to be too conspicuous, while being visible enough when transforming */
+		if (strip->flag & NLASTRIP_FLAG_SELECT)
+			UI_ThemeColorShade(TH_STRIP_SELECT, -60);
+		else
+			UI_ThemeColorShade(TH_STRIP_SELECT, -40);
+		
+		setlinestyle(3);
+		
+		/* just draw the markers in this clip */
+		nla_actionclip_draw_markers(strip, yminc, ymaxc);
+		
+		setlinestyle(0);
+	}
+	else if (strip->flag & NLASTRIP_FLAG_TEMP_META) {
+		/* just a solid color, so that it is very easy to spot */
+		UI_ThemeColorShade(TH_STRIP_SELECT, 20);
+		
+		/* draw the markers in the first level of strips only (if they are actions) */
+		for (NlaStrip *nls = strip->strips.first; nls; nls = nls->next) {
+			if (nls->type == NLASTRIP_TYPE_CLIP) {
+				nla_actionclip_draw_markers(nls, yminc, ymaxc);
+			}
+		}
+	}
+	
+	glLineWidth(1.0);
+}
+
 /* Strips (Proper) ---------------------- */
 
 /* get colors for drawing NLA-Strips */
@@ -186,7 +242,7 @@ static void nla_strip_get_color_inside(AnimData *adt, NlaStrip *strip, float col
 	}
 	else {
 		/* Action Clip (default/normal type of strip) */
-		if ((strip->flag & NLASTRIP_FLAG_ACTIVE) && (adt && (adt->flag & ADT_NLA_EDIT_ON))) {
+		if (adt && (adt->flag & ADT_NLA_EDIT_ON) && (adt->actstrip == strip)) {
 			/* active strip should be drawn green when it is acting as the tweaking strip.
 			 * however, this case should be skipped for when not in EditMode...
 			 */
@@ -234,7 +290,8 @@ static void nla_draw_strip_curves(NlaStrip *strip, float yminc, float ymaxc)
 		 *	- min y-val is yminc, max is y-maxc, so clamp in those regions
 		 */
 		for (cfra = strip->start; cfra <= strip->end; cfra += 1.0f) {
-			float y = evaluate_fcurve(fcu, cfra);    // assume this to be in 0-1 range
+			float y = evaluate_fcurve(fcu, cfra);
+			CLAMP(y, 0.0f, 1.0f);
 			glVertex2f(cfra, ((y * yheight) + yminc));
 		}
 		glEnd(); // GL_LINE_STRIP
@@ -273,7 +330,7 @@ static void nla_draw_strip_curves(NlaStrip *strip, float yminc, float ymaxc)
 /* main call for drawing a single NLA-strip */
 static void nla_draw_strip(SpaceNla *snla, AnimData *adt, NlaTrack *nlt, NlaStrip *strip, View2D *v2d, float yminc, float ymaxc)
 {
-	short nonSolo = ((adt && (adt->flag & ADT_NLA_SOLO_TRACK)) && (nlt->flag & NLATRACK_SOLO) == 0);
+	const bool non_solo = ((adt && (adt->flag & ADT_NLA_SOLO_TRACK)) && (nlt->flag & NLATRACK_SOLO) == 0);
 	float color[3];
 	
 	/* get color of strip */
@@ -282,7 +339,7 @@ static void nla_draw_strip(SpaceNla *snla, AnimData *adt, NlaTrack *nlt, NlaStri
 	/* draw extrapolation info first (as backdrop)
 	 *	- but this should only be drawn if track has some contribution
 	 */
-	if ((strip->extendmode != NLASTRIP_EXTEND_NOTHING) && (nonSolo == 0)) {
+	if ((strip->extendmode != NLASTRIP_EXTEND_NOTHING) && (non_solo == 0)) {
 		/* enable transparency... */
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glEnable(GL_BLEND);
@@ -305,7 +362,7 @@ static void nla_draw_strip(SpaceNla *snla, AnimData *adt, NlaTrack *nlt, NlaStri
 					glVertex2f(strip->start, yminc);
 					glEnd();
 				}
-				/* fall-through */
+				ATTR_FALLTHROUGH;
 
 			/* this only draws after the strip */
 			case NLASTRIP_EXTEND_HOLD_FORWARD: 
@@ -337,7 +394,7 @@ static void nla_draw_strip(SpaceNla *snla, AnimData *adt, NlaTrack *nlt, NlaStri
 	
 	
 	/* draw 'inside' of strip itself */
-	if (nonSolo == 0) {
+	if (non_solo == 0) {
 		/* strip is in normal track */
 		glColor3fv(color);
 		UI_draw_roundbox_corner_set(UI_CNR_ALL); /* all corners rounded */
@@ -360,6 +417,10 @@ static void nla_draw_strip(SpaceNla *snla, AnimData *adt, NlaTrack *nlt, NlaStri
 	if ((snla->flag & SNLA_NOSTRIPCURVES) == 0)
 		nla_draw_strip_curves(strip, yminc, ymaxc);
 	
+	
+	/* draw markings indicating locations of local markers (useful for lining up different actions) */
+	if ((snla->flag & SNLA_NOLOCALMARKERS) == 0)
+		nla_strip_draw_markers(strip, yminc, ymaxc);
 	
 	/* draw strip outline 
 	 *	- color used here is to indicate active vs non-active
@@ -422,18 +483,19 @@ static void nla_draw_strip(SpaceNla *snla, AnimData *adt, NlaTrack *nlt, NlaStri
 } 
 
 /* add the relevant text to the cache of text-strings to draw in pixelspace */
-static void nla_draw_strip_text(AnimData *adt, NlaTrack *nlt, NlaStrip *strip, int index, View2D *v2d, float yminc, float ymaxc)
+static void nla_draw_strip_text(
+        AnimData *adt, NlaTrack *nlt, NlaStrip *strip, int index, View2D *v2d,
+        float xminc, float xmaxc, float yminc, float ymaxc)
 {
-	short notSolo = ((adt && (adt->flag & ADT_NLA_SOLO_TRACK)) && (nlt->flag & NLATRACK_SOLO) == 0);
+	const bool non_solo = ((adt && (adt->flag & ADT_NLA_SOLO_TRACK)) && (nlt->flag & NLATRACK_SOLO) == 0);
 	char str[256];
 	size_t str_len;
 	char col[4];
-	float xofs;
 	rctf rect;
 	
 	/* just print the name and the range */
 	if (strip->flag & NLASTRIP_FLAG_TEMP_META) {
-		str_len = BLI_snprintf(str, sizeof(str), "%d) Temp-Meta", index);
+		str_len = BLI_snprintf_rlen(str, sizeof(str), "%d) Temp-Meta", index);
 	}
 	else {
 		str_len = BLI_strncpy_rlen(str, strip->name, sizeof(str));
@@ -448,24 +510,18 @@ static void nla_draw_strip_text(AnimData *adt, NlaTrack *nlt, NlaStrip *strip, i
 	}
 	
 	/* text opacity depends on whether if there's a solo'd track, this isn't it */
-	if (notSolo == 0)
+	if (non_solo == 0)
 		col[3] = 255;
 	else
 		col[3] = 128;
-	
-	/* determine the amount of padding required - cannot be constant otherwise looks weird in some cases */
-	if ((strip->end - strip->start) <= 5.0f)
-		xofs = 0.5f;
-	else
-		xofs = 1.0f;
-	
+
 	/* set bounding-box for text 
 	 *	- padding of 2 'units' on either side
 	 */
 	// TODO: make this centered?
-	rect.xmin = strip->start + xofs;
+	rect.xmin = xminc;
 	rect.ymin = yminc;
-	rect.xmax = strip->end - xofs;
+	rect.xmax = xmaxc;
 	rect.ymax = ymaxc;
 	
 	/* add this string to the cache of texts to draw */
@@ -490,11 +546,11 @@ static void nla_draw_strip_frames_text(NlaTrack *UNUSED(nlt), NlaStrip *strip, V
 	 *	  while also preserving some accuracy, since we do use floats
 	 */
 	/* start frame */
-	numstr_len = BLI_snprintf(numstr, sizeof(numstr), "%.1f", strip->start);
+	numstr_len = BLI_snprintf_rlen(numstr, sizeof(numstr), "%.1f", strip->start);
 	UI_view2d_text_cache_add(v2d, strip->start - 1.0f, ymaxc + ytol, numstr, numstr_len, col);
 	
 	/* end frame */
-	numstr_len = BLI_snprintf(numstr, sizeof(numstr), "%.1f", strip->end);
+	numstr_len = BLI_snprintf_rlen(numstr, sizeof(numstr), "%.1f", strip->end);
 	UI_view2d_text_cache_add(v2d, strip->end, ymaxc + ytol, numstr, numstr_len, col);
 }
 
@@ -510,6 +566,8 @@ void draw_nla_main_data(bAnimContext *ac, SpaceNla *snla, ARegion *ar)
 	float y = 0.0f;
 	size_t items;
 	int height;
+	const float pixelx = BLI_rctf_size_x(&v2d->cur) / BLI_rcti_size_x(&v2d->mask);
+	const float text_margin_x = (8 * UI_DPI_FAC) * pixelx;
 	
 	/* build list of channels to draw */
 	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_LIST_VISIBLE | ANIMFILTER_LIST_CHANNELS);
@@ -550,11 +608,16 @@ void draw_nla_main_data(bAnimContext *ac, SpaceNla *snla, ARegion *ar)
 					/* draw each strip in the track (if visible) */
 					for (strip = nlt->strips.first, index = 1; strip; strip = strip->next, index++) {
 						if (BKE_nlastrip_within_bounds(strip, v2d->cur.xmin, v2d->cur.xmax)) {
+							const float xminc = strip->start + text_margin_x;
+							const float xmaxc = strip->end + text_margin_x;
+
 							/* draw the visualization of the strip */
 							nla_draw_strip(snla, adt, nlt, strip, v2d, yminc, ymaxc);
 							
 							/* add the text for this strip to the cache */
-							nla_draw_strip_text(adt, nlt, strip, index, v2d, yminc, ymaxc);
+							if (xminc < xmaxc) {
+								nla_draw_strip_text(adt, nlt, strip, index, v2d, xminc, xmaxc, yminc, ymaxc);
+							}
 							
 							/* if transforming strips (only real reason for temp-metas currently), 
 							 * add to the cache the frame numbers of the strip's extents
@@ -650,6 +713,8 @@ void draw_nla_channel_list(const bContext *C, bAnimContext *ac, ARegion *ar)
 	
 	/* draw channels */
 	{   /* first pass: just the standard GL-drawing for backdrop + text */
+		size_t channel_index = 0;
+		
 		y = (float)(-NLACHANNEL_HEIGHT(snla));
 		
 		for (ale = anim_data.first; ale; ale = ale->next) {
@@ -661,11 +726,12 @@ void draw_nla_channel_list(const bContext *C, bAnimContext *ac, ARegion *ar)
 			    IN_RANGE(ymaxc, v2d->cur.ymin, v2d->cur.ymax) )
 			{
 				/* draw all channels using standard channel-drawing API */
-				ANIM_channel_draw(ac, ale, yminc, ymaxc);
+				ANIM_channel_draw(ac, ale, yminc, ymaxc, channel_index);
 			}
 			
 			/* adjust y-position for next one */
 			y -= NLACHANNEL_STEP(snla);
+			channel_index++;
 		}
 	}
 	{   /* second pass: UI widgets */

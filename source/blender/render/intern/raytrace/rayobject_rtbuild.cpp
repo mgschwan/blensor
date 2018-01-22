@@ -31,9 +31,15 @@
 
 
 #include <assert.h>
-#include <math.h>
 #include <stdlib.h>
 #include <algorithm>
+
+#if __cplusplus >= 201103L
+#include <cmath>
+using std::isfinite;
+#else
+#include <math.h>
+#endif
 
 #include "rayobject_rtbuild.h"
 
@@ -53,6 +59,7 @@ static void rtbuild_init(RTBuilder *b)
 	b->primitives.begin   = NULL;
 	b->primitives.end     = NULL;
 	b->primitives.maxsize = 0;
+	b->depth = 0;
 	
 	for (int i = 0; i < RTBUILD_MAX_CHILDS; i++)
 		b->child_offset[i] = 0;
@@ -109,9 +116,9 @@ void rtbuild_add(RTBuilder *b, RayObject *o)
 	if (bb[0] > bb[3] || bb[1] > bb[4] || bb[2] > bb[5])
 		return;
 	/* skip objects with inf bounding boxes */
-	if (!finite(bb[0]) || !finite(bb[1]) || !finite(bb[2]))
+	if (!isfinite(bb[0]) || !isfinite(bb[1]) || !isfinite(bb[2]))
 		return;
-	if (!finite(bb[3]) || !finite(bb[4]) || !finite(bb[5]))
+	if (!isfinite(bb[3]) || !isfinite(bb[4]) || !isfinite(bb[5]))
 		return;
 	/* skip objects with zero bounding box, they are of no use, and
 	 * will give problems in rtbuild_heuristic_object_split later */
@@ -171,6 +178,8 @@ RayObject *rtbuild_get_primitive(RTBuilder *b, int index)
 RTBuilder *rtbuild_get_child(RTBuilder *b, int child, RTBuilder *tmp)
 {
 	rtbuild_init(tmp);
+
+	tmp->depth = b->depth + 1;
 
 	for (int i = 0; i < 3; i++)
 		if (b->sorted_begin[i]) {
@@ -330,8 +339,18 @@ int rtbuild_heuristic_object_split(RTBuilder *b, int nchilds)
 	int baxis = -1, boffset = 0;
 
 	if (size > nchilds) {
+		if (b->depth > RTBUILD_MAX_SAH_DEPTH) {
+			// for degenerate cases we avoid running out of stack space
+			// by simply splitting the children in the middle
+			b->child_offset[0] = 0;
+			b->child_offset[1] = (size+1)/2;
+			b->child_offset[2] = size;
+			return 2;
+		}
+
 		float bcost = FLT_MAX;
-		baxis = -1, boffset = size / 2;
+		baxis = -1;
+		boffset = size / 2;
 
 		SweepCost *sweep = (SweepCost *)MEM_mallocN(sizeof(SweepCost) * size, "RTBuilder.HeuristicSweep");
 		

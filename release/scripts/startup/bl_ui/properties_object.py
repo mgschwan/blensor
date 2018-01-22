@@ -152,6 +152,33 @@ class OBJECT_PT_relations(ObjectButtonsPanel, Panel):
         sub.active = (parent is not None)
 
 
+class OBJECT_PT_relations_extras(ObjectButtonsPanel, Panel):
+    bl_label = "Relations Extras"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+
+        ob = context.object
+
+        split = layout.split()
+
+        if context.scene.render.engine != 'BLENDER_GAME':
+            col = split.column()
+            col.label(text="Tracking Axes:")
+            col.prop(ob, "track_axis", text="Axis")
+            col.prop(ob, "up_axis", text="Up Axis")
+
+        col = split.column()
+        col.prop(ob, "use_slow_parent")
+        row = col.row()
+        row.active = ((ob.parent is not None) and (ob.use_slow_parent))
+        row.prop(ob, "slow_parent_offset", text="Offset")
+
+        layout.prop(ob, "use_extra_recalc_object")
+        layout.prop(ob, "use_extra_recalc_data")
+
+
 class GROUP_MT_specials(Menu):
     bl_label = "Group Specials"
 
@@ -267,7 +294,7 @@ class OBJECT_PT_duplication(ObjectButtonsPanel, Panel):
 
         ob = context.object
 
-        layout.prop(ob, "dupli_type", expand=True)
+        layout.row().prop(ob, "dupli_type", expand=True)
 
         if ob.dupli_type == 'FRAMES':
             split = layout.split()
@@ -294,33 +321,6 @@ class OBJECT_PT_duplication(ObjectButtonsPanel, Panel):
 
         elif ob.dupli_type == 'GROUP':
             layout.prop(ob, "dupli_group", text="Group")
-
-
-class OBJECT_PT_relations_extras(ObjectButtonsPanel, Panel):
-    bl_label = "Relations Extras"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        layout = self.layout
-
-        ob = context.object
-
-        split = layout.split()
-
-        if context.scene.render.engine != 'BLENDER_GAME':
-            col = split.column()
-            col.label(text="Tracking Axes:")
-            col.prop(ob, "track_axis", text="Axis")
-            col.prop(ob, "up_axis", text="Up Axis")
-
-        col = split.column()
-        col.prop(ob, "use_slow_parent")
-        row = col.row()
-        row.active = ((ob.parent is not None) and (ob.use_slow_parent))
-        row.prop(ob, "slow_parent_offset", text="Offset")
-
-        layout.prop(ob, "use_extra_recalc_object")
-        layout.prop(ob, "use_extra_recalc_data")
 
 
 from bl_ui.properties_animviz import (
@@ -366,5 +366,23 @@ class OBJECT_PT_custom_props(ObjectButtonsPanel, PropertyPanel, Panel):
     _context_path = "object"
     _property_type = bpy.types.Object
 
+
+classes = (
+    OBJECT_PT_context_object,
+    OBJECT_PT_transform,
+    OBJECT_PT_delta_transform,
+    OBJECT_PT_transform_locks,
+    OBJECT_PT_relations,
+    OBJECT_PT_relations_extras,
+    GROUP_MT_specials,
+    OBJECT_PT_groups,
+    OBJECT_PT_display,
+    OBJECT_PT_duplication,
+    OBJECT_PT_motion_paths,
+    OBJECT_PT_custom_props,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

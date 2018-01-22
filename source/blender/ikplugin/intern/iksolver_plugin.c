@@ -50,6 +50,8 @@
 
 #include <string.h> /* memcpy */
 
+#define USE_NONUNIFORM_SCALE
+
 /* ********************** THE IK SOLVER ******************* */
 
 /* allocates PoseTree, and links that to root bone/channel */
@@ -215,9 +217,27 @@ static void where_is_ik_bone(bPoseChannel *pchan, float ik_mat[3][3])   // nr = 
 	copy_m4_m3(ikmat, ik_mat);
 
 	if (pchan->parent)
-		mul_m4_series(pchan->pose_mat, pchan->parent->pose_mat, pchan->chan_mat, ikmat);
+		mul_m4_m4m4(pchan->pose_mat, pchan->parent->pose_mat, pchan->chan_mat);
 	else
-		mul_m4_m4m4(pchan->pose_mat, pchan->chan_mat, ikmat);
+		copy_m4_m4(pchan->pose_mat, pchan->chan_mat);
+
+#ifdef USE_NONUNIFORM_SCALE
+	/* apply IK mat, but as if the bones have uniform scale since the IK solver
+	 * is not aware of non-uniform scale */
+	float scale[3];
+	mat4_to_size(scale, pchan->pose_mat);
+	normalize_v3_length(pchan->pose_mat[0], scale[1]);
+	normalize_v3_length(pchan->pose_mat[2], scale[1]);
+#endif
+
+	mul_m4_m4m4(pchan->pose_mat, pchan->pose_mat, ikmat);
+
+#ifdef USE_NONUNIFORM_SCALE
+	float ik_scale[3];
+	mat3_to_size(ik_scale, ik_mat);
+	normalize_v3_length(pchan->pose_mat[0], scale[0] * ik_scale[0]);
+	normalize_v3_length(pchan->pose_mat[2], scale[2] * ik_scale[2]);
+#endif
 
 	/* calculate head */
 	copy_v3_v3(pchan->pose_head, pchan->pose_mat[3]);
@@ -242,7 +262,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 	float goal[4][4], goalinv[4][4];
 	float irest_basis[3][3], full_basis[3][3];
 	float end_pose[4][4], world_pose[4][4];
-	float length, basis[3][3], rest_basis[3][3], start[3], *ikstretch = NULL;
+	float basis[3][3], rest_basis[3][3], start[3], *ikstretch = NULL;
 	float resultinf = 0.0f;
 	int a, flag, hasstretch = 0, resultblend = 0;
 	bPoseChannel *pchan;
@@ -258,6 +278,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 	iktree = MEM_mallocN(sizeof(void *) * tree->totchannel, "ik tree");
 
 	for (a = 0; a < tree->totchannel; a++) {
+		float length;
 		pchan = tree->pchan[a];
 		bone = pchan->bone;
 
@@ -305,6 +326,10 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 		/* change length based on bone size */
 		length = bone->length * len_v3(R_bonemat[1]);
 
+		/* basis must be pure rotation */
+		normalize_m3(R_bonemat);
+		normalize_m3(R_parmat);
+
 		/* compute rest basis and its inverse */
 		copy_m3_m3(rest_basis, bone->bone_mat);
 		transpose_m3_m3(irest_basis, bone->bone_mat);
@@ -314,11 +339,7 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 		mul_m3_m3m3(full_basis, iR_parmat, R_bonemat);
 		mul_m3_m3m3(basis, irest_basis, full_basis);
 
-		/* basis must be pure rotation */
-		normalize_m3(basis);
-
 		/* transform offset into local bone space */
-		normalize_m3(iR_parmat);
 		mul_m3_v3(iR_parmat, start);
 
 		IK_SetTransform(seg, start, rest_basis, basis, length);
@@ -335,9 +356,9 @@ static void execute_posetree(struct Scene *scene, Object *ob, PoseTree *tree)
 		IK_SetStiffness(seg, IK_Z, pchan->stiffness[2]);
 
 		if (tree->stretch && (pchan->ikstretch > 0.0f)) {
-			const float ikstretch = pchan->ikstretch * pchan->ikstretch;
+			const float ikstretch_sq = SQUARE(pchan->ikstretch);
 			/* this function does its own clamping */
-			IK_SetStiffness(seg, IK_TRANS_Y, 1.0f - ikstretch);
+			IK_SetStiffness(seg, IK_TRANS_Y, 1.0f - ikstretch_sq);
 			IK_SetLimit(seg, IK_TRANS_Y, IK_STRETCH_STIFF_MIN, IK_STRETCH_STIFF_MAX);
 		}
 	}
@@ -524,10 +545,10 @@ void iksolver_initialize_tree(struct Scene *UNUSED(scene), struct Object *ob, fl
 	ob->pose->flag &= ~POSE_WAS_REBUILT;
 }
 
-void iksolver_execute_tree(struct Scene *scene, struct Object *ob,  struct bPoseChannel *pchan, float ctime)
+void iksolver_execute_tree(struct Scene *scene, Object *ob,  bPoseChannel *pchan_root, float ctime)
 {
-	while (pchan->iktree.first) {
-		PoseTree *tree = pchan->iktree.first;
+	while (pchan_root->iktree.first) {
+		PoseTree *tree = pchan_root->iktree.first;
 		int a;
 
 		/* stop on the first tree that isn't a standard IK chain */
@@ -541,6 +562,7 @@ void iksolver_execute_tree(struct Scene *scene, struct Object *ob,  struct bPose
 			/* tell blender that this channel was controlled by IK, it's cleared on each BKE_pose_where_is() */
 			tree->pchan[a]->flag |= POSE_CHAIN;
 		}
+
 		/* 5. execute the IK solver */
 		execute_posetree(scene, ob, tree);
 
@@ -556,7 +578,7 @@ void iksolver_execute_tree(struct Scene *scene, struct Object *ob,  struct bPose
 		}
 
 		/* 7. and free */
-		BLI_remlink(&pchan->iktree, tree);
+		BLI_remlink(&pchan_root->iktree, tree);
 		free_posetree(tree);
 	}
 }

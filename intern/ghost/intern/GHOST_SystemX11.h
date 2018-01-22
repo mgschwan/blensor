@@ -52,6 +52,21 @@
 int GHOST_X11_ApplicationErrorHandler(Display *display, XErrorEvent *theEvent);
 int GHOST_X11_ApplicationIOErrorHandler(Display *display);
 
+#define GHOST_X11_ERROR_HANDLERS_OVERRIDE(var) \
+	struct { \
+		XErrorHandler handler; \
+		XIOErrorHandler handler_io; \
+	} var = { \
+		XSetErrorHandler(GHOST_X11_ApplicationErrorHandler), \
+		XSetIOErrorHandler(GHOST_X11_ApplicationIOErrorHandler), \
+	}
+
+#define GHOST_X11_ERROR_HANDLERS_RESTORE(var) \
+	{ \
+		(void)XSetErrorHandler(var.handler); \
+		(void)XSetIOErrorHandler(var.handler_io); \
+	} ((void)0)
+
 class GHOST_WindowX11;
 
 /**
@@ -157,10 +172,6 @@ public:
 	    );
 
 	/**
-	 * \section Interface Inherited from GHOST_ISystem
-	 */
-
-	/**
 	 * Retrieves events from the system and stores them in the queue.
 	 * \param waitForEvent Flag to wait for an event (or return immediately).
 	 * \return Indication of the presence of events.
@@ -170,9 +181,6 @@ public:
 	    bool waitForEvent
 	    );
 
-	/**
-	 * \section Interface Inherited from GHOST_System
-	 */
 	GHOST_TSuccess
 	getCursorPosition(
 	    GHOST_TInt32& x,
@@ -206,7 +214,6 @@ public:
 	    ) const;
 
 	/**
-	 * \section Interface Dirty
 	 * Flag a window as dirty. This will
 	 * generate a GHOST window update event on a call to processEvents() 
 	 */
@@ -241,7 +248,7 @@ public:
 	                        unsigned int *context) const;
 
 	/**
-	 * Returns unsinged char from CUT_BUFFER0
+	 * Returns unsigned char from CUT_BUFFER0
 	 * \param selection		Get selection, X11 only feature
 	 * \return				Returns the Clipboard indicated by Flag
 	 */
@@ -271,7 +278,7 @@ public:
 	/**
 	 * \see GHOST_ISystem
 	 */
-	int toggleConsole(int action) {
+	int toggleConsole(int /*action*/) {
 		return 0;
 	}
 
@@ -335,6 +342,10 @@ public:
 #endif
 	} m_atom;
 
+#ifdef WITH_X11_XINPUT
+	XExtensionVersion m_xinput_version;
+#endif
+
 private:
 
 	Display *m_display;
@@ -374,7 +385,7 @@ private:
 #endif
 
 #ifdef WITH_X11_XINPUT
-	void initXInputDevices();
+	void refreshXInputDevices();
 #endif
 
 	GHOST_WindowX11 *

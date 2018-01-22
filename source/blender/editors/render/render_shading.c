@@ -41,10 +41,11 @@
 #include "DNA_space_types.h"
 #include "DNA_world_types.h"
 
-#include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
+#include "BLI_listbase.h"
+#include "BLI_math_vector.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_animsys.h"
 #include "BKE_context.h"
@@ -101,7 +102,7 @@ static int material_slot_add_exec(bContext *C, wmOperator *UNUSED(op))
 	if (!ob)
 		return OPERATOR_CANCELLED;
 	
-	object_add_material_slot(ob);
+	BKE_object_material_slot_add(ob);
 
 	if (ob->mode & OB_MODE_TEXTURE_PAINT) {
 		Scene *scene = CTX_data_scene(C);
@@ -144,7 +145,7 @@ static int material_slot_remove_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	
-	object_remove_material_slot(ob);
+	BKE_object_material_slot_remove(ob);
 
 	if (ob->mode & OB_MODE_TEXTURE_PAINT) {
 		Scene *scene = CTX_data_scene(C);
@@ -200,9 +201,11 @@ static int material_slot_assign_exec(bContext *C, wmOperator *UNUSED(op))
 			ListBase *nurbs = BKE_curve_editNurbs_get((Curve *)ob->data);
 
 			if (nurbs) {
-				for (nu = nurbs->first; nu; nu = nu->next)
-					if (isNurbsel(nu))
-						nu->mat_nr = nu->charidx = ob->actcol - 1;
+				for (nu = nurbs->first; nu; nu = nu->next) {
+					if (ED_curve_nurb_select_check(ob->data, nu)) {
+						nu->mat_nr = ob->actcol - 1;
+					}
+				}
 			}
 		}
 		else if (ob->type == OB_FONT) {
@@ -381,6 +384,75 @@ void OBJECT_OT_material_slot_copy(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 }
 
+static int material_slot_move_exec(bContext *C, wmOperator *op)
+{
+	Object *ob = ED_object_context(C);
+
+	unsigned int *slot_remap;
+	int index_pair[2];
+
+	int dir = RNA_enum_get(op->ptr, "direction");
+
+	if (!ob || ob->totcol < 2) {
+		return OPERATOR_CANCELLED;
+	}
+
+	/* up */
+	if (dir == 1 && ob->actcol > 1) {
+		index_pair[0] = ob->actcol - 2;
+		index_pair[1] = ob->actcol - 1;
+		ob->actcol--;
+	}
+	/* down */
+	else if (dir == -1 && ob->actcol < ob->totcol) {
+		index_pair[0] = ob->actcol - 1;
+		index_pair[1] = ob->actcol - 0;
+		ob->actcol++;
+	}
+	else {
+		return OPERATOR_CANCELLED;
+	}
+
+	slot_remap = MEM_mallocN(sizeof(unsigned int) * ob->totcol, __func__);
+
+	range_vn_u(slot_remap, ob->totcol, 0);
+
+	slot_remap[index_pair[0]] = index_pair[1];
+	slot_remap[index_pair[1]] = index_pair[0];
+
+	BKE_material_remap_object(ob, slot_remap);
+
+	MEM_freeN(slot_remap);
+
+	DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+	WM_event_add_notifier(C, NC_OBJECT | ND_DRAW | ND_DATA, ob);
+
+	return OPERATOR_FINISHED;
+}
+
+void OBJECT_OT_material_slot_move(wmOperatorType *ot)
+{
+	static EnumPropertyItem material_slot_move[] = {
+		{1, "UP", 0, "Up", ""},
+		{-1, "DOWN", 0, "Down", ""},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	/* identifiers */
+	ot->name = "Move Material";
+	ot->idname = "OBJECT_OT_material_slot_move";
+	ot->description = "Move the active material up/down in the list";
+
+	/* api callbacks */
+	ot->exec = material_slot_move_exec;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+	RNA_def_enum(ot->srna, "direction", material_slot_move, 0, "Direction",
+	             "Direction to move the active material towards");
+}
+
 /********************** new material operator *********************/
 
 static int new_material_exec(bContext *C, wmOperator *UNUSED(op))
@@ -393,7 +465,7 @@ static int new_material_exec(bContext *C, wmOperator *UNUSED(op))
 
 	/* add or copy material */
 	if (ma) {
-		ma = BKE_material_copy(ma);
+		ma = BKE_material_copy(bmain, ma);
 	}
 	else {
 		ma = BKE_material_add(bmain, DATA_("Material"));
@@ -409,8 +481,8 @@ static int new_material_exec(bContext *C, wmOperator *UNUSED(op))
 
 	if (prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
-		 * pointer se also increases user, so this compensates it */
-		ma->id.us--;
+		 * pointer use also increases user, so this compensates it */
+		id_us_min(&ma->id);
 
 		RNA_id_pointer_create(&ma->id, &idptr);
 		RNA_property_pointer_set(&ptr, prop, idptr);
@@ -447,10 +519,10 @@ static int new_texture_exec(bContext *C, wmOperator *UNUSED(op))
 
 	/* add or copy texture */
 	if (tex) {
-		tex = BKE_texture_copy(tex);
+		tex = BKE_texture_copy(bmain, tex);
 	}
 	else {
-		tex = add_texture(bmain, DATA_("Texture"));
+		tex = BKE_texture_add(bmain, DATA_("Texture"));
 	}
 
 	/* hook into UI */
@@ -458,8 +530,8 @@ static int new_texture_exec(bContext *C, wmOperator *UNUSED(op))
 
 	if (prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
-		 * pointer se also increases user, so this compensates it */
-		tex->id.us--;
+		 * pointer use also increases user, so this compensates it */
+		id_us_min(&tex->id);
 
 		if (ptr.id.data && GS(((ID *)ptr.id.data)->name) == ID_MA &&
 		    RNA_property_pointer_get(&ptr, prop).id.data == NULL)
@@ -505,7 +577,7 @@ static int new_world_exec(bContext *C, wmOperator *UNUSED(op))
 
 	/* add or copy world */
 	if (wo) {
-		wo = BKE_world_copy(wo);
+		wo = BKE_world_copy(bmain, wo);
 	}
 	else {
 		wo = add_world(bmain, DATA_("World"));
@@ -521,8 +593,8 @@ static int new_world_exec(bContext *C, wmOperator *UNUSED(op))
 
 	if (prop) {
 		/* when creating new ID blocks, use is already 1, but RNA
-		 * pointer se also increases user, so this compensates it */
-		wo->id.us--;
+		 * pointer use also increases user, so this compensates it */
+		id_us_min(&wo->id);
 
 		RNA_id_pointer_create(&wo->id, &idptr);
 		RNA_property_pointer_set(&ptr, prop, idptr);
@@ -539,7 +611,7 @@ void WORLD_OT_new(wmOperatorType *ot)
 	/* identifiers */
 	ot->name = "New World";
 	ot->idname = "WORLD_OT_new";
-	ot->description = "Add a new world";
+	ot->description = "Create a new world Data-Block";
 	
 	/* api callbacks */
 	ot->exec = new_world_exec;
@@ -603,6 +675,70 @@ void SCENE_OT_render_layer_remove(wmOperatorType *ot)
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
+}
+
+/********************** render view operators *********************/
+
+static int render_view_remove_poll(bContext *C)
+{
+	Scene *scene = CTX_data_scene(C);
+
+	/* don't allow user to remove "left" and "right" views */
+	return scene->r.actview > 1;
+}
+
+static int render_view_add_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Scene *scene = CTX_data_scene(C);
+
+	BKE_scene_add_render_view(scene, NULL);
+	scene->r.actview = BLI_listbase_count(&scene->r.views) - 1;
+
+	WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
+
+	return OPERATOR_FINISHED;
+}
+
+void SCENE_OT_render_view_add(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Add Render View";
+	ot->idname = "SCENE_OT_render_view_add";
+	ot->description = "Add a render view";
+
+	/* api callbacks */
+	ot->exec = render_view_add_exec;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+static int render_view_remove_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	Scene *scene = CTX_data_scene(C);
+	SceneRenderView *rv = BLI_findlink(&scene->r.views, scene->r.actview);
+
+	if (!BKE_scene_remove_render_view(scene, rv))
+		return OPERATOR_CANCELLED;
+
+	WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
+
+	return OPERATOR_FINISHED;
+}
+
+void SCENE_OT_render_view_remove(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Remove Render View";
+	ot->idname = "SCENE_OT_render_view_remove";
+	ot->description = "Remove the selected render view";
+
+	/* api callbacks */
+	ot->exec = render_view_remove_exec;
+	ot->poll = render_view_remove_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
 #ifdef WITH_FREESTYLE
@@ -693,14 +829,10 @@ static int freestyle_module_move_exec(bContext *C, wmOperator *op)
 	FreestyleModuleConfig *module = ptr.data;
 	int dir = RNA_enum_get(op->ptr, "direction");
 
-	if (dir == 1) {
-		BKE_freestyle_module_move_up(&srl->freestyleConfig, module);
+	if (BKE_freestyle_module_move(&srl->freestyleConfig, module, dir)) {
+		DAG_id_tag_update(&scene->id, 0);
+		WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
 	}
-	else {
-		BKE_freestyle_module_move_down(&srl->freestyleConfig, module);
-	}
-	DAG_id_tag_update(&scene->id, 0);
-	WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
 
 	return OPERATOR_FINISHED;
 }
@@ -708,8 +840,8 @@ static int freestyle_module_move_exec(bContext *C, wmOperator *op)
 void SCENE_OT_freestyle_module_move(wmOperatorType *ot)
 {
 	static EnumPropertyItem direction_items[] = {
-		{1, "UP", 0, "Up", ""},
-		{-1, "DOWN", 0, "Down", ""},
+		{-1, "UP", 0, "Up", ""},
+		{1, "DOWN", 0, "Down", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -726,7 +858,8 @@ void SCENE_OT_freestyle_module_move(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* props */
-	RNA_def_enum(ot->srna, "direction", direction_items, 0, "Direction", "Direction to move, UP or DOWN");
+	RNA_def_enum(ot->srna, "direction", direction_items, 0, "Direction",
+	             "Direction to move the chosen style module towards");
 }
 
 static int freestyle_lineset_add_exec(bContext *C, wmOperator *UNUSED(op))
@@ -856,14 +989,10 @@ static int freestyle_lineset_move_exec(bContext *C, wmOperator *op)
 	SceneRenderLayer *srl = BLI_findlink(&scene->r.layers, scene->r.actlay);
 	int dir = RNA_enum_get(op->ptr, "direction");
 
-	if (dir == 1) {
-		FRS_move_active_lineset_up(&srl->freestyleConfig);
+	if (FRS_move_active_lineset(&srl->freestyleConfig, dir)) {
+		DAG_id_tag_update(&scene->id, 0);
+		WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
 	}
-	else {
-		FRS_move_active_lineset_down(&srl->freestyleConfig);
-	}
-	DAG_id_tag_update(&scene->id, 0);
-	WM_event_add_notifier(C, NC_SCENE | ND_RENDER_OPTIONS, scene);
 
 	return OPERATOR_FINISHED;
 }
@@ -871,8 +1000,8 @@ static int freestyle_lineset_move_exec(bContext *C, wmOperator *op)
 void SCENE_OT_freestyle_lineset_move(wmOperatorType *ot)
 {
 	static EnumPropertyItem direction_items[] = {
-		{1, "UP", 0, "Up", ""},
-		{-1, "DOWN", 0, "Down", ""},
+		{-1, "UP", 0, "Up", ""},
+		{1, "DOWN", 0, "Down", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -889,7 +1018,8 @@ void SCENE_OT_freestyle_lineset_move(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* props */
-	RNA_def_enum(ot->srna, "direction", direction_items, 0, "Direction", "Direction to move, UP or DOWN");
+	RNA_def_enum(ot->srna, "direction", direction_items, 0, "Direction",
+	             "Direction to move the active line set towards");
 }
 
 static int freestyle_linestyle_new_exec(bContext *C, wmOperator *op)
@@ -904,7 +1034,7 @@ static int freestyle_linestyle_new_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	if (lineset->linestyle) {
-		lineset->linestyle->id.us--;
+		id_us_min(&lineset->linestyle->id);
 		lineset->linestyle = BKE_linestyle_copy(bmain, lineset->linestyle);
 	}
 	else {
@@ -968,7 +1098,7 @@ void SCENE_OT_freestyle_color_modifier_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", linestyle_color_modifier_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_linestyle_color_modifier_type_items, 0, "Type", "");
 }
 
 static int freestyle_alpha_modifier_add_exec(bContext *C, wmOperator *op)
@@ -1008,7 +1138,7 @@ void SCENE_OT_freestyle_alpha_modifier_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", linestyle_alpha_modifier_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_linestyle_alpha_modifier_type_items, 0, "Type", "");
 }
 
 static int freestyle_thickness_modifier_add_exec(bContext *C, wmOperator *op)
@@ -1048,7 +1178,7 @@ void SCENE_OT_freestyle_thickness_modifier_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", linestyle_thickness_modifier_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_linestyle_thickness_modifier_type_items, 0, "Type", "");
 }
 
 static int freestyle_geometry_modifier_add_exec(bContext *C, wmOperator *op)
@@ -1088,7 +1218,7 @@ void SCENE_OT_freestyle_geometry_modifier_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", linestyle_geometry_modifier_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_linestyle_geometry_modifier_type_items, 0, "Type", "");
 }
 
 static int freestyle_get_modifier_type(PointerRNA *ptr)
@@ -1212,6 +1342,7 @@ static int freestyle_modifier_move_exec(bContext *C, wmOperator *op)
 	PointerRNA ptr = CTX_data_pointer_get_type(C, "modifier", &RNA_LineStyleModifier);
 	LineStyleModifier *modifier = ptr.data;
 	int dir = RNA_enum_get(op->ptr, "direction");
+	bool changed = false;
 
 	if (!freestyle_linestyle_check_report(lineset, op->reports)) {
 		return OPERATOR_CANCELLED;
@@ -1219,23 +1350,26 @@ static int freestyle_modifier_move_exec(bContext *C, wmOperator *op)
 
 	switch (freestyle_get_modifier_type(&ptr)) {
 		case LS_MODIFIER_TYPE_COLOR:
-			BKE_linestyle_color_modifier_move(lineset->linestyle, modifier, dir);
+			changed = BKE_linestyle_color_modifier_move(lineset->linestyle, modifier, dir);
 			break;
 		case LS_MODIFIER_TYPE_ALPHA:
-			BKE_linestyle_alpha_modifier_move(lineset->linestyle, modifier, dir);
+			changed = BKE_linestyle_alpha_modifier_move(lineset->linestyle, modifier, dir);
 			break;
 		case LS_MODIFIER_TYPE_THICKNESS:
-			BKE_linestyle_thickness_modifier_move(lineset->linestyle, modifier, dir);
+			changed = BKE_linestyle_thickness_modifier_move(lineset->linestyle, modifier, dir);
 			break;
 		case LS_MODIFIER_TYPE_GEOMETRY:
-			BKE_linestyle_geometry_modifier_move(lineset->linestyle, modifier, dir);
+			changed = BKE_linestyle_geometry_modifier_move(lineset->linestyle, modifier, dir);
 			break;
 		default:
 			BKE_report(op->reports, RPT_ERROR, "The object the data pointer refers to is not a valid modifier");
 			return OPERATOR_CANCELLED;
 	}
-	DAG_id_tag_update(&lineset->linestyle->id, 0);
-	WM_event_add_notifier(C, NC_LINESTYLE, lineset->linestyle);
+
+	if (changed) {
+		DAG_id_tag_update(&lineset->linestyle->id, 0);
+		WM_event_add_notifier(C, NC_LINESTYLE, lineset->linestyle);
+	}
 
 	return OPERATOR_FINISHED;
 }
@@ -1243,8 +1377,8 @@ static int freestyle_modifier_move_exec(bContext *C, wmOperator *op)
 void SCENE_OT_freestyle_modifier_move(wmOperatorType *ot)
 {
 	static EnumPropertyItem direction_items[] = {
-		{1, "UP", 0, "Up", ""},
-		{-1, "DOWN", 0, "Down", ""},
+		{-1, "UP", 0, "Up", ""},
+		{1, "DOWN", 0, "Down", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -1261,7 +1395,8 @@ void SCENE_OT_freestyle_modifier_move(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
 	/* props */
-	RNA_def_enum(ot->srna, "direction", direction_items, 0, "Direction", "Direction to move, UP or DOWN");
+	RNA_def_enum(ot->srna, "direction", direction_items, 0, "Direction",
+	             "Direction to move the chosen modifier towards");
 }
 
 static int freestyle_stroke_material_create_exec(bContext *C, wmOperator *op)
@@ -1484,15 +1619,16 @@ void TEXTURE_OT_envmap_save(wmOperatorType *ot)
 	                           "(use -1 to skip a face)", 0.0f, 0.0f);
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
-	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_IMAGE | FILE_TYPE_MOVIE, FILE_SPECIAL, FILE_SAVE,
-	                               WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY);
+	WM_operator_properties_filesel(
+	        ot, FILE_TYPE_FOLDER | FILE_TYPE_IMAGE | FILE_TYPE_MOVIE, FILE_SPECIAL, FILE_SAVE,
+	        WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 }
 
 static int envmap_clear_exec(bContext *C, wmOperator *UNUSED(op))
 {
 	Tex *tex = CTX_data_pointer_get_type(C, "texture", &RNA_Texture).data;
 	
-	BKE_free_envmapdata(tex->env);
+	BKE_texture_envmap_free_data(tex->env);
 	
 	WM_event_add_notifier(C, NC_TEXTURE | NA_EDITED, tex);
 	
@@ -1535,7 +1671,7 @@ static int envmap_clear_all_exec(bContext *C, wmOperator *UNUSED(op))
 	
 	for (tex = bmain->tex.first; tex; tex = tex->id.next)
 		if (tex->env)
-			BKE_free_envmapdata(tex->env);
+			BKE_texture_envmap_free_data(tex->env);
 	
 	WM_event_add_notifier(C, NC_TEXTURE | NA_EDITED, tex);
 	
@@ -1682,7 +1818,7 @@ static void paste_mtex_copybuf(ID *id)
 			mtex = &(((FreestyleLineStyle *)id)->mtex[(int)((FreestyleLineStyle *)id)->texact]);
 			break;
 		default:
-			BLI_assert("invalid id type");
+			BLI_assert(!"invalid id type");
 			return;
 	}
 	
@@ -1691,7 +1827,7 @@ static void paste_mtex_copybuf(ID *id)
 			*mtex = MEM_mallocN(sizeof(MTex), "mtex copy");
 		}
 		else if ((*mtex)->tex) {
-			(*mtex)->tex->id.us--;
+			id_us_min(&(*mtex)->tex->id);
 		}
 		
 		memcpy(*mtex, &mtexcopybuf, sizeof(MTex));

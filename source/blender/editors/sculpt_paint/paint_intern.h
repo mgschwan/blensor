@@ -34,14 +34,11 @@
 
 struct ARegion;
 struct bContext;
-struct bglMats;
 struct Brush;
 struct ImagePool;
 struct ColorSpace;
 struct ColorManagedDisplay;
 struct ListBase;
-struct Material;
-struct Mesh;
 struct MTex;
 struct Object;
 struct PaintStroke;
@@ -55,7 +52,6 @@ struct ViewContext;
 struct wmEvent;
 struct wmOperator;
 struct wmOperatorType;
-struct ImagePaintState;
 struct wmWindowManager;
 struct DMCoNo;
 enum PaintMode;
@@ -105,6 +101,10 @@ bool ED_wpaint_fill(struct VPaint *wp, struct Object *ob, float paintweight);
 
 bool ED_vpaint_smooth(struct Object *ob);
 
+typedef void (*VPaintTransform_Callback)(const float col[3], const void *user_data, float r_col[3]);
+
+bool ED_vpaint_color_transform(struct Object *ob, VPaintTransform_Callback vpaint_tx_fn, const void *user_data);
+
 void PAINT_OT_weight_paint_toggle(struct wmOperatorType *ot);
 void PAINT_OT_weight_paint(struct wmOperatorType *ot);
 void PAINT_OT_weight_set(struct wmOperatorType *ot);
@@ -149,7 +149,7 @@ typedef struct ImagePaintPartialRedraw {
 
 int image_texture_paint_poll(struct bContext *C);
 void *image_undo_find_tile(struct Image *ima, struct ImBuf *ibuf, int x_tile, int y_tile, unsigned short **mask, bool validate);
-void *image_undo_push_tile(struct Image *ima, struct ImBuf *ibuf, struct ImBuf **tmpibuf, int x_tile, int y_tile,  unsigned short **, bool **valid, bool proj);
+void *image_undo_push_tile(struct Image *ima, struct ImBuf *ibuf, struct ImBuf **tmpibuf, int x_tile, int y_tile,  unsigned short **, bool **valid, bool proj, bool find_prev);
 void image_undo_remove_masks(void);
 void image_undo_init_locks(void);
 void image_undo_end_locks(void);
@@ -164,7 +164,7 @@ void paint_2d_redraw(const bContext *C, void *ps, bool final);
 void paint_2d_stroke_done(void *ps);
 void paint_2d_stroke(void *ps, const float prev_mval[2], const float mval[2], const bool eraser, float pressure, float distance, float size);
 void paint_2d_bucket_fill(const struct bContext *C, const float color[3], struct Brush *br, const float mouse_init[2], void *ps);
-void paint_2d_gradient_fill (const struct bContext *C, struct Brush *br, const float mouse_init[2], const float mouse_final[2], void *ps);
+void paint_2d_gradient_fill(const struct bContext *C, struct Brush *br, const float mouse_init[2], const float mouse_final[2], void *ps);
 void *paint_proj_new_stroke(struct bContext *C, struct Object *ob, const float mouse[2], int mode);
 void paint_proj_stroke(const struct bContext *C, void *ps, const float prevmval_i[2], const float mval_i[2], const bool eraser, float pressure, float distance, float size);
 void paint_proj_redraw(const struct bContext *C, void *pps, bool final);
@@ -188,6 +188,7 @@ void PAINT_OT_add_simple_uvs(struct wmOperatorType *ot);
 
 /* uv sculpting */
 int uv_sculpt_poll(struct bContext *C);
+int uv_sculpt_keymap_poll(struct bContext *C);
 
 void SCULPT_OT_uv_sculpt_stroke(struct wmOperatorType *ot);
 
@@ -237,6 +238,7 @@ int paint_curve_poll(struct bContext *C);
 
 int facemask_paint_poll(struct bContext *C);
 void flip_v3_v3(float out[3], const float in[3], const char symm);
+void flip_qt_qt(float out[3], const float in[3], const char symm);
 
 /* stroke operator */
 typedef enum BrushStrokeMode {
@@ -251,7 +253,8 @@ typedef enum {
 	RC_ROTATION = 2,
 	RC_ZOOM     = 4,
 	RC_WEIGHT   = 8,
-	RC_SECONDARY_ROTATION = 16
+	RC_SECONDARY_ROTATION = 16,
+	RC_COLOR_OVERRIDE = 32,
 } RCFlags;
 
 void set_brush_rc_props(struct PointerRNA *ptr, const char *paint, const char *prop, const char *secondary_prop,

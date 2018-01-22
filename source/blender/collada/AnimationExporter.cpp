@@ -142,8 +142,6 @@ void AnimationExporter::operator()(Object *ob)
 			}
 		}
 	}
-
-
 }
 
 void AnimationExporter::export_object_constraint_animation(Object *ob)
@@ -185,7 +183,7 @@ void AnimationExporter::make_anim_frames_from_targets(Object *ob, std::vector<fl
 	for (con = (bConstraint *)conlist->first; con; con = con->next) {
 		ListBase targets = {NULL, NULL};
 		
-		bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+		const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 		
 		if (!validateConstraints(con)) continue;
 
@@ -532,7 +530,7 @@ void AnimationExporter::dae_baked_animation(std::vector<float> &fra, Object *ob_
 
 	addSampler(sampler);
 
-	std::string target = translate_id(bone_name) + "/transform";
+	std::string target = get_joint_id(bone, ob_arm) + "/transform";
 	addChannel(COLLADABU::URI(empty, sampler_id), target);
 
 	closeAnimation();
@@ -1526,7 +1524,7 @@ void AnimationExporter::sample_animation(float *v, std::vector<float> &frames, i
 bool AnimationExporter::validateConstraints(bConstraint *con)
 {
 	bool valid = true;
-	bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+	const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 	/* these we can skip completely (invalid constraints...) */
 	if (cti == NULL) valid = false;
 	if (con->flag & (CONSTRAINT_DISABLE | CONSTRAINT_OFF)) valid = false;
@@ -1545,7 +1543,7 @@ void AnimationExporter::calc_ob_mat_at_time(Object *ob, float ctime , float mat[
 	for (con = (bConstraint *)conlist->first; con; con = con->next) {
 		ListBase targets = {NULL, NULL};
 		
-		bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+		const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 		
 		if (cti && cti->get_constraint_targets) {
 			bConstraintTarget *ct;

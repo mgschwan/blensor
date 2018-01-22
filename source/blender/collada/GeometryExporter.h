@@ -48,6 +48,20 @@
 
 extern Object *bc_get_highest_selected_ancestor_or_self(Object *ob);
 
+class Normal
+{
+	public:
+		float x;
+		float y;
+		float z;
+
+		friend bool operator<  (const Normal &, const Normal &);
+
+};
+
+bool operator<  (const Normal &, const Normal &);
+
+
 // TODO: optimize UV sets by making indexed list with duplicates removed
 class GeometryExporter : COLLADASW::LibraryGeometries
 {
@@ -56,10 +70,7 @@ class GeometryExporter : COLLADASW::LibraryGeometries
 		unsigned int v1, v2, v3, v4;
 	};
 
-	struct Normal
-	{
-		float x, y, z;
-	};
+	Normal n;
 
 	Scene *mScene;
 
@@ -74,15 +85,33 @@ public:
 						     Mesh   *me,
 						     std::string& geom_id);
 
-	// powerful because it handles both cases when there is material and when there's not
+	// Create polylists for meshes with Materials
 	void createPolylist(short material_index,
-						bool has_uvs,
-						bool has_color,
-						Object *ob,
-						Mesh   *me,
-						std::string& geom_id,
-						std::vector<BCPolygonNormalsIndices>& norind);
-	
+		bool has_uvs,
+		bool has_color,
+		Object *ob,
+		Mesh   *me,
+		std::string& geom_id,
+		std::vector<BCPolygonNormalsIndices>& norind);
+
+	// Create polylists for meshes with UV Textures
+	void createPolylists(std::set<Image *> uv_images,
+		bool has_uvs,
+		bool has_color,
+		Object *ob,
+		Mesh   *me,
+		std::string& geom_id,
+		std::vector<BCPolygonNormalsIndices>& norind);
+
+	// Create polylists for meshes with UV Textures
+	void createPolylist(std::string imageid,
+		bool has_uvs,
+		bool has_color,
+		Object *ob,
+		Mesh   *me,
+		std::string& geom_id,
+		std::vector<BCPolygonNormalsIndices>& norind);
+
 	// creates <source> for positions
 	void createVertsSource(std::string geom_id, Mesh *me);
 

@@ -119,26 +119,27 @@ def brush_texpaint_common(panel, context, layout, brush, settings, projpaint=Fal
                 col.label("Gradient Colors")
                 col.template_color_ramp(brush, "gradient", expand=True)
 
-                if brush.image_tool != 'FILL':
+                if brush.image_tool == 'DRAW':
                     col.label("Background Color")
                     row = col.row(align=True)
                     panel.prop_unified_color(row, context, brush, "secondary_color", text="")
-
-                if brush.image_tool == 'DRAW':
                     col.prop(brush, "gradient_stroke_mode", text="Mode")
                     if brush.gradient_stroke_mode in {'SPACING_REPEAT', 'SPACING_CLAMP'}:
                         col.prop(brush, "grad_spacing")
-                elif brush.image_tool == 'FILL':
+                else: # if brush.image_tool == 'FILL':
                     col.prop(brush, "gradient_fill_mode")
             else:
                 row = col.row(align=True)
                 panel.prop_unified_color(row, context, brush, "color", text="")
-                if brush.image_tool == 'FILL':
+                if brush.image_tool == 'FILL' and not projpaint:
                     col.prop(brush, "fill_threshold")
                 else:
                     panel.prop_unified_color(row, context, brush, "secondary_color", text="")
                     row.separator()
                     row.operator("paint.brush_colors_flip", icon='FILE_REFRESH', text="")
+        else:
+            if brush.image_tool == 'FILL' and not projpaint:
+                col.prop(brush, "fill_threshold")
 
     elif brush.image_tool == 'SOFTEN':
         col = layout.column(align=True)
@@ -216,7 +217,9 @@ def brush_texpaint_common(panel, context, layout, brush, settings, projpaint=Fal
         col = layout.column(align=True)
         col.prop(brush, "use_accumulate")
 
-    col.prop(brush, "use_alpha")
+    if projpaint:
+        col.prop(brush, "use_alpha")
+
     col.prop(brush, "use_gradient")
 
     col.separator()
@@ -306,3 +309,13 @@ def brush_mask_texture_settings(layout, brush):
     split = layout.split()
     split.prop(mask_tex_slot, "offset")
     split.prop(mask_tex_slot, "scale")
+
+
+classes = (
+    VIEW3D_MT_tools_projectpaint_clone,
+)
+
+if __name__ == "__main__":  # only for live edit.
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

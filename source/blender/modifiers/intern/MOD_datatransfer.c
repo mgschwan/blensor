@@ -41,6 +41,7 @@
 #include "BKE_data_transfer.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
 #include "BKE_mesh_mapping.h"
 #include "BKE_mesh_remap.h"
 #include "BKE_modifier.h"
@@ -118,17 +119,12 @@ static bool dependsOnNormals(ModifierData *md)
 	return false;
 }
 
-static void foreachObjectLink(ModifierData *md, Object *ob,
-                              void (*walk)(void *userData, Object *ob, Object **obpoin),
-                              void *userData)
+static void foreachObjectLink(
+        ModifierData *md, Object *ob,
+        ObjectWalkFunc walk, void *userData)
 {
 	DataTransferModifierData *dtmd = (DataTransferModifierData *) md;
-	walk(userData, ob, &dtmd->ob_source);
-}
-
-static void foreachIDLink(ModifierData *md, Object *ob, IDWalkFunc walk, void *userData)
-{
-	foreachObjectLink(md, ob, (ObjectWalkFunc)walk, userData);
+	walk(userData, ob, &dtmd->ob_source, IDWALK_CB_NOP);
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
@@ -144,6 +140,18 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 
 		dag_add_relation(forest, curNode, obNode, DAG_RL_DATA_DATA | DAG_RL_OB_DATA,
 		                 "DataTransfer Modifier");
+	}
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *UNUSED(ob),
+                            struct DepsNodeHandle *node)
+{
+	DataTransferModifierData *dtmd = (DataTransferModifierData *) md;
+	if (dtmd->ob_source != NULL) {
+		DEG_add_object_relation(node, dtmd->ob_source, DEG_OB_COMP_GEOMETRY, "DataTransfer Modifier");
 	}
 }
 
@@ -171,7 +179,6 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 
 	/* Only used to check wehther we are operating on org data or not... */
 	Mesh *me = ob->data;
-	MVert *mvert;
 
 	const bool invert_vgroup = (dtmd->flags & MOD_DATATRANSFER_INVERT_VGROUP) != 0;
 
@@ -184,8 +191,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		BLI_SPACE_TRANSFORM_SETUP(space_transform, ob, dtmd->ob_source);
 	}
 
-	mvert = dm->getVertArray(dm);
-	if ((me->mvert == mvert) && (dtmd->data_types & DT_TYPES_AFFECT_MESH)) {
+	MVert *mvert = dm->getVertArray(dm);
+	MEdge *medge = dm->getEdgeArray(dm);
+	if (((me->mvert == mvert) || (me->medge == medge)) && (dtmd->data_types & DT_TYPES_AFFECT_MESH)) {
 		/* We need to duplicate data here, otherwise setting custom normals, edges' shaprness, etc., could
 		 * modify org mesh, see T43671. */
 		dm = CDDM_copy(dm);
@@ -196,12 +204,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 	/* Note: no islands precision for now here. */
 	BKE_object_data_transfer_dm(md->scene, dtmd->ob_source, ob, dm, dtmd->data_types, false,
 	                     dtmd->vmap_mode, dtmd->emap_mode, dtmd->lmap_mode, dtmd->pmap_mode,
-	                     space_transform, max_dist, dtmd->map_ray_radius, 0.0f,
+	                     space_transform, false, max_dist, dtmd->map_ray_radius, 0.0f,
 	                     dtmd->layers_select_src, dtmd->layers_select_dst,
 	                     dtmd->mix_mode, dtmd->mix_factor, dtmd->defgrp_name, invert_vgroup, &reports);
 
 	if (BKE_reports_contain(&reports, RPT_ERROR)) {
 		modifier_setError(md, "%s", BKE_reports_string(&reports, RPT_ERROR));
+	}
+	else if ((dtmd->data_types & DT_TYPE_LNOR) && !(me->flag & ME_AUTOSMOOTH)) {
+		modifier_setError((ModifierData *)dtmd, "Enable 'Auto Smooth' option in mesh settings");
 	}
 	else if (dm->getNumVerts(dm) > HIGH_POLY_WARNING || ((Mesh *)(dtmd->ob_source->data))->totvert > HIGH_POLY_WARNING) {
 		modifier_setError(md, "You are using a rather high poly as source or destination, computation might be slow");
@@ -213,6 +224,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 #undef HIGH_POLY_WARNING
 #undef DT_TYPES_AFFECT_MESH
 
+static void copyData(ModifierData *md, ModifierData *target)
+{
+#if 0
+	DataTransferModifierData *dtmd = (DecimateModifierData *) md;
+	DataTransferModifierData *tdtmd = (DecimateModifierData *) target;
+#endif
+	modifier_copyData_generic(md, target);
+}
+
 ModifierTypeInfo modifierType_DataTransfer = {
 	/* name */              "DataTransfer",
 	/* structName */        "DataTransferModifierData",
@@ -223,7 +243,7 @@ ModifierTypeInfo modifierType_DataTransfer = {
 	                        eModifierTypeFlag_SupportsEditmode |
 	                        eModifierTypeFlag_UsesPreview,
 
-	/* copyData */          NULL,
+	/* copyData */          copyData,
 	/* deformVerts */       NULL,
 	/* deformMatrices */    NULL,
 	/* deformVertsEM */     NULL,
@@ -235,9 +255,10 @@ ModifierTypeInfo modifierType_DataTransfer = {
 	/* freeData */          NULL,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */  dependsOnNormals,
 	/* foreachObjectLink */ foreachObjectLink,
-	/* foreachIDLink */     foreachIDLink,
+	/* foreachIDLink */     NULL,
 	/* foreachTexLink */    NULL,
 };

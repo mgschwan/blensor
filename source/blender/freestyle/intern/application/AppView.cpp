@@ -22,12 +22,6 @@
  *  \ingroup freestyle
  */
 
-/* This header file needs to be included first, in order to avoid a
-   compilation with MinGW (see the commit log of revision 28253) */
-extern "C" {
-#include "BLI_jitter.h"
-}
-
 #include <iostream>
 
 #include "Controller.h"
@@ -58,7 +52,7 @@ extern "C" {
 
 namespace Freestyle {
 
-AppView::AppView(const char *iName)
+AppView::AppView(const char * /*iName*/)
 {
 	_Fovy = DEG2RADF(30.0f);
 	_ModelRootNode = new NodeDrawingStyle;
@@ -110,7 +104,7 @@ real AppView::distanceToSceneCenter()
 {
 	BBox<Vec3r> bbox = _ModelRootNode->bbox();
 
-	Vec3r v(freestyle_viewpoint[0], freestyle_viewpoint[1], freestyle_viewpoint[2]);
+	Vec3r v(UNPACK3(g_freestyle.viewpoint));
 	v -= 0.5 * (bbox.getMin() + bbox.getMax());
 
 	return v.norm();
@@ -121,7 +115,7 @@ real AppView::znear()
 	BBox<Vec3r> bbox = _ModelRootNode->bbox();
 	Vec3r u = bbox.getMin();
 	Vec3r v = bbox.getMax();
-	Vec3r cameraCenter(freestyle_viewpoint[0], freestyle_viewpoint[1], freestyle_viewpoint[2]);
+	Vec3r cameraCenter(UNPACK3(g_freestyle.viewpoint));
 
 	Vec3r w1(u[0], u[1], u[2]);
 	Vec3r w2(v[0], u[1], u[2]);
@@ -156,7 +150,7 @@ real AppView::zfar()
 	BBox<Vec3r> bbox = _ModelRootNode->bbox();
 	Vec3r u = bbox.getMin();
 	Vec3r v = bbox.getMax();
-	Vec3r cameraCenter(freestyle_viewpoint[0], freestyle_viewpoint[1], freestyle_viewpoint[2]);
+	Vec3r cameraCenter(UNPACK3(g_freestyle.viewpoint));
 
 	Vec3r w1(u[0], u[1], u[2]);
 	Vec3r w2(v[0], u[1], u[2]);

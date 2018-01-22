@@ -34,13 +34,20 @@
 struct bContext;
 struct bAnimContext;
 struct SpaceAction;
+struct ScrArea;
 struct ARegion;
-struct wmWindowManager;
+struct ARegionType;
 struct wmOperatorType;
-struct ActKeysInc;
-struct bAnimListElem;
 
 /* internal exports only */
+
+/* **************************************** */
+/* space_action.c / action_buttons.c */
+
+struct ARegion *action_has_buttons_region(struct ScrArea *sa);
+
+void action_buttons_register(struct ARegionType *art);
+void ACTION_OT_properties(struct wmOperatorType *ot);
 
 /* ***************************************** */
 /* action_draw.c */
@@ -52,6 +59,8 @@ void draw_channel_strips(struct bAnimContext *ac, struct SpaceAction *saction, s
 
 void ACTION_OT_select_all_toggle(struct wmOperatorType *ot);
 void ACTION_OT_select_border(struct wmOperatorType *ot);
+void ACTION_OT_select_lasso(struct wmOperatorType *ot);
+void ACTION_OT_select_circle(struct wmOperatorType *ot);
 void ACTION_OT_select_column(struct wmOperatorType *ot);
 void ACTION_OT_select_linked(struct wmOperatorType *ot);
 void ACTION_OT_select_more(struct wmOperatorType *ot);
@@ -80,6 +89,7 @@ enum eActKeys_ColumnSelect_Mode {
 void ACTION_OT_previewrange_set(struct wmOperatorType *ot);
 void ACTION_OT_view_all(struct wmOperatorType *ot);
 void ACTION_OT_view_selected(struct wmOperatorType *ot);
+void ACTION_OT_view_frame(struct wmOperatorType *ot);
 
 void ACTION_OT_copy(struct wmOperatorType *ot);
 void ACTION_OT_paste(struct wmOperatorType *ot);
@@ -101,9 +111,14 @@ void ACTION_OT_snap(struct wmOperatorType *ot);
 void ACTION_OT_mirror(struct wmOperatorType *ot);
 
 void ACTION_OT_new(struct wmOperatorType *ot);
+void ACTION_OT_unlink(struct wmOperatorType *ot);
+
 void ACTION_OT_push_down(struct wmOperatorType *ot);
 void ACTION_OT_stash(struct wmOperatorType *ot);
 void ACTION_OT_stash_and_create(struct wmOperatorType *ot);
+
+void ACTION_OT_layer_next(struct wmOperatorType *ot);
+void ACTION_OT_layer_prev(struct wmOperatorType *ot);
 
 void ACTION_OT_markers_make_local(struct wmOperatorType *ot);
 

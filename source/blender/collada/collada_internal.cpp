@@ -33,11 +33,8 @@
 
 UnitConverter::UnitConverter() : unit(), up_axis(COLLADAFW::FileInfo::Z_UP)
 {
-	unit_m4(x_up_mat4);
-	rotate_m4(x_up_mat4, 'Y', -0.5 * M_PI);
-
-	unit_m4(y_up_mat4);
-	rotate_m4(y_up_mat4, 'X', 0.5 * M_PI);
+	axis_angle_to_mat4_single(x_up_mat4, 'Y', -0.5 * M_PI);
+	axis_angle_to_mat4_single(y_up_mat4, 'X', 0.5 * M_PI);
 
 	unit_m4(z_up_mat4);
 	unit_m4(scale_mat4);
@@ -163,18 +160,6 @@ void UnitConverter::calculate_scale(Scene &sce)
 	rescale[0] = rescale[1] = rescale[2] = getLinearMeter() / bl_scale;
 
 	size_to_mat4(scale_mat4, rescale);
-}
-
-void TransformBase::decompose(float mat[4][4], float *loc, float eul[3], float quat[4], float *size)
-{
-	mat4_to_size(size, mat);
-	if (eul) {
-		mat4_to_eul(eul, mat);
-	}
-	if (quat) {
-		mat4_to_quat(quat, mat);
-	}
-	copy_v3_v3(loc, mat[3]);
 }
 
 /**
@@ -344,7 +329,12 @@ std::string get_light_id(Object *ob)
 
 std::string get_joint_id(Bone *bone, Object *ob_arm)
 {
-	return translate_id(/*id_name(ob_arm) + "_" +*/ bone->name);
+	return translate_id(id_name(ob_arm) + "_" + bone->name);
+}
+
+std::string get_joint_sid(Bone *bone, Object *ob_arm)
+{
+	return translate_id(bone->name);
 }
 
 std::string get_camera_id(Object *ob)
@@ -354,7 +344,13 @@ std::string get_camera_id(Object *ob)
 
 std::string get_material_id(Material *mat)
 {
-	return translate_id(id_name(mat)) + "-material";
+	std::string id = id_name(mat);
+	return get_material_id_from_id(id);
+}
+
+std::string get_material_id_from_id(std::string id)
+{
+	return translate_id(id) + "-material";
 }
 
 std::string get_morph_id(Object *ob)

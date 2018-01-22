@@ -102,12 +102,13 @@ void accumulate_pass(void) {
 	if (dof_params.w == 0.0)
 		r = 1.0;
 	else
-		r = cos(M_PI / dof_params.w) / (cos(theta - (2.0 * M_PI / dof_params.w) * floor((dof_params.w * theta + M_PI) / (2.0 * M_PI))));
+		r = cos(M_PI / dof_params.w) /
+		    (cos(theta - (2.0 * M_PI / dof_params.w) * floor((dof_params.w * theta + M_PI) / (2.0 * M_PI))));
 
 	if (dot(particlecoord, particlecoord) > r * r)
 		discard;
 
-	gl_FragColor = color;
+	gl_FragData[0] = color;
 }
 #define MERGE_THRESHOLD 4.0
 
@@ -151,7 +152,7 @@ void final_pass(void) {
 		finalcolor = mix(finalcolor, nearcolor, nearweight / totalweight);
 	}
 
-	gl_FragColor = finalcolor;
+	gl_FragData[0] = finalcolor;
 }
 
 void main()

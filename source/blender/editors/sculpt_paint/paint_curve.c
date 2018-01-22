@@ -134,12 +134,12 @@ static void paintcurve_undo_begin(bContext *C, wmOperator *op, PaintCurve *pc)
 	UndoCurve *uc;
 
 	switch (mode) {
-		case PAINT_TEXTURE_2D:
-		case PAINT_TEXTURE_PROJECTIVE:
+		case ePaintTexture2D:
+		case ePaintTextureProjective:
 			undo_stack_id = UNDO_PAINT_IMAGE;
 			break;
 
-		case PAINT_SCULPT:
+		case ePaintSculpt:
 			undo_stack_id = UNDO_PAINT_MESH;
 			break;
 
@@ -222,6 +222,28 @@ static int paintcurve_point_co_index(char sel)
 	return i;
 }
 
+static char paintcurve_point_side_index(const BezTriple *bezt, const bool is_first, const char fallback)
+{
+	/* when matching, guess based on endpoint side */
+	if (BEZT_ISSEL_ANY(bezt)) {
+		if ((bezt->f1 & SELECT) == (bezt->f3 & SELECT)) {
+			return is_first ? SEL_F1 : SEL_F3;
+		}
+		else if (bezt->f1 & SELECT) {
+			return SEL_F1;
+		}
+		else if (bezt->f3  & SELECT) {
+			return SEL_F3;
+		}
+		else {
+			return fallback;
+		}
+	}
+	else {
+		return 0;
+	}
+}
+
 /******************* Operators *********************************/
 
 static int paintcurve_new_exec(bContext *C, wmOperator *UNUSED(op))
@@ -295,10 +317,17 @@ static void paintcurve_point_add(bContext *C,  wmOperator *op, const int loc[2])
 	for (i = 0; i < pc->tot_points; i++) {
 		pcp[i].bez.f1 = pcp[i].bez.f2 = pcp[i].bez.f3 = 0;
 	}
-	pcp[add_index].bez.f3 = SELECT;
-	pcp[add_index].bez.h2 = HD_ALIGN;
 
-	pc->add_index = add_index + 1;
+	BKE_paint_curve_clamp_endpoint_add_index(pc, add_index);
+
+	if (pc->add_index != 0) {
+		pcp[add_index].bez.f3 = SELECT;
+		pcp[add_index].bez.h2 = HD_ALIGN;
+	}
+	else {
+		pcp[add_index].bez.f1 = SELECT;
+		pcp[add_index].bez.h1 = HD_ALIGN;
+	}
 
 	WM_paint_cursor_tag_redraw(window, ar);
 }
@@ -366,7 +395,7 @@ static int paintcurve_delete_point_exec(bContext *C, wmOperator *op)
 #define DELETE_TAG 2
 
 	for (i = 0, pcp = pc->points; i < pc->tot_points; i++, pcp++) {
-		if ((pcp->bez.f1 & SELECT) || (pcp->bez.f2 & SELECT) || (pcp->bez.f3 & SELECT)) {
+		if (BEZT_ISSEL_ANY(&pcp->bez)) {
 			pcp->bez.f2 |= DELETE_TAG;
 			tot_del++;
 		}
@@ -384,7 +413,7 @@ static int paintcurve_delete_point_exec(bContext *C, wmOperator *op)
 				points_new[j] = pc->points[i];
 
 				if ((i + 1) == pc->add_index) {
-					pc->add_index = j + 1;
+					BKE_paint_curve_clamp_endpoint_add_index(pc, j);
 				}
 				j++;
 			}
@@ -430,7 +459,6 @@ static bool paintcurve_point_select(bContext *C, wmOperator *op, const int loc[2
 	Paint *p = BKE_paint_get_active_from_context(C);
 	Brush *br = p->brush;
 	PaintCurve *pc;
-	PaintCurvePoint *pcp;
 	int i;
 	const float loc_fl[2] = {UNPACK2(loc)};
 
@@ -441,11 +469,12 @@ static bool paintcurve_point_select(bContext *C, wmOperator *op, const int loc[2
 
 	paintcurve_undo_begin(C, op, pc);
 
-	pcp = pc->points;
-
 	if (toggle) {
+		PaintCurvePoint *pcp;
 		char select = 0;
 		bool selected = false;
+
+		pcp = pc->points;
 
 		for (i = 0; i < pc->tot_points; i++) {
 			if (pcp[i].bez.f1 || pcp[i].bez.f2 || pcp[i].bez.f3) {
@@ -469,7 +498,7 @@ static bool paintcurve_point_select(bContext *C, wmOperator *op, const int loc[2
 		pcp = paintcurve_point_get_closest(pc, loc_fl, false, PAINT_CURVE_SELECT_THRESHOLD, &selflag);
 
 		if (pcp) {
-			pc->add_index = (pcp - pc->points) + 1;
+			BKE_paint_curve_clamp_endpoint_add_index(pc, pcp - pc->points);
 
 			if (selflag == SEL_F2) {
 				if (extend)
@@ -599,9 +628,8 @@ static int paintcurve_slide_invoke(bContext *C, wmOperator *op, const wmEvent *e
 		pcp = NULL;
 		/* just find first selected point */
 		for (i = 0; i < pc->tot_points; i++) {
-			if (pc->points[i].bez.f1 || pc->points[i].bez.f2 || pc->points[i].bez.f3) {
+			if ((select = paintcurve_point_side_index(&pc->points[i].bez, i == 0, SEL_F3))) {
 				pcp = &pc->points[i];
-				select = SEL_F3;
 				break;
 			}
 		}
@@ -631,7 +659,7 @@ static int paintcurve_slide_invoke(bContext *C, wmOperator *op, const wmEvent *e
 
 		/* only select the active point */
 		PAINT_CURVE_POINT_SELECT(pcp, psd->select);
-		pc->add_index = (pcp - pc->points) + 1;
+		BKE_paint_curve_clamp_endpoint_add_index(pc, pcp - pc->points);
 
 		WM_event_add_modal_handler(C, op);
 		WM_paint_cursor_tag_redraw(window, ar);
@@ -709,17 +737,17 @@ static int paintcurve_draw_exec(bContext *C, wmOperator *UNUSED(op))
 	const char *name;
 
 	switch (mode) {
-		case PAINT_TEXTURE_2D:
-		case PAINT_TEXTURE_PROJECTIVE:
+		case ePaintTexture2D:
+		case ePaintTextureProjective:
 			name = "PAINT_OT_image_paint";
 			break;
-		case PAINT_WEIGHT:
+		case ePaintWeight:
 			name = "PAINT_OT_weight_paint";
 			break;
-		case PAINT_VERTEX:
+		case ePaintVertex:
 			name = "PAINT_OT_vertex_paint";
 			break;
-		case PAINT_SCULPT:
+		case ePaintSculpt:
 			name = "SCULPT_OT_brush_stroke";
 			break;
 		default:
@@ -749,7 +777,7 @@ static int paintcurve_cursor_invoke(bContext *C, wmOperator *UNUSED(op), const w
 	PaintMode mode = BKE_paintmode_get_active_from_context(C);
 	
 	switch (mode) {
-		case PAINT_TEXTURE_2D:
+		case ePaintTexture2D:
 		{
 			ARegion *ar = CTX_wm_region(C);
 			SpaceImage *sima = CTX_wm_space_image(C);

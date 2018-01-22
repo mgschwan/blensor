@@ -67,8 +67,10 @@ void *BLI_poptail(ListBase *listbase) ATTR_NONNULL(1);
 void BLI_addhead(struct ListBase *listbase, void *vlink) ATTR_NONNULL(1);
 void BLI_insertlinkbefore(struct ListBase *listbase, void *vnextlink, void *vnewlink) ATTR_NONNULL(1);
 void BLI_insertlinkafter(struct ListBase *listbase, void *vprevlink, void *vnewlink) ATTR_NONNULL(1);
+void BLI_insertlinkreplace(ListBase *listbase, void *v_l_src, void *v_l_dst) ATTR_NONNULL(1, 2, 3);
 void BLI_listbase_sort(struct ListBase *listbase, int (*cmp)(const void *, const void *)) ATTR_NONNULL(1, 2);
-void BLI_listbase_sort_r(ListBase *listbase, void *thunk, int (*cmp)(void *, const void *, const void *)) ATTR_NONNULL(1, 3);
+void BLI_listbase_sort_r(ListBase *listbase, int (*cmp)(void *, const void *, const void *), void *thunk) ATTR_NONNULL(1, 2);
+bool BLI_listbase_link_move(ListBase *listbase, void *vlink, int step) ATTR_NONNULL();
 void BLI_freelist(struct ListBase *listbase) ATTR_NONNULL(1);
 int  BLI_listbase_count_ex(const struct ListBase *listbase, const int count_max) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL(1);
 int  BLI_listbase_count(const struct ListBase *listbase) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL(1);
@@ -122,6 +124,11 @@ if ((lb)->last && (lb_init || (lb_init = (lb)->last))) { \
 	} while ((lb_iter  = (lb_iter)->prev ? (lb_iter)->prev : (lb)->last), \
 	         (lb_iter != lb_init)); \
 }
+
+#define LINKLIST_FOREACH(type, var, list)          \
+	for (type var = (type)((list)->first);     \
+	     var != NULL;                          \
+	     var = (type)(((Link*)(var))->next))
 
 #ifdef __cplusplus
 }

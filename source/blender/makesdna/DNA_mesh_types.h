@@ -37,7 +37,6 @@
 #include "DNA_customdata_types.h"
 
 struct AnimData;
-struct DerivedMesh;
 struct Ipo;
 struct Key;
 struct MCol;
@@ -47,13 +46,11 @@ struct MLoop;
 struct MLoopCol;
 struct MLoopUV;
 struct MPoly;
-struct MSticky;
 struct MTexPoly;
 struct MVert;
 struct Material;
 struct Mesh;
 struct Multires;
-struct OcInfo;
 
 typedef struct Mesh {
 	ID id;
@@ -133,6 +130,7 @@ typedef struct Mesh {
 } Mesh;
 
 /* deprecated by MTFace, only here for file reading */
+#ifdef DNA_DEPRECATED
 typedef struct TFace {
 	void *tpage;	/* the faces image for the active UVLayer */
 	float uv[4][2];
@@ -140,9 +138,6 @@ typedef struct TFace {
 	char flag, transp;
 	short mode, tile, unwrap;
 } TFace;
-
-#if (DNA_DEPRECATED_GCC_POISON == 1)
-#pragma GCC poison TFace
 #endif
 
 /* **************** MESH ********************* */

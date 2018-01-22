@@ -55,7 +55,7 @@
 #include "BLI_ghash.h"
 #include "BLI_memarena.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 
 #include "DNA_material_types.h"
@@ -279,13 +279,19 @@ static void build_Rd_table(ScatterSettings *ss)
 
 	for (i= 0; i < size; i++) {
 		r= i*(RD_TABLE_RANGE/RD_TABLE_SIZE);
-		/*if (r < ss->invsigma_t_*ss->invsigma_t_)
-			r= ss->invsigma_t_*ss->invsigma_t_;*/
+#if 0
+		if (r < ss->invsigma_t_*ss->invsigma_t_) {
+			r= ss->invsigma_t_*ss->invsigma_t_;
+		}
+#endif
 		ss->tableRd[i]= Rd(ss, sqrtf(r));
 
 		r= i*(RD_TABLE_RANGE_2/RD_TABLE_SIZE);
-		/*if (r < ss->invsigma_t_)
-			r= ss->invsigma_t_;*/
+#if 0
+		if (r < ss->invsigma_t_) {
+			r= ss->invsigma_t_;
+		}
+#endif
 		ss->tableRd2[i]= Rd(ss, r);
 	}
 }

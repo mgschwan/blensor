@@ -31,6 +31,8 @@ set(INC
 	../../blender/makesdna
 	../../blender/blenlib
 	../../blender/blenkernel
+	../../blender/gpu
+	../../blender/imbuf
 	../../../intern/container
 	../../../intern/glew-mx
 	../../../intern/guardedalloc
@@ -53,6 +55,7 @@ set(SRC
 	RAS_Polygon.cpp
 	RAS_TexVert.cpp
 	RAS_texmatrix.cpp
+	RAS_ICanvas.cpp
 
 	RAS_2DFilterManager.h
 	RAS_BucketManager.h
@@ -63,6 +66,8 @@ set(SRC
 	RAS_IPolygonMaterial.h
 	RAS_IRasterizer.h
 	RAS_ILightObject.h
+	RAS_IOffScreen.h
+	RAS_ISync.h
 	RAS_MaterialBucket.h
 	RAS_MeshObject.h
 	RAS_ObjectColor.h

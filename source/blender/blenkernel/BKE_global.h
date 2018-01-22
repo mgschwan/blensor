@@ -45,7 +45,6 @@ extern "C" {
 
 /* forwards */
 struct Main;
-struct Object;
 
 typedef struct Global {
 
@@ -127,10 +126,14 @@ enum {
 	G_DEBUG_FREESTYLE = (1 << 7), /* freestyle messages */
 	G_DEBUG_DEPSGRAPH = (1 << 8), /* depsgraph messages */
 	G_DEBUG_SIMDATA =   (1 << 9), /* sim debug data display */
+	G_DEBUG_GPU_MEM =   (1 << 10), /* gpu memory in status bar */
+	G_DEBUG_DEPSGRAPH_NO_THREADS = (1 << 11),  /* single threaded depsgraph */
+	G_DEBUG_GPU =        (1 << 12), /* gpu debug */
+	G_DEBUG_IO = (1 << 13),   /* IO Debugging (for Collada, ...)*/
 };
 
 #define G_DEBUG_ALL  (G_DEBUG | G_DEBUG_FFMPEG | G_DEBUG_PYTHON | G_DEBUG_EVENTS | G_DEBUG_WM | G_DEBUG_JOBS | \
-                      G_DEBUG_FREESTYLE | G_DEBUG_DEPSGRAPH)
+                      G_DEBUG_FREESTYLE | G_DEBUG_DEPSGRAPH | G_DEBUG_GPU_MEM | G_DEBUG_IO)
 
 
 /* G.fileflags */
@@ -138,14 +141,19 @@ enum {
 #define G_AUTOPACK               (1 << 0)
 #define G_FILE_COMPRESS          (1 << 1)
 #define G_FILE_AUTOPLAY          (1 << 2)
+
+#ifdef DNA_DEPRECATED_ALLOW
 #define G_FILE_ENABLE_ALL_FRAMES (1 << 3)               /* deprecated */
 #define G_FILE_SHOW_DEBUG_PROPS  (1 << 4)               /* deprecated */
 #define G_FILE_SHOW_FRAMERATE    (1 << 5)               /* deprecated */
 /* #define G_FILE_SHOW_PROFILE   (1 << 6) */            /* deprecated */
-#define G_FILE_LOCK              (1 << 7)
-#define G_FILE_SIGN              (1 << 8)
+/* #define G_FILE_LOCK           (1 << 7) */            /* deprecated */
+/* #define G_FILE_SIGN           (1 << 8) */            /* deprecated */
+#endif  /* DNA_DEPRECATED_ALLOW */
+
 #define G_FILE_USERPREFS         (1 << 9)
 #define G_FILE_NO_UI             (1 << 10)
+#ifdef DNA_DEPRECATED_ALLOW
 /* #define G_FILE_GAME_TO_IPO    (1 << 11) */           /* deprecated */
 #define G_FILE_GAME_MAT          (1 << 12)              /* deprecated */
 /* #define G_FILE_DISPLAY_LISTS  (1 << 13) */           /* deprecated */
@@ -158,11 +166,20 @@ enum {
 #define G_FILE_GLSL_NO_NODES     (1 << 20)              /* deprecated */
 #define G_FILE_GLSL_NO_EXTRA_TEX (1 << 21)              /* deprecated */
 #define G_FILE_IGNORE_DEPRECATION_WARNINGS  (1 << 22)   /* deprecated */
+#endif  /* DNA_DEPRECATED_ALLOW */
+
+/* On read, use #FileGlobal.filename instead of the real location on-disk,
+ * needed for recovering temp files so relative paths resolve */
 #define G_FILE_RECOVER           (1 << 23)
+/* On write, remap relative file paths to the new file location. */
 #define G_FILE_RELATIVE_REMAP    (1 << 24)
+/* On write, make backup `.blend1`, `.blend2` ... files, when the users preference is enabled */
 #define G_FILE_HISTORY           (1 << 25)
-#define G_FILE_MESH_COMPAT       (1 << 26)              /* BMesh option to save as older mesh format */
-#define G_FILE_SAVE_COPY         (1 << 27)              /* restore paths after editing them */
+/* BMesh option to save as older mesh format */
+#define G_FILE_MESH_COMPAT       (1 << 26)
+/* On write, restore paths after editing them (G_FILE_RELATIVE_REMAP) */
+#define G_FILE_SAVE_COPY         (1 << 27)
+#define G_FILE_GLSL_NO_ENV_LIGHTING (1 << 28)
 
 #define G_FILE_FLAGS_RUNTIME (G_FILE_NO_UI | G_FILE_RELATIVE_REMAP | G_FILE_MESH_COMPAT | G_FILE_SAVE_COPY)
 
@@ -170,11 +187,6 @@ enum {
  * written had. */
 #if !defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)
 #  error Either __BIG_ENDIAN__ or __LITTLE_ENDIAN__ must be defined.
-#endif
-
-/* there is really no good place for this */
-#if defined(FREE_WINDOWS) && ((__GNUC__ < 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ < 6)))
-#  error "Mingw requires GCC 4.6 minimum"
 #endif
 
 #define L_ENDIAN    1

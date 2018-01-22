@@ -17,11 +17,11 @@
 #ifndef __BAKE_H__
 #define __BAKE_H__
 
-#include "device.h"
-#include "scene.h"
+#include "device/device.h"
+#include "render/scene.h"
 
-#include "util_progress.h"
-#include "util_vector.h"
+#include "util/util_progress.h"
+#include "util/util_vector.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -31,6 +31,7 @@ public:
 	~BakeData();
 
 	void set(int i, int prim, float uv[2], float dudx, float dudy, float dvdx, float dvdy);
+	void set_null(int i);
 	int object();
 	size_t size();
 	uint4 data(int i);
@@ -62,18 +63,17 @@ public:
 
 	void set_shader_limit(const size_t x, const size_t y);
 
-	bool bake(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress, ShaderEvalType shader_type, BakeData *bake_data, float result[]);
+	bool bake(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress, ShaderEvalType shader_type, const int pass_filter, BakeData *bake_data, float result[]);
 
 	void device_update(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress);
 	void device_free(Device *device, DeviceScene *dscene);
 
-	static bool is_light_pass(ShaderEvalType type);
+	static int shader_type_to_pass_filter(ShaderEvalType type, const int pass_filter);
 	static bool is_aa_pass(ShaderEvalType type);
 
 	bool need_update;
 
-	int num_samples;
-	int num_parts;
+	size_t total_pixel_samples;
 
 private:
 	BakeData *m_bake_data;

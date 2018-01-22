@@ -29,7 +29,6 @@
  * BLI_string_utf8() for unicode conversion.
  */
 
-
 #include <Python.h>
 #include <frameobject.h>
 
@@ -37,32 +36,30 @@
 
 #include "py_capi_utils.h"
 
-#include "../generic/python_utildefines.h"
+#include "python_utildefines.h"
 
+#ifndef MATH_STANDALONE
 /* only for BLI_strncpy_wchar_from_utf8, should replace with py funcs but too late in release now */
 #include "BLI_string_utf8.h"
+#endif
 
 #ifdef _WIN32
 #include "BLI_path_util.h"  /* BLI_setenv() */
-#include "BLI_math_base.h"  /* finite() */
+#include "BLI_math_base.h"  /* isfinite() */
 #endif
 
 /* array utility function */
-int PyC_AsArray(void *array, PyObject *value, const Py_ssize_t length,
-                const PyTypeObject *type, const bool is_double, const char *error_prefix)
+int PyC_AsArray_FAST(
+        void *array, PyObject *value_fast, const Py_ssize_t length,
+        const PyTypeObject *type, const bool is_double, const char *error_prefix)
 {
-	PyObject *value_fast;
-	Py_ssize_t value_len;
+	const Py_ssize_t value_len = PySequence_Fast_GET_SIZE(value_fast);
+	PyObject **value_fast_items = PySequence_Fast_ITEMS(value_fast);
 	Py_ssize_t i;
 
-	if (!(value_fast = PySequence_Fast(value, error_prefix))) {
-		return -1;
-	}
-
-	value_len = PySequence_Fast_GET_SIZE(value_fast);
+	BLI_assert(PyList_Check(value_fast) || PyTuple_Check(value_fast));
 
 	if (value_len != length) {
-		Py_DECREF(value);
 		PyErr_Format(PyExc_TypeError,
 		             "%.200s: invalid sequence length. expected %d, got %d",
 		             error_prefix, length, value_len);
@@ -74,13 +71,13 @@ int PyC_AsArray(void *array, PyObject *value, const Py_ssize_t length,
 		if (is_double) {
 			double *array_double = array;
 			for (i = 0; i < length; i++) {
-				array_double[i] = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(value_fast, i));
+				array_double[i] = PyFloat_AsDouble(value_fast_items[i]);
 			}
 		}
 		else {
 			float *array_float = array;
 			for (i = 0; i < length; i++) {
-				array_float[i] = PyFloat_AsDouble(PySequence_Fast_GET_ITEM(value_fast, i));
+				array_float[i] = PyFloat_AsDouble(value_fast_items[i]);
 			}
 		}
 	}
@@ -88,24 +85,21 @@ int PyC_AsArray(void *array, PyObject *value, const Py_ssize_t length,
 		/* could use is_double for 'long int' but no use now */
 		int *array_int = array;
 		for (i = 0; i < length; i++) {
-			array_int[i] = PyLong_AsLong(PySequence_Fast_GET_ITEM(value_fast, i));
+			array_int[i] = PyLong_AsLong(value_fast_items[i]);
 		}
 	}
 	else if (type == &PyBool_Type) {
 		int *array_bool = array;
 		for (i = 0; i < length; i++) {
-			array_bool[i] = (PyLong_AsLong(PySequence_Fast_GET_ITEM(value_fast, i)) != 0);
+			array_bool[i] = (PyLong_AsLong(value_fast_items[i]) != 0);
 		}
 	}
 	else {
-		Py_DECREF(value_fast);
 		PyErr_Format(PyExc_TypeError,
 		             "%s: internal error %s is invalid",
 		             error_prefix, type->tp_name);
 		return -1;
 	}
-
-	Py_DECREF(value_fast);
 
 	if (PyErr_Occurred()) {
 		PyErr_Format(PyExc_TypeError,
@@ -115,6 +109,22 @@ int PyC_AsArray(void *array, PyObject *value, const Py_ssize_t length,
 	}
 
 	return 0;
+}
+
+int PyC_AsArray(
+        void *array, PyObject *value, const Py_ssize_t length,
+        const PyTypeObject *type, const bool is_double, const char *error_prefix)
+{
+	PyObject *value_fast;
+	int ret;
+
+	if (!(value_fast = PySequence_Fast(value, error_prefix))) {
+		return -1;
+	}
+
+	ret = PyC_AsArray_FAST(array, value_fast, length, type, is_double, error_prefix);
+	Py_DECREF(value_fast);
+	return ret;
 }
 
 /* array utility function */
@@ -167,7 +177,7 @@ PyObject *PyC_FromArray(const void *array, int length, const PyTypeObject *type,
 
 /**
  * Caller needs to ensure tuple is uninitialized.
- * Handy for filling a typle with None for eg.
+ * Handy for filling a tuple with None for eg.
  */
 void PyC_Tuple_Fill(PyObject *tuple, PyObject *value)
 {
@@ -190,6 +200,27 @@ void PyC_List_Fill(PyObject *list, PyObject *value)
 		Py_INCREF(value);
 	}
 }
+
+/**
+ * Use with PyArg_ParseTuple's "O&" formatting.
+ */
+int PyC_ParseBool(PyObject *o, void *p)
+{
+	bool *bool_p = p;
+	long value;
+	if (((value = PyLong_AsLong(o)) == -1) || !ELEM(value, 0, 1)) {
+		PyErr_Format(PyExc_ValueError,
+		             "expected a bool or int (0/1), got %s",
+		             Py_TYPE(o)->tp_name);
+		return 0;
+	}
+
+	*bool_p = value ? true : false;
+	return 1;
+}
+
+
+#ifndef MATH_STANDALONE
 
 /* for debugging */
 void PyC_ObSpit(const char *name, PyObject *var)
@@ -269,7 +300,14 @@ void PyC_FileAndNum(const char **filename, int *lineno)
 		if (mod_name) {
 			PyObject *mod = PyDict_GetItem(PyImport_GetModuleDict(), mod_name);
 			if (mod) {
-				*filename = PyModule_GetFilename(mod);
+				PyObject *mod_file = PyModule_GetFilenameObject(mod);
+				if (mod_file) {
+					*filename = _PyUnicode_AsString(mod_name);
+					Py_DECREF(mod_file);
+				}
+				else {
+					PyErr_Clear();
+				}
 			}
 
 			/* unlikely, fallback */
@@ -336,11 +374,12 @@ PyObject *PyC_FrozenSetFromStrings(const char **strings)
 }
 
 
-/* similar to PyErr_Format(),
+/**
+ * Similar to #PyErr_Format(),
  *
- * implementation - we cant actually preprend the existing exception,
+ * Implementation - we cant actually prepend the existing exception,
  * because it could have _any_ arguments given to it, so instead we get its
- * __str__ output and raise our own exception including it.
+ * ``__str__`` output and raise our own exception including it.
  */
 PyObject *PyC_Err_Format_Prefix(PyObject *exception_type_prefix, const char *format, ...)
 {
@@ -478,8 +517,65 @@ error_cleanup:
 }
 #endif
 
+PyObject *PyC_ExceptionBuffer_Simple(void)
+{
+	PyObject *string_io_buf;
+
+	PyObject *error_type, *error_value, *error_traceback;
+
+	if (!PyErr_Occurred())
+		return NULL;
+
+	PyErr_Fetch(&error_type, &error_value, &error_traceback);
+
+	if (error_value == NULL) {
+		return NULL;
+	}
+
+	string_io_buf = PyObject_Str(error_value);
+	/* Python does this too */
+	if (UNLIKELY(string_io_buf == NULL)) {
+		string_io_buf = PyUnicode_FromFormat(
+		        "<unprintable %s object>", Py_TYPE(error_value)->tp_name);
+	}
+
+	PyErr_Restore(error_type, error_value, error_traceback);
+
+	PyErr_Print();
+	PyErr_Clear();
+	return string_io_buf;
+}
 
 /* string conversion, escape non-unicode chars, coerce must be set to NULL */
+const char *PyC_UnicodeAsByteAndSize(PyObject *py_str, Py_ssize_t *size, PyObject **coerce)
+{
+	const char *result;
+
+	result = _PyUnicode_AsStringAndSize(py_str, size);
+
+	if (result) {
+		/* 99% of the time this is enough but we better support non unicode
+		 * chars since blender doesnt limit this */
+		return result;
+	}
+	else {
+		PyErr_Clear();
+
+		if (PyBytes_Check(py_str)) {
+			*size = PyBytes_GET_SIZE(py_str);
+			return PyBytes_AS_STRING(py_str);
+		}
+		else if ((*coerce = PyUnicode_EncodeFSDefault(py_str))) {
+			*size = PyBytes_GET_SIZE(*coerce);
+			return PyBytes_AS_STRING(*coerce);
+		}
+		else {
+			/* leave error raised from EncodeFS */
+			return NULL;
+		}
+	}
+}
+
 const char *PyC_UnicodeAsByte(PyObject *py_str, PyObject **coerce)
 {
 	const char *result;
@@ -497,15 +593,6 @@ const char *PyC_UnicodeAsByte(PyObject *py_str, PyObject **coerce)
 		if (PyBytes_Check(py_str)) {
 			return PyBytes_AS_STRING(py_str);
 		}
-#ifdef WIN32
-		/* bug [#31856] oddly enough, Python3.2 --> 3.3 on Windows will throw an
-		 * exception here this needs to be fixed in python:
-		 * see: bugs.python.org/issue15859 */
-		else if (!PyUnicode_Check(py_str)) {
-			PyErr_BadArgument();
-			return NULL;
-		}
-#endif
 		else if ((*coerce = PyUnicode_EncodeFSDefault(py_str))) {
 			return PyBytes_AS_STRING(*coerce);
 		}
@@ -629,7 +716,8 @@ void PyC_SetHomePath(const char *py_path_bundle)
 
 bool PyC_IsInterpreterActive(void)
 {
-	return (((PyThreadState *)_Py_atomic_load_relaxed(&_PyThreadState_Current)) != NULL);
+	/* instead of PyThreadState_Get, which calls Py_FatalError */
+	return (PyThreadState_GetDict() != NULL);
 }
 
 /* Would be nice if python had this built in
@@ -673,7 +761,7 @@ void PyC_RunQuicky(const char *filepath, int n, ...)
 			}
 
 			if (ret == NULL) {
-				printf("PyC_InlineRun error, line:%d\n", __LINE__);
+				printf("%s error, line:%d\n", __func__, __LINE__);
 				PyErr_Print();
 				PyErr_Clear();
 
@@ -697,6 +785,7 @@ void PyC_RunQuicky(const char *filepath, int n, ...)
 		
 		/* set the value so we can access it */
 		PyDict_SetItemString(py_dict, "values", values);
+		Py_DECREF(values);
 
 		py_result = PyRun_File(fp, filepath, Py_file_input, py_dict, py_dict);
 
@@ -747,7 +836,7 @@ void PyC_RunQuicky(const char *filepath, int n, ...)
 						Py_DECREF(ret);
 					}
 					else {
-						printf("PyC_InlineRun error on arg '%d', line:%d\n", i, __LINE__);
+						printf("%s error on arg '%d', line:%d\n", __func__, i, __LINE__);
 						PyC_ObSpit("failed converting:", item_new);
 						PyErr_Print();
 						PyErr_Clear();
@@ -758,11 +847,11 @@ void PyC_RunQuicky(const char *filepath, int n, ...)
 				va_end(vargs);
 			}
 			else {
-				printf("PyC_InlineRun error, 'values' not a list, line:%d\n", __LINE__);
+				printf("%s error, 'values' not a list, line:%d\n", __func__, __LINE__);
 			}
 		}
 		else {
-			printf("PyC_InlineRun error line:%d\n", __LINE__);
+			printf("%s error line:%d\n", __func__, __LINE__);
 			PyErr_Print();
 			PyErr_Clear();
 		}
@@ -836,11 +925,11 @@ char *PyC_FlagSet_AsString(PyC_FlagSet *item)
 	return cstring;
 }
 
-int PyC_FlagSet_ValueFromID_int(PyC_FlagSet *item, const char *identifier, int *value)
+int PyC_FlagSet_ValueFromID_int(PyC_FlagSet *item, const char *identifier, int *r_value)
 {
 	for ( ; item->identifier; item++) {
 		if (STREQ(item->identifier, identifier)) {
-			*value = item->value;
+			*r_value = item->value;
 			return 1;
 		}
 	}
@@ -848,9 +937,9 @@ int PyC_FlagSet_ValueFromID_int(PyC_FlagSet *item, const char *identifier, int *
 	return 0;
 }
 
-int PyC_FlagSet_ValueFromID(PyC_FlagSet *item, const char *identifier, int *value, const char *error_prefix)
+int PyC_FlagSet_ValueFromID(PyC_FlagSet *item, const char *identifier, int *r_value, const char *error_prefix)
 {
-	if (PyC_FlagSet_ValueFromID_int(item, identifier, value) == 0) {
+	if (PyC_FlagSet_ValueFromID_int(item, identifier, r_value) == 0) {
 		const char *enum_str = PyC_FlagSet_AsString(item);
 		PyErr_Format(PyExc_ValueError,
 		             "%s: '%.200s' not found in (%s)",
@@ -920,14 +1009,14 @@ PyObject *PyC_FlagSet_FromBitfield(PyC_FlagSet *items, int flag)
 
 
 /**
- * \return -1 on error, else 0
+ * \return success
  *
  * \note it is caller's responsibility to acquire & release GIL!
  */
-int PyC_RunString_AsNumber(const char *expr, double *value, const char *filename)
+bool PyC_RunString_AsNumber(const char *expr, const char *filename, double *r_value)
 {
 	PyObject *py_dict, *mod, *retval;
-	int error_ret = 0;
+	bool ok = true;
 	PyObject *main_mod = NULL;
 
 	PyC_MainModule_Backup(&main_mod);
@@ -947,7 +1036,7 @@ int PyC_RunString_AsNumber(const char *expr, double *value, const char *filename
 	retval = PyRun_String(expr, Py_eval_input, py_dict, py_dict);
 
 	if (retval == NULL) {
-		error_ret = -1;
+		ok = false;
 	}
 	else {
 		double val;
@@ -973,17 +1062,56 @@ int PyC_RunString_AsNumber(const char *expr, double *value, const char *filename
 		Py_DECREF(retval);
 
 		if (val == -1 && PyErr_Occurred()) {
-			error_ret = -1;
+			ok = false;
 		}
-		else if (!finite(val)) {
-			*value = 0.0;
+		else if (!isfinite(val)) {
+			*r_value = 0.0;
 		}
 		else {
-			*value = val;
+			*r_value = val;
 		}
 	}
 
 	PyC_MainModule_Restore(main_mod);
 
-	return error_ret;
+	return ok;
 }
+
+bool PyC_RunString_AsString(const char *expr, const char *filename, char **r_value)
+{
+	PyObject *py_dict, *retval;
+	bool ok = true;
+	PyObject *main_mod = NULL;
+
+	PyC_MainModule_Backup(&main_mod);
+
+	py_dict = PyC_DefaultNameSpace(filename);
+
+	retval = PyRun_String(expr, Py_eval_input, py_dict, py_dict);
+
+	if (retval == NULL) {
+		ok = false;
+	}
+	else {
+		const char *val;
+		Py_ssize_t val_len;
+
+		val = _PyUnicode_AsStringAndSize(retval, &val_len);
+		if (val == NULL && PyErr_Occurred()) {
+			ok = false;
+		}
+		else {
+			char *val_alloc = MEM_mallocN(val_len + 1, __func__);
+			memcpy(val_alloc, val, val_len + 1);
+			*r_value = val_alloc;
+		}
+
+		Py_DECREF(retval);
+	}
+
+	PyC_MainModule_Restore(main_mod);
+
+	return ok;
+}
+
+#endif  /* #ifndef MATH_STANDALONE */

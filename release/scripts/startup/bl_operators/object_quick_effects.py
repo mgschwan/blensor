@@ -22,12 +22,12 @@ from mathutils import Vector
 import bpy
 from bpy.types import Operator
 from bpy.props import (
-        BoolProperty,
-        EnumProperty,
-        IntProperty,
-        FloatProperty,
-        FloatVectorProperty,
-        )
+    BoolProperty,
+    EnumProperty,
+    IntProperty,
+    FloatProperty,
+    FloatVectorProperty,
+)
 
 
 def object_ensure_material(obj, mat_name):
@@ -210,8 +210,9 @@ class QuickExplode(Operator):
 
             settings = obj.particle_systems[-1].settings
             settings.count = self.amount
-            settings.frame_start = self.frame_start
+            # first set frame end, to prevent frame start clamping
             settings.frame_end = self.frame_end - self.frame_duration
+            settings.frame_start = self.frame_start
             settings.lifetime = self.frame_duration
             settings.normal_factor = self.velocity
             settings.render_type = 'NONE'
@@ -317,6 +318,10 @@ class QuickSmoke(Operator):
             )
 
     def execute(self, context):
+        if not bpy.app.build_options.mod_smoke:
+            self.report({'ERROR'}, "Built without Smoke modifier support")
+            return {'CANCELLED'}
+
         fake_context = context.copy()
         mesh_objects = [obj for obj in context.selected_objects
                         if obj.type == 'MESH']
@@ -562,6 +567,10 @@ class QuickFluid(Operator):
             )
 
     def execute(self, context):
+        if not bpy.app.build_options.mod_fluid:
+            self.report({'ERROR'}, "Built without Fluid modifier support")
+            return {'CANCELLED'}
+
         fake_context = context.copy()
         mesh_objects = [obj for obj in context.selected_objects
                         if (obj.type == 'MESH' and 0.0 not in obj.dimensions)]
@@ -636,3 +645,11 @@ class QuickFluid(Operator):
             bpy.ops.fluid.bake('INVOKE_DEFAULT')
 
         return {'FINISHED'}
+
+
+classes = (
+    QuickExplode,
+    QuickFluid,
+    QuickFur,
+    QuickSmoke,
+)

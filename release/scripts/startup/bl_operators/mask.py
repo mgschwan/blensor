@@ -18,7 +18,6 @@
 
 # <pep8-80 compliant>
 
-import bpy
 from bpy.types import Menu
 
 
@@ -32,3 +31,8 @@ class MASK_MT_add(Menu):
         layout.operator_context = 'INVOKE_REGION_WIN'
         layout.operator("mask.primitive_circle_add", text="Circle", icon='MESH_CIRCLE')
         layout.operator("mask.primitive_square_add", text="Square", icon='MESH_PLANE')
+
+
+classes = (
+    MASK_MT_add,
+)

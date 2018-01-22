@@ -73,7 +73,7 @@ PyMethodDef KX_SCA_DynamicActuator::Methods[] = {
 
 PyAttributeDef KX_SCA_DynamicActuator::Attributes[] = {
 	KX_PYATTRIBUTE_SHORT_RW("mode",0,4,false,KX_SCA_DynamicActuator,m_dyn_operation),
-	KX_PYATTRIBUTE_FLOAT_RW("mass",0.0,FLT_MAX,KX_SCA_DynamicActuator,m_setmass),
+	KX_PYATTRIBUTE_FLOAT_RW("mass",0.0f,FLT_MAX,KX_SCA_DynamicActuator,m_setmass),
 	{ NULL }	//Sentinel
 };
 
@@ -121,7 +121,9 @@ bool KX_SCA_DynamicActuator::Update()
 	switch (m_dyn_operation)
 	{
 		case 0:
-			controller->RestoreDynamics();
+			// Child objects must be static, so we block changing to dynamic
+			if (!obj->GetParent())
+				controller->RestoreDynamics();
 			break;
 		case 1:
 			controller->SuspendDynamics();

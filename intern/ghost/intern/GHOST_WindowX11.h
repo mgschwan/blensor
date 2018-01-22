@@ -73,6 +73,7 @@ public:
 	 * \param parentWindow  Parent (embedder) window
 	 * \param type		The type of drawing context installed in this window.
 	 * \param stereoVisual	Stereo visual for quad buffered stereo.
+	 * \param alphaBackground Enable alpha blending of window with display background
 	 * \param numOfAASamples	Number of samples used for AA (zero if no AA)
 	 */
 	GHOST_WindowX11(
@@ -88,7 +89,9 @@ public:
 	    GHOST_TDrawingContextType type = GHOST_kDrawingContextTypeNone,
 	    const bool stereoVisual = false,
 	    const bool exclusive = false,
-	    const GHOST_TUns16 numOfAASamples = 0
+	    const bool alphaBackground = false,
+	    const GHOST_TUns16 numOfAASamples = 0,
+	    const bool is_debug = false
 	    );
 
 	bool
@@ -209,6 +212,10 @@ public:
 	bool createX11_XIC();
 #endif
 
+#ifdef WITH_X11_XINPUT
+	void refreshXInputDevices();
+#endif
+
 #ifdef WITH_XDND
 	GHOST_DropTargetX11 *getDropTarget()
 	{
@@ -227,6 +234,8 @@ public:
 	GHOST_TSuccess beginFullScreen() const;
 
 	GHOST_TSuccess endFullScreen() const;
+
+	GHOST_TUns16 getDPIHint();
 
 protected:
 	/**
@@ -247,7 +256,6 @@ protected:
 	/**
 	 * Sets the cursor grab on the window using
 	 * native window system calls.
-	 * \param warp	Only used when grab is enabled, hides the mouse and allows dragging outside the screen.
 	 */
 	GHOST_TSuccess
 	setWindowCursorGrab(
@@ -313,21 +321,16 @@ private:
 	Cursor
 	getEmptyCursor(
 	    );
-
-#ifdef WITH_X11_XINPUT
-	void initXInputDevices();
-#endif
 	
 	Window m_window;
 	Display *m_display;
 	XVisualInfo *m_visualInfo;
+	void *m_fbconfig;
 
 	GHOST_TWindowState m_normal_state;
 
 	/** A pointer to the typed system class. */
 	GHOST_SystemX11 *m_system;
-
-	bool m_valid_setup;
 
 	/** Used to concatenate calls to invalidate() on this window. */
 	bool m_invalid_window;
@@ -355,6 +358,9 @@ private:
 #if defined(WITH_X11_XINPUT) && defined(X_HAVE_UTF8_STRING)
 	XIC m_xic;
 #endif
+
+	bool m_valid_setup;
+	bool m_is_debug_context;
 
 	void icccmSetState(int state);
 	int icccmGetState() const;

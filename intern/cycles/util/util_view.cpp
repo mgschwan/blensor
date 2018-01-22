@@ -16,11 +16,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
-#include "util_opengl.h"
-#include "util_time.h"
-#include "util_view.h"
+#include "util/util_opengl.h"
+#include "util/util_string.h"
+#include "util/util_time.h"
+#include "util/util_version.h"
+#include "util/util_view.h"
 
 #ifdef __APPLE__
 #include <GLUT/glut.h>
@@ -97,8 +98,10 @@ void view_display_help()
 
 	glColor3f(0.8f, 0.8f, 0.8f);
 
-	view_display_text(x1+20, y2-20, "Cycles Renderer");
-	view_display_text(x1+20, y2-40, "(C) 2011-2014 Blender Foundation");
+	string info = string("Cycles Renderer ") + CYCLES_VERSION_STRING;
+
+	view_display_text(x1+20, y2-20, info.c_str());
+	view_display_text(x1+20, y2-40, "(C) 2011-2016 Blender Foundation");
 	view_display_text(x1+20, y2-80, "Controls:");
 	view_display_text(x1+20, y2-100, "h:  Info/Help");
 	view_display_text(x1+20, y2-120, "r:  Reset");
@@ -110,6 +113,7 @@ void view_display_help()
 	view_display_text(x1+20, y2-230, "Left mouse:  Move camera");
 	view_display_text(x1+20, y2-250, "Right mouse:  Rotate camera");
 	view_display_text(x1+20, y2-270, "W/A/S/D:  Move camera");
+	view_display_text(x1+20, y2-290, "0/1/2/3:  Set max bounces");
 
 	glColor3f(1.0f, 1.0f, 1.0f);
 }
@@ -218,7 +222,7 @@ static void view_idle(void)
 		glutPostRedisplay();
 	}
 
-	time_sleep(0.1f);
+	time_sleep(0.1);
 }
 
 void view_main_loop(const char *title, int width, int height,

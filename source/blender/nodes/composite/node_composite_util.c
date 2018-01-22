@@ -43,7 +43,7 @@ void cmp_node_update_default(bNodeTree *UNUSED(ntree), bNode *node)
 	for (sock = node->outputs.first; sock; sock = sock->next) {
 		if (sock->cache) {
 			//free_compbuf(sock->cache);
-			//sock->cache= NULL;
+			//sock->cache = NULL;
 		}
 	}
 	node->need_exec = 1;
@@ -55,5 +55,6 @@ void cmp_node_type_base(bNodeType *ntype, int type, const char *name, short ncla
 	
 	ntype->poll = cmp_node_poll_default;
 	ntype->updatefunc = cmp_node_update_default;
+	ntype->insert_link = node_insert_link_default;
 	ntype->update_internal_links = node_update_internal_links_default;
 }

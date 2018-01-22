@@ -60,16 +60,3 @@ if(WITH_INTERNATIONAL)
 endif()
 
 blender_add_lib(bf_intern_locale "${SRC}" "${INC}" "${INC_SYS}")
-
-# -----------------------------------------------------------------------------
-# Build msgfmt executable
-set(MSFFMT_SRC
-	msgfmt.cc
-)
-add_executable(msgfmt ${MSFFMT_SRC})
-
-if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND (NOT (CMAKE_C_COMPILER_VERSION VERSION_LESS 3.4)))
-	# needed for clang 3.4+
-	target_link_libraries(msgfmt ${PLATFORM_LINKLIBS})
-endif()
-

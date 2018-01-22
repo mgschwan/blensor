@@ -14,23 +14,26 @@
  * limitations under the License.
  */
 
-#include "background.h"
-#include "blackbody.h"
-#include "device.h"
-#include "graph.h"
-#include "light.h"
-#include "mesh.h"
-#include "nodes.h"
-#include "object.h"
-#include "osl.h"
-#include "scene.h"
-#include "shader.h"
-#include "svm.h"
-#include "tables.h"
+#include "render/background.h"
+#include "render/camera.h"
+#include "device/device.h"
+#include "render/graph.h"
+#include "render/integrator.h"
+#include "render/light.h"
+#include "render/mesh.h"
+#include "render/nodes.h"
+#include "render/object.h"
+#include "render/osl.h"
+#include "render/scene.h"
+#include "render/shader.h"
+#include "render/svm.h"
+#include "render/tables.h"
 
-#include "util_foreach.h"
+#include "util/util_foreach.h"
 
 CCL_NAMESPACE_BEGIN
+
+vector<float> ShaderManager::beckmann_table;
 
 /* Beckmann sampling precomputed table, see bsdf_microfacet.h */
 
@@ -45,6 +48,16 @@ static float beckmann_table_slope_max()
 {
 	return 6.0;
 }
+
+
+/* MSVC 2015 needs this ugly hack to prevent a codegen bug on x86
+ * see T50176 for details
+ */
+#if defined(_MSC_VER) && (_MSC_VER == 1900)
+#  define MSVC_VOLATILE volatile
+#else
+#  define MSVC_VOLATILE
+#endif
 
 /* Paper used: Importance Sampling Microfacet-Based BSDFs with the
  * Distribution of Visible Normals. Supplemental Material 2/2.
@@ -66,12 +79,12 @@ static void beckmann_table_rows(float *table, int row_from, int row_to)
 
 		/* for a given incident vector
 		 * integrate P22_{omega_i}(x_slope, 1, 1), Eq. (10) */
-		slope_x[0] = -beckmann_table_slope_max();
+		slope_x[0] = (double)-beckmann_table_slope_max();
 		CDF_P22_omega_i[0] = 0;
 
-		for(int index_slope_x = 1; index_slope_x < DATA_TMP_SIZE; ++index_slope_x) {
+		for(MSVC_VOLATILE int index_slope_x = 1; index_slope_x < DATA_TMP_SIZE; ++index_slope_x) {
 			/* slope_x */
-			slope_x[index_slope_x] = -beckmann_table_slope_max() + 2.0f * beckmann_table_slope_max() * index_slope_x/(DATA_TMP_SIZE - 1.0f);
+			slope_x[index_slope_x] = (double)(-beckmann_table_slope_max() + 2.0f * beckmann_table_slope_max() * index_slope_x/(DATA_TMP_SIZE - 1.0f));
 
 			/* dot product with incident vector */
 			float dot_product = fmaxf(0.0f, -(float)slope_x[index_slope_x]*sin_theta + cos_theta);
@@ -113,6 +126,8 @@ static void beckmann_table_rows(float *table, int row_from, int row_to)
 	}
 }
 
+#undef MSVC_VOLATILE
+
 static void beckmann_table_build(vector<float>& table)
 {
 	table.resize(BECKMANN_TABLE_SIZE*BECKMANN_TABLE_SIZE);
@@ -128,31 +143,58 @@ static void beckmann_table_build(vector<float>& table)
 
 /* Shader */
 
-Shader::Shader()
+NODE_DEFINE(Shader)
 {
-	name = "";
+	NodeType* type = NodeType::add("shader", create);
+
+	SOCKET_BOOLEAN(use_mis, "Use MIS", true);
+	SOCKET_BOOLEAN(use_transparent_shadow, "Use Transparent Shadow", true);
+	SOCKET_BOOLEAN(heterogeneous_volume, "Heterogeneous Volume", true);
+
+	static NodeEnum volume_sampling_method_enum;
+	volume_sampling_method_enum.insert("distance", VOLUME_SAMPLING_DISTANCE);
+	volume_sampling_method_enum.insert("equiangular", VOLUME_SAMPLING_EQUIANGULAR);
+	volume_sampling_method_enum.insert("multiple_importance", VOLUME_SAMPLING_MULTIPLE_IMPORTANCE);
+	SOCKET_ENUM(volume_sampling_method, "Volume Sampling Method", volume_sampling_method_enum, VOLUME_SAMPLING_DISTANCE);
+
+	static NodeEnum volume_interpolation_method_enum;
+	volume_interpolation_method_enum.insert("linear", VOLUME_INTERPOLATION_LINEAR);
+	volume_interpolation_method_enum.insert("cubic", VOLUME_INTERPOLATION_CUBIC);
+	SOCKET_ENUM(volume_interpolation_method, "Volume Interpolation Method", volume_interpolation_method_enum, VOLUME_INTERPOLATION_LINEAR);
+
+	static NodeEnum displacement_method_enum;
+	displacement_method_enum.insert("bump", DISPLACE_BUMP);
+	displacement_method_enum.insert("true", DISPLACE_TRUE);
+	displacement_method_enum.insert("both", DISPLACE_BOTH);
+	SOCKET_ENUM(displacement_method, "Displacement Method", displacement_method_enum, DISPLACE_BUMP);
+
+	return type;
+}
+
+Shader::Shader()
+: Node(node_type)
+{
 	pass_id = 0;
 
 	graph = NULL;
 	graph_bump = NULL;
 
-	use_mis = true;
-	use_transparent_shadow = true;
-	heterogeneous_volume = true;
-	volume_sampling_method = VOLUME_SAMPLING_DISTANCE;
-	volume_interpolation_method = VOLUME_INTERPOLATION_LINEAR;
-
 	has_surface = false;
 	has_surface_transparent = false;
 	has_surface_emission = false;
 	has_surface_bssrdf = false;
-	has_converter_blackbody = false;
 	has_volume = false;
 	has_displacement = false;
 	has_bssrdf_bump = false;
-	has_heterogeneous_volume = false;
+	has_surface_spatial_varying = false;
+	has_volume_spatial_varying = false;
 	has_object_dependency = false;
+	has_integrator_dependency = false;
+	has_volume_connected = false;
 
+	displacement_method = DISPLACE_BUMP;
+
+	id = -1;
 	used = false;
 
 	need_update = true;
@@ -165,19 +207,45 @@ Shader::~Shader()
 	delete graph_bump;
 }
 
+bool Shader::is_constant_emission(float3 *emission)
+{
+	ShaderInput *surf = graph->output()->input("Surface");
+
+	if(!surf->link || surf->link->parent->type != EmissionNode::node_type) {
+		return false;
+	}
+
+	EmissionNode *node = (EmissionNode*) surf->link->parent;
+
+	assert(node->input("Color"));
+	assert(node->input("Strength"));
+
+	if(node->input("Color")->link || node->input("Strength")->link) {
+		return false;
+	}
+
+	*emission = node->color*node->strength;
+
+	return true;
+}
+
 void Shader::set_graph(ShaderGraph *graph_)
 {
 	/* do this here already so that we can detect if mesh or object attributes
 	 * are needed, since the node attribute callbacks check if their sockets
 	 * are connected but proxy nodes should not count */
 	if(graph_)
-		graph_->remove_unneeded_nodes();
+		graph_->remove_proxy_nodes();
 
 	/* assign graph */
 	delete graph;
 	delete graph_bump;
 	graph = graph_;
 	graph_bump = NULL;
+
+	/* Store info here before graph optimization to make sure that
+	 * nodes that get optimized away still count. */
+	has_volume_connected = (graph->output()->input("Volume")->link != NULL);
 }
 
 void Shader::tag_update(Scene *scene)
@@ -191,6 +259,16 @@ void Shader::tag_update(Scene *scene)
 	 * done in the shader manager device update. */
 	if(use_mis && has_surface_emission)
 		scene->light_manager->need_update = true;
+
+	/* Special handle of background MIS light for now: for some reason it
+	 * has use_mis set to false. We are quite close to release now, so
+	 * better to be safe.
+	 */
+	if(this == scene->default_background &&
+	   scene->light_manager->has_background_light(scene))
+	{
+		scene->light_manager->need_update = true;
+	}
 
 	/* quick detection of which kind of shaders we have to avoid loading
 	 * e.g. surface attributes when there is only a volume shader. this could
@@ -211,6 +289,10 @@ void Shader::tag_update(Scene *scene)
 	attributes.clear();
 	foreach(ShaderNode *node, graph->nodes)
 		node->attributes(this, &attributes);
+
+	if(has_displacement && displacement_method == DISPLACE_BOTH) {
+		attributes.add(ATTR_STD_POSITION_UNDISPLACED);
+	}
 	
 	/* compare if the attributes changed, mesh manager will check
 	 * need_update_attributes, update the relevant meshes and clear it. */
@@ -240,7 +322,6 @@ void Shader::tag_used(Scene *scene)
 ShaderManager::ShaderManager()
 {
 	need_update = true;
-	blackbody_table_offset = TABLE_OFFSET_INVALID;
 	beckmann_table_offset = TABLE_OFFSET_INVALID;
 }
 
@@ -252,12 +333,17 @@ ShaderManager *ShaderManager::create(Scene *scene, int shadingsystem)
 {
 	ShaderManager *manager;
 
+	(void)shadingsystem;  /* Ignored when built without OSL. */
+
 #ifdef WITH_OSL
-	if(shadingsystem == SHADINGSYSTEM_OSL)
+	if(shadingsystem == SHADINGSYSTEM_OSL) {
 		manager = new OSLShaderManager();
+	}
 	else
 #endif
+	{
 		manager = new SVMShaderManager();
+	}
 	
 	add_default(scene);
 
@@ -266,6 +352,8 @@ ShaderManager *ShaderManager::create(Scene *scene, int shadingsystem)
 
 uint ShaderManager::get_attribute_id(ustring name)
 {
+	thread_scoped_spin_lock lock(attribute_lock_);
+
 	/* get a unique id for each name, for SVM attribute lookup */
 	AttributeIDMap::iterator it = unique_attribute_id.find(name);
 
@@ -282,14 +370,11 @@ uint ShaderManager::get_attribute_id(AttributeStandard std)
 	return (uint)std;
 }
 
-int ShaderManager::get_shader_id(uint shader, Mesh *mesh, bool smooth)
+int ShaderManager::get_shader_id(Shader *shader, bool smooth)
 {
 	/* get a shader id to pass to the kernel */
-	int id = shader*2;
-	
-	/* index depends bump since this setting is not in the shader */
-	if(mesh && mesh->displacement_method != Mesh::DISPLACE_TRUE)
-		id += 1;
+	int id = shader->id;
+
 	/* smooth flag */
 	if(smooth)
 		id |= SHADER_SMOOTH_NORMAL;
@@ -304,24 +389,33 @@ void ShaderManager::device_update_shaders_used(Scene *scene)
 {
 	/* figure out which shaders are in use, so SVM/OSL can skip compiling them
 	 * for speed and avoid loading image textures into memory */
-	foreach(Shader *shader, scene->shaders)
+	uint id = 0;
+	foreach(Shader *shader, scene->shaders) {
 		shader->used = false;
+		shader->id = id++;
+	}
 
-	scene->shaders[scene->background->shader]->used = true;
-	scene->shaders[scene->default_surface]->used = true;
-	scene->shaders[scene->default_light]->used = true;
-	scene->shaders[scene->default_background]->used = true;
-	scene->shaders[scene->default_empty]->used = true;
+	scene->default_surface->used = true;
+	scene->default_light->used = true;
+	scene->default_background->used = true;
+	scene->default_empty->used = true;
+
+	if(scene->background->shader)
+		scene->background->shader->used = true;
 
 	foreach(Mesh *mesh, scene->meshes)
-		foreach(uint shader, mesh->used_shaders)
-			scene->shaders[shader]->used = true;
+		foreach(Shader *shader, mesh->used_shaders)
+			shader->used = true;
 
 	foreach(Light *light, scene->lights)
-		scene->shaders[light->shader]->used = true;
+		if(light->shader)
+			light->shader->used = true;
 }
 
-void ShaderManager::device_update_common(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress)
+void ShaderManager::device_update_common(Device *device,
+                                         DeviceScene *dscene,
+                                         Scene *scene,
+                                         Progress& /*progress*/)
 {
 	device->tex_free(dscene->shader_flag);
 	dscene->shader_flag.clear();
@@ -329,11 +423,11 @@ void ShaderManager::device_update_common(Device *device, DeviceScene *dscene, Sc
 	if(scene->shaders.size() == 0)
 		return;
 
-	uint shader_flag_size = scene->shaders.size()*4;
+	uint shader_flag_size = scene->shaders.size()*SHADER_SIZE;
 	uint *shader_flag = dscene->shader_flag.resize(shader_flag_size);
 	uint i = 0;
-	bool has_converter_blackbody = false;
 	bool has_volumes = false;
+	bool has_transparent_shadow = false;
 
 	foreach(Shader *shader, scene->shaders) {
 		uint flag = 0;
@@ -346,21 +440,18 @@ void ShaderManager::device_update_common(Device *device, DeviceScene *dscene, Sc
 			flag |= SD_HAS_VOLUME;
 			has_volumes = true;
 
-			/* in this case we can assume transparent surface */
-			if(!shader->has_surface)
-				flag |= SD_HAS_ONLY_VOLUME;
-
 			/* todo: this could check more fine grained, to skip useless volumes
-			 * enclosed inside an opaque bsdf, although we still need to handle
-			 * the case with camera inside volumes too */
+			 * enclosed inside an opaque bsdf.
+			 */
 			flag |= SD_HAS_TRANSPARENT_SHADOW;
 		}
-		if(shader->heterogeneous_volume && shader->has_heterogeneous_volume)
+		/* in this case we can assume transparent surface */
+		if(shader->has_volume_connected && !shader->has_surface)
+			flag |= SD_HAS_ONLY_VOLUME;
+		if(shader->heterogeneous_volume && shader->has_volume_spatial_varying)
 			flag |= SD_HETEROGENEOUS_VOLUME;
 		if(shader->has_bssrdf_bump)
 			flag |= SD_HAS_BSSRDF_BUMP;
-		if(shader->has_converter_blackbody)
-			has_converter_blackbody = true;
 		if(shader->volume_sampling_method == VOLUME_SAMPLING_EQUIANGULAR)
 			flag |= SD_VOLUME_EQUIANGULAR;
 		if(shader->volume_sampling_method == VOLUME_SAMPLING_MULTIPLE_IMPORTANCE)
@@ -369,62 +460,57 @@ void ShaderManager::device_update_common(Device *device, DeviceScene *dscene, Sc
 			flag |= SD_VOLUME_CUBIC;
 		if(shader->graph_bump)
 			flag |= SD_HAS_BUMP;
+		if(shader->displacement_method != DISPLACE_BUMP)
+			flag |= SD_HAS_DISPLACEMENT;
+
+		/* shader with bump mapping */
+		if(shader->displacement_method != DISPLACE_TRUE && shader->graph_bump)
+			flag |= SD_HAS_BSSRDF_BUMP;
+
+		/* constant emission check */
+		float3 constant_emission = make_float3(0.0f, 0.0f, 0.0f);
+		if(shader->is_constant_emission(&constant_emission))
+			flag |= SD_HAS_CONSTANT_EMISSION;
 
 		/* regular shader */
 		shader_flag[i++] = flag;
 		shader_flag[i++] = shader->pass_id;
+		shader_flag[i++] = __float_as_int(constant_emission.x);
+		shader_flag[i++] = __float_as_int(constant_emission.y);
+		shader_flag[i++] = __float_as_int(constant_emission.z);
 
-		/* shader with bump mapping */
-		if(shader->graph_bump)
-			flag |= SD_HAS_BSSRDF_BUMP;
-
-		shader_flag[i++] = flag;
-		shader_flag[i++] = shader->pass_id;
+		has_transparent_shadow |= (flag & SD_HAS_TRANSPARENT_SHADOW) != 0;
 	}
 
 	device->tex_alloc("__shader_flag", dscene->shader_flag);
 
-	/* blackbody lookup table */
+	/* lookup tables */
 	KernelTables *ktables = &dscene->data.tables;
-	
-	if(has_converter_blackbody && blackbody_table_offset == TABLE_OFFSET_INVALID) {
-		if(blackbody_table.size() == 0) {
-			blackbody_table = blackbody_table_build();
-		}
-		blackbody_table_offset = scene->lookup_tables->add_table(dscene, blackbody_table);
-		
-		ktables->blackbody_offset = (int)blackbody_table_offset;
-	}
-	else if(!has_converter_blackbody && blackbody_table_offset != TABLE_OFFSET_INVALID) {
-		scene->lookup_tables->remove_table(blackbody_table_offset);
-		blackbody_table_offset = TABLE_OFFSET_INVALID;
-	}
 
 	/* beckmann lookup table */
 	if(beckmann_table_offset == TABLE_OFFSET_INVALID) {
 		if(beckmann_table.size() == 0) {
-			beckmann_table_build(beckmann_table);
+			thread_scoped_lock lock(lookup_table_mutex);
+			if(beckmann_table.size() == 0) {
+				beckmann_table_build(beckmann_table);
+			}
 		}
 		beckmann_table_offset = scene->lookup_tables->add_table(dscene, beckmann_table);
-		ktables->beckmann_offset = (int)beckmann_table_offset;
 	}
+	ktables->beckmann_offset = (int)beckmann_table_offset;
 
 	/* integrator */
 	KernelIntegrator *kintegrator = &dscene->data.integrator;
 	kintegrator->use_volumes = has_volumes;
+	/* TODO(sergey): De-duplicate with flags set in integrator.cpp. */
+	if(scene->integrator->transparent_shadows) {
+		kintegrator->transparent_shadows = has_transparent_shadow;
+	}
 }
 
 void ShaderManager::device_free_common(Device *device, DeviceScene *dscene, Scene *scene)
 {
-	if(blackbody_table_offset != TABLE_OFFSET_INVALID) {
-		scene->lookup_tables->remove_table(blackbody_table_offset);
-		blackbody_table_offset = TABLE_OFFSET_INVALID;
-	}
-
-	if(beckmann_table_offset != TABLE_OFFSET_INVALID) {
-		scene->lookup_tables->remove_table(beckmann_table_offset);
-		beckmann_table_offset = TABLE_OFFSET_INVALID;
-	}
+	scene->lookup_tables->remove_table(&beckmann_table_offset);
 
 	device->tex_free(dscene->shader_flag);
 	dscene->shader_flag.clear();
@@ -432,66 +518,120 @@ void ShaderManager::device_free_common(Device *device, DeviceScene *dscene, Scen
 
 void ShaderManager::add_default(Scene *scene)
 {
-	Shader *shader;
-	ShaderGraph *graph;
-	ShaderNode *closure, *out;
-
 	/* default surface */
 	{
-		graph = new ShaderGraph();
+		ShaderGraph *graph = new ShaderGraph();
 
-		closure = graph->add(new DiffuseBsdfNode());
-		closure->input("Color")->value = make_float3(0.8f, 0.8f, 0.8f);
-		out = graph->output();
+		DiffuseBsdfNode *diffuse = new DiffuseBsdfNode();
+		diffuse->color = make_float3(0.8f, 0.8f, 0.8f);
+		graph->add(diffuse);
 
-		graph->connect(closure->output("BSDF"), out->input("Surface"));
+		graph->connect(diffuse->output("BSDF"), graph->output()->input("Surface"));
 
-		shader = new Shader();
+		Shader *shader = new Shader();
 		shader->name = "default_surface";
 		shader->graph = graph;
 		scene->shaders.push_back(shader);
-		scene->default_surface = scene->shaders.size() - 1;
+		scene->default_surface = shader;
 	}
 
 	/* default light */
 	{
-		graph = new ShaderGraph();
+		ShaderGraph *graph = new ShaderGraph();
 
-		closure = graph->add(new EmissionNode());
-		closure->input("Color")->value = make_float3(0.8f, 0.8f, 0.8f);
-		closure->input("Strength")->value.x = 0.0f;
-		out = graph->output();
+		EmissionNode *emission = new EmissionNode();
+		emission->color = make_float3(0.8f, 0.8f, 0.8f);
+		emission->strength = 0.0f;
+		graph->add(emission);
 
-		graph->connect(closure->output("Emission"), out->input("Surface"));
+		graph->connect(emission->output("Emission"), graph->output()->input("Surface"));
 
-		shader = new Shader();
+		Shader *shader = new Shader();
 		shader->name = "default_light";
 		shader->graph = graph;
 		scene->shaders.push_back(shader);
-		scene->default_light = scene->shaders.size() - 1;
+		scene->default_light = shader;
 	}
 
 	/* default background */
 	{
-		graph = new ShaderGraph();
+		ShaderGraph *graph = new ShaderGraph();
 
-		shader = new Shader();
+		Shader *shader = new Shader();
 		shader->name = "default_background";
 		shader->graph = graph;
 		scene->shaders.push_back(shader);
-		scene->default_background = scene->shaders.size() - 1;
+		scene->default_background = shader;
 	}
 
 	/* default empty */
 	{
-		graph = new ShaderGraph();
+		ShaderGraph *graph = new ShaderGraph();
 
-		shader = new Shader();
+		Shader *shader = new Shader();
 		shader->name = "default_empty";
 		shader->graph = graph;
 		scene->shaders.push_back(shader);
-		scene->default_empty = scene->shaders.size() - 1;
+		scene->default_empty = shader;
 	}
+}
+
+void ShaderManager::get_requested_graph_features(ShaderGraph *graph,
+                                                 DeviceRequestedFeatures *requested_features)
+{
+	foreach(ShaderNode *node, graph->nodes) {
+		requested_features->max_nodes_group = max(requested_features->max_nodes_group,
+		                                          node->get_group());
+		requested_features->nodes_features |= node->get_feature();
+		if(node->special_type == SHADER_SPECIAL_TYPE_CLOSURE) {
+			BsdfNode *bsdf_node = static_cast<BsdfNode*>(node);
+			if(CLOSURE_IS_VOLUME(bsdf_node->closure)) {
+				requested_features->nodes_features |= NODE_FEATURE_VOLUME;
+			}
+			else if(CLOSURE_IS_PRINCIPLED(bsdf_node->closure)) {
+				requested_features->use_principled = true;
+			}
+		}
+		if(node->has_surface_bssrdf()) {
+			requested_features->use_subsurface = true;
+		}
+		if(node->has_surface_transparent()) {
+			requested_features->use_transparent = true;
+		}
+	}
+}
+
+void ShaderManager::get_requested_features(Scene *scene,
+                                           DeviceRequestedFeatures *requested_features)
+{
+	requested_features->max_nodes_group = NODE_GROUP_LEVEL_0;
+	requested_features->nodes_features = 0;
+	for(int i = 0; i < scene->shaders.size(); i++) {
+		Shader *shader = scene->shaders[i];
+		/* Gather requested features from all the nodes from the graph nodes. */
+		get_requested_graph_features(shader->graph, requested_features);
+		/* Gather requested features from the graph itself. */
+		if(shader->graph_bump) {
+			get_requested_graph_features(shader->graph_bump,
+			                             requested_features);
+		}
+		ShaderNode *output_node = shader->graph->output();
+		if(output_node->input("Displacement")->link != NULL) {
+			requested_features->nodes_features |= NODE_FEATURE_BUMP;
+			if(shader->displacement_method == DISPLACE_BOTH && requested_features->experimental) {
+				requested_features->nodes_features |= NODE_FEATURE_BUMP_STATE;
+			}
+		}
+		/* On top of volume nodes, also check if we need volume sampling because
+		 * e.g. an Emission node would slip through the NODE_FEATURE_VOLUME check */
+		if(shader->has_volume)
+			requested_features->use_volume |= true;
+	}
+}
+
+void ShaderManager::free_memory()
+{
+	beckmann_table.free_memory();
 }
 
 CCL_NAMESPACE_END

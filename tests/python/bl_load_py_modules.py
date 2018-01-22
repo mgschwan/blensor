@@ -32,14 +32,55 @@ import os
 
 BLACKLIST = {
     "bl_i18n_utils",
+    "bl_previews_utils",
     "cycles",
     "io_export_dxf",  # TODO, check on why this fails
     'io_import_dxf',  # Because of cydxfentity.so dependency
+
+    # The unpacked wheel is only loaded when actually used, not directly on import:
+    os.path.join("io_blend_utils", "blender_bam-unpacked.whl"),
     }
+
+# Some modules need to add to the `sys.path`.
+MODULE_SYS_PATHS = {
+    # Runs in a Python subprocess, so its expected its basedir can be imported.
+    "io_blend_utils.blendfile_pack": ".",
+    }
+
+if not bpy.app.build_options.freestyle:
+    BLACKLIST.add("render_freestyle_svg")
 
 BLACKLIST_DIRS = (
     os.path.join(bpy.utils.resource_path('USER'), "scripts"),
     ) + tuple(addon_utils.paths()[1:])
+
+
+def module_names_recursive(mod_dir, *, parent=None):
+    """
+    a version of bpy.path.module_names that includes non-packages
+    """
+
+    is_package = os.path.exists(os.path.join(mod_dir, "__init__.py"))
+
+    for n in os.listdir(mod_dir):
+        if not n.startswith((".", "_")):
+            submod_full = os.path.join(mod_dir, n)
+            if os.path.isdir(submod_full):
+                if not parent:
+                    subparent = n
+                else:
+                    subparent = parent + "." + n
+                yield from module_names_recursive(submod_full, parent=subparent)
+            elif n.endswith(".py") and is_package is False:
+                submod = n[:-3]
+                if parent:
+                    submod = parent + "." + submod
+                yield submod, submod_full
+
+
+def module_names_all(mod_dir):
+    yield from bpy.path.module_names(mod_dir)
+    yield from module_names_recursive(mod_dir)
 
 
 def addon_modules_sorted():
@@ -52,9 +93,8 @@ def addon_modules_sorted():
 def source_list(path, filename_check=None):
     from os.path import join
     for dirpath, dirnames, filenames in os.walk(path):
-        # skip '.svn'
-        if dirpath.startswith("."):
-            continue
+        # skip '.git'
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
 
         for filename in filenames:
             filepath = join(dirpath, filename)
@@ -68,14 +108,17 @@ def load_addons():
 
     # first disable all
     for mod_name in list(addons.keys()):
-        addon_utils.disable(mod_name)
+        addon_utils.disable(mod_name, default_set=True)
 
     assert(bool(addons) is False)
 
     for mod in modules:
         mod_name = mod.__name__
+        if mod_name in BLACKLIST:
+            continue
         addon_utils.enable(mod_name, default_set=True)
-        assert(mod_name in addons)
+        if not (mod_name in addons):
+            raise Exception("'addon_utils.enable(%r)' call failed" % mod_name)
 
 
 def load_modules():
@@ -123,16 +166,39 @@ def load_modules():
         filepath = m.__file__
         if os.path.basename(filepath).startswith("__init__."):
             mod_dir = os.path.dirname(filepath)
-            for submod, submod_full in bpy.path.module_names(mod_dir):
+            for submod, submod_full in module_names_all(mod_dir):
                 # fromlist is ignored, ugh.
                 mod_name_full = m.__name__ + "." + submod
-                __import__(mod_name_full)
-                mod_imp = sys.modules[mod_name_full]
 
-                # check we load what we ask for.
-                assert(os.path.samefile(mod_imp.__file__, submod_full))
+                sys_path_back = sys.path[:]
 
-                modules.append(mod_imp)
+                sys.path.extend([
+                    os.path.normpath(os.path.join(mod_dir, f))
+                    for f in MODULE_SYS_PATHS.get(mod_name_full, ())
+                    ])
+
+                try:
+                    __import__(mod_name_full)
+                    mod_imp = sys.modules[mod_name_full]
+
+                    sys.path[:] = sys_path_back
+
+                    # check we load what we ask for.
+                    assert(os.path.samefile(mod_imp.__file__, submod_full))
+
+                    modules.append(mod_imp)
+                except Exception as e:
+                    import traceback
+                    # Module might fail to import, but we don't want whole test to fail here.
+                    # Reasoning:
+                    # - This module might be in ignored list (for example, preset or template),
+                    #   so failing here will cause false-positive test failure.
+                    # - If this is module which should not be ignored, it is not added to list
+                    #   of successfully loaded modules, meaning the test will catch this
+                    #   import failure.
+                    # - We want to catch all failures of this script instead of stopping on
+                    #   a first big failure.
+                    traceback.print_exc()
 
     #
     # check which filepaths we didn't load
@@ -156,14 +222,14 @@ def load_modules():
     ignore_paths = [
         os.sep + "presets" + os.sep,
         os.sep + "templates" + os.sep,
-    ] + [(os.sep + f + os.sep) for f in BLACKLIST]
+    ] + ([(os.sep + f + os.sep) for f in BLACKLIST] +
+         [(os.sep + f + ".py")  for f in BLACKLIST])
 
     for f in source_files:
-        ok = False
         for ignore in ignore_paths:
             if ignore in f:
-                ok = True
-        if not ok:
+                break
+        else:
             raise Exception("Source file %r not loaded in test" % f)
 
     print("loaded %d modules" % len(loaded_files))

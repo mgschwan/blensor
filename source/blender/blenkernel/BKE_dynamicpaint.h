@@ -27,8 +27,6 @@
  *  \ingroup bke
  */
 
-struct bContext;
-struct wmOperator;
 struct Scene;
 
 /* Actual surface point	*/
@@ -47,12 +45,10 @@ typedef struct PaintPoint {
 
 	/* Wet paint is handled at effect layer only
 	 * and mixed to surface when drying */
-	float e_color[3];
-	float e_alpha;
+	float e_color[4];
 	float wetness;
 	short state;
-	float color[3];
-	float alpha;
+	float color[4];
 } PaintPoint;
 
 /* heigh field waves	*/
@@ -86,7 +82,7 @@ void dynamicPaint_resetPreview(struct DynamicPaintCanvasSettings *canvas);
 struct DynamicPaintSurface *get_activeSurface(struct DynamicPaintCanvasSettings *canvas);
 
 /* image sequence baking */
-int dynamicPaint_createUVSurface(struct Scene *scene, struct DynamicPaintSurface *surface);
+int dynamicPaint_createUVSurface(struct Scene *scene, struct DynamicPaintSurface *surface, float *progress, short *do_update);
 int dynamicPaint_calculateFrame(struct DynamicPaintSurface *surface, struct Scene *scene, struct Object *cObject, int frame);
 void dynamicPaint_outputSurfaceImage(struct DynamicPaintSurface *surface, char *filename, short output_layer);
 

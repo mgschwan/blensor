@@ -60,55 +60,11 @@
 #  define CLOTH_OPENMP_LIMIT 512
 #endif
 
-#if 0  /* debug timing */
-#ifdef _WIN32
-#include <windows.h>
-static LARGE_INTEGER _itstart, _itend;
-static LARGE_INTEGER ifreq;
-static void itstart(void)
-{
-	static int first = 1;
-	if (first) {
-		QueryPerformanceFrequency(&ifreq);
-		first = 0;
-	}
-	QueryPerformanceCounter(&_itstart);
-}
-static void itend(void)
-{
-	QueryPerformanceCounter(&_itend);
-}
-double itval(void)
-{
-	return ((double)_itend.QuadPart -
-	        (double)_itstart.QuadPart)/((double)ifreq.QuadPart);
-}
-#else
-#include <sys/time.h>
-// intrinsics need better compile flag checking
-// #include <xmmintrin.h>
-// #include <pmmintrin.h>
-// #include <pthread.h>
+//#define DEBUG_TIME
 
-static struct timeval _itstart, _itend;
-static struct timezone itz;
-static void itstart(void)
-{
-	gettimeofday(&_itstart, &itz);
-}
-static void itend(void)
-{
-	gettimeofday(&_itend, &itz);
-}
-static double itval(void)
-{
-	double t1, t2;
-	t1 =  (double)_itstart.tv_sec + (double)_itstart.tv_usec/(1000*1000);
-	t2 =  (double)_itend.tv_sec + (double)_itend.tv_usec/(1000*1000);
-	return t2-t1;
-}
+#ifdef DEBUG_TIME
+#	include "PIL_time.h"
 #endif
-#endif  /* debug timing */
 
 static float I[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
 static float ZERO[3][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
@@ -989,7 +945,9 @@ static int cg_filtered_pre(lfVector *dv, fmatrix3x3 *lA, lfVector *lB, lfVector 
 	
 	delta0 = deltaNew * sqrt(conjgrad_epsilon);
 	
-	// itstart();
+#ifdef DEBUG_TIME
+	double start = PIL_check_seconds_timer();
+#endif
 	
 	while ((deltaNew > delta0) && (iterations < conjgrad_looplimit))
 	{
@@ -1016,9 +974,11 @@ static int cg_filtered_pre(lfVector *dv, fmatrix3x3 *lA, lfVector *lB, lfVector 
 		filter(p, S);
 		
 	}
-	
-	// itend();
-	// printf("cg_filtered_pre time: %f\n", (float)itval());
+
+#ifdef DEBUG_TIME
+	double end = PIL_check_seconds_timer();
+	printf("cg_filtered_pre time: %f\n", (float)(end - start));
+#endif
 	
 	del_lfvector(h);
 	del_lfvector(s);
@@ -1087,8 +1047,10 @@ static int cg_filtered_pre(lfVector *dv, fmatrix3x3 *lA, lfVector *lB, lfVector 
 	
 	delta0 = deltaNew * sqrt(conjgrad_epsilon);
 	*/
-	
-	// itstart();
+
+#ifdef DEBUG_TIME
+	double start = PIL_check_seconds_timer();
+#endif
 	
 	tol = (0.01*0.2);
 	
@@ -1117,10 +1079,12 @@ static int cg_filtered_pre(lfVector *dv, fmatrix3x3 *lA, lfVector *lB, lfVector 
 		filter(p, S);
 		
 	}
-	
-	// itend();
-	// printf("cg_filtered_pre time: %f\n", (float)itval());
-	
+
+#ifdef DEBUG_TIME
+	double end = PIL_check_seconds_timer();
+	printf("cg_filtered_pre time: %f\n", (float)(end - start));
+#endif
+
 	del_lfvector(btemp);
 	del_lfvector(bhat);
 	del_lfvector(h);
@@ -1149,13 +1113,17 @@ bool BPH_mass_spring_solve_velocities(Implicit_Data *data, float dt, ImplicitSol
 
 	add_lfvectorS_lfvectorS(data->B, data->F, dt, dFdXmV, (dt*dt), numverts);
 
-	// itstart();
+#ifdef DEBUG_TIME
+	double start = PIL_check_seconds_timer();
+#endif
 
 	cg_filtered(data->dV, data->A, data->B, data->z, data->S, result); /* conjugate gradient algorithm to solve Ax=b */
 	// cg_filtered_pre(id->dV, id->A, id->B, id->z, id->S, id->P, id->Pinv, id->bigI);
 
-	// itend();
-	// printf("cg_filtered calc time: %f\n", (float)itval());
+#ifdef DEBUG_TIME
+	double end = PIL_check_seconds_timer();
+	printf("cg_filtered calc time: %f\n", (float)(end - start));
+#endif
 
 	// advance velocities
 	add_lfvector_lfvector(data->Vnew, data->V, data->dV, numverts);
@@ -1424,33 +1392,16 @@ static float calc_nor_area_tri(float nor[3], const float v1[3], const float v2[3
 	return normalize_v3(nor);
 }
 
-static float calc_nor_area_quad(float nor[3], const float v1[3], const float v2[3], const float v3[3], const float v4[3])
-{
-	float n1[3], n2[3];
-	
-	sub_v3_v3v3(n1, v1, v3);
-	sub_v3_v3v3(n2, v2, v4);
-	
-	cross_v3_v3v3(nor, n1, n2);
-	return normalize_v3(nor);
-}
-
 /* XXX does not support force jacobians yet, since the effector system does not provide them either */
-void BPH_mass_spring_force_face_wind(Implicit_Data *data, int v1, int v2, int v3, int v4, const float (*winvec)[3])
+void BPH_mass_spring_force_face_wind(Implicit_Data *data, int v1, int v2, int v3, const float (*winvec)[3])
 {
 	const float effector_scale = 0.02f;
 	float win[3], nor[3], area;
 	float factor;
 	
-	// calculate face normal and area
-	if (v4) {
-		area = calc_nor_area_quad(nor, data->X[v1], data->X[v2], data->X[v3], data->X[v4]);
-		factor = effector_scale * area * 0.25f;
-	}
-	else {
-		area = calc_nor_area_tri(nor, data->X[v1], data->X[v2], data->X[v3]);
-		factor = effector_scale * area / 3.0f;
-	}
+	/* calculate face normal and area */
+	area = calc_nor_area_tri(nor, data->X[v1], data->X[v2], data->X[v3]);
+	factor = effector_scale * area / 3.0f;
 	
 	world_to_root_v3(data, v1, win, winvec[v1]);
 	madd_v3_v3fl(data->F[v1], nor, factor * dot_v3v3(win, nor));
@@ -1460,11 +1411,6 @@ void BPH_mass_spring_force_face_wind(Implicit_Data *data, int v1, int v2, int v3
 	
 	world_to_root_v3(data, v3, win, winvec[v3]);
 	madd_v3_v3fl(data->F[v3], nor, factor * dot_v3v3(win, nor));
-	
-	if (v4) {
-		world_to_root_v3(data, v4, win, winvec[v4]);
-		madd_v3_v3fl(data->F[v4], nor, factor * dot_v3v3(win, nor));
-	}
 }
 
 static void edge_wind_vertex(const float dir[3], float length, float radius, const float wind[3], float f[3], float UNUSED(dfdx[3][3]), float UNUSED(dfdv[3][3]))
@@ -1599,7 +1545,8 @@ BLI_INLINE bool spring_length(Implicit_Data *data, int i, int j, float r_extent[
 		/*
 		if (length>L) {
 			if ((clmd->sim_parms->flags & CSIMSETT_FLAG_TEARING_ENABLED) &&
-			    ( ((length-L)*100.0f/L) > clmd->sim_parms->maxspringlen )) {
+			    ( ((length-L)*100.0f/L) > clmd->sim_parms->maxspringlen ))
+			{
 				// cut spring!
 				s->flags |= CSPRING_FLAG_DEACTIVATE;
 				return false;
@@ -1632,15 +1579,17 @@ BLI_INLINE void apply_spring(Implicit_Data *data, int i, int j, const float f[3]
 }
 
 bool BPH_mass_spring_force_spring_linear(Implicit_Data *data, int i, int j, float restlen,
-                                         float stiffness, float damping, bool no_compress, float clamp_force,
-                                         float r_f[3], float r_dfdx[3][3], float r_dfdv[3][3])
+                                         float stiffness, float damping, bool no_compress, float clamp_force)
 {
 	float extent[3], length, dir[3], vel[3];
 	
 	// calculate elonglation
 	spring_length(data, i, j, extent, dir, &length, vel);
-	
-	if (length > restlen || no_compress) {
+
+	/* This code computes not only the force, but also its derivative.
+	   Zero derivative effectively disables the spring for the implicit solver.
+	   Thus length > restlen makes cloth unconstrained at the start of simulation. */
+	if ((length >= restlen && length > 0) || no_compress) {
 		float stretch_force, f[3], dfdx[3][3], dfdv[3][3];
 		
 		stretch_force = stiffness * (length - restlen);
@@ -1658,25 +1607,15 @@ bool BPH_mass_spring_force_spring_linear(Implicit_Data *data, int i, int j, floa
 		
 		apply_spring(data, i, j, f, dfdx, dfdv);
 		
-		if (r_f) copy_v3_v3(r_f, f);
-		if (r_dfdx) copy_m3_m3(r_dfdx, dfdx);
-		if (r_dfdv) copy_m3_m3(r_dfdv, dfdv);
-		
 		return true;
 	}
 	else {
-		if (r_f) zero_v3(r_f);
-		if (r_dfdx) zero_m3(r_dfdx);
-		if (r_dfdv) zero_m3(r_dfdv);
-		
 		return false;
 	}
 }
 
 /* See "Stable but Responsive Cloth" (Choi, Ko 2005) */
-bool BPH_mass_spring_force_spring_bending(Implicit_Data *data, int i, int j, float restlen,
-                                          float kb, float cb,
-                                          float r_f[3], float r_dfdx[3][3], float r_dfdv[3][3])
+bool BPH_mass_spring_force_spring_bending(Implicit_Data *data, int i, int j, float restlen, float kb, float cb)
 {
 	float extent[3], length, dir[3], vel[3];
 	
@@ -1696,17 +1635,9 @@ bool BPH_mass_spring_force_spring_bending(Implicit_Data *data, int i, int j, flo
 		
 		apply_spring(data, i, j, f, dfdx, dfdv);
 		
-		if (r_f) copy_v3_v3(r_f, f);
-		if (r_dfdx) copy_m3_m3(r_dfdx, dfdx);
-		if (r_dfdv) copy_m3_m3(r_dfdv, dfdv);
-		
 		return true;
 	}
 	else {
-		if (r_f) zero_v3(r_f);
-		if (r_dfdx) zero_m3(r_dfdx);
-		if (r_dfdv) zero_m3(r_dfdv);
-		
 		return false;
 	}
 }
@@ -1995,8 +1926,7 @@ bool BPH_mass_spring_force_spring_bending_angular(Implicit_Data *data, int i, in
 }
 
 bool BPH_mass_spring_force_spring_goal(Implicit_Data *data, int i, const float goal_x[3], const float goal_v[3],
-                                       float stiffness, float damping,
-                                       float r_f[3], float r_dfdx[3][3], float r_dfdv[3][3])
+                                       float stiffness, float damping)
 {
 	float root_goal_x[3], root_goal_v[3], extent[3], length, dir[3], vel[3];
 	float f[3], dfdx[3][3], dfdv[3][3];
@@ -2023,17 +1953,9 @@ bool BPH_mass_spring_force_spring_goal(Implicit_Data *data, int i, const float g
 		add_m3_m3m3(data->dFdX[i].m, data->dFdX[i].m, dfdx);
 		add_m3_m3m3(data->dFdV[i].m, data->dFdV[i].m, dfdv);
 		
-		if (r_f) copy_v3_v3(r_f, f);
-		if (r_dfdx) copy_m3_m3(r_dfdx, dfdx);
-		if (r_dfdv) copy_m3_m3(r_dfdv, dfdv);
-		
 		return true;
 	}
 	else {
-		if (r_f) zero_v3(r_f);
-		if (r_dfdx) zero_m3(r_dfdx);
-		if (r_dfdv) zero_m3(r_dfdv);
-		
 		return false;
 	}
 }

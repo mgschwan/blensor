@@ -14,29 +14,30 @@
  * limitations under the License.
  */
 
-#include "camera.h"
-#include "integrator.h"
-#include "graph.h"
-#include "light.h"
-#include "mesh.h"
-#include "object.h"
-#include "scene.h"
-#include "nodes.h"
-#include "particles.h"
-#include "shader.h"
+#include "render/camera.h"
+#include "render/integrator.h"
+#include "render/graph.h"
+#include "render/light.h"
+#include "render/mesh.h"
+#include "render/object.h"
+#include "render/scene.h"
+#include "render/nodes.h"
+#include "render/particles.h"
+#include "render/shader.h"
 
-#include "blender_sync.h"
-#include "blender_util.h"
+#include "blender/blender_object_cull.h"
+#include "blender/blender_sync.h"
+#include "blender/blender_util.h"
 
-#include "util_foreach.h"
-#include "util_hash.h"
-#include "util_logging.h"
+#include "util/util_foreach.h"
+#include "util/util_hash.h"
+#include "util/util_logging.h"
 
 CCL_NAMESPACE_BEGIN
 
 /* Utilities */
 
-bool BlenderSync::BKE_object_is_modified(BL::Object b_ob)
+bool BlenderSync::BKE_object_is_modified(BL::Object& b_ob)
 {
 	/* test if we can instance or if the object is modified */
 	if(b_ob.type() == BL::Object::type_META) {
@@ -58,7 +59,7 @@ bool BlenderSync::BKE_object_is_modified(BL::Object b_ob)
 	return false;
 }
 
-bool BlenderSync::object_is_mesh(BL::Object b_ob)
+bool BlenderSync::object_is_mesh(BL::Object& b_ob)
 {
 	BL::ID b_ob_data = b_ob.data();
 
@@ -66,14 +67,14 @@ bool BlenderSync::object_is_mesh(BL::Object b_ob)
 		b_ob_data.is_a(&RNA_Curve) || b_ob_data.is_a(&RNA_MetaBall)));
 }
 
-bool BlenderSync::object_is_light(BL::Object b_ob)
+bool BlenderSync::object_is_light(BL::Object& b_ob)
 {
 	BL::ID b_ob_data = b_ob.data();
 
 	return (b_ob_data && b_ob_data.is_a(&RNA_Lamp));
 }
 
-static uint object_ray_visibility(BL::Object b_ob)
+static uint object_ray_visibility(BL::Object& b_ob)
 {
 	PointerRNA cvisibility = RNA_pointer_get(&b_ob.ptr, "cycles_visibility");
 	uint flag = 0;
@@ -90,14 +91,21 @@ static uint object_ray_visibility(BL::Object b_ob)
 
 /* Light */
 
-void BlenderSync::sync_light(BL::Object b_parent, int persistent_id[OBJECT_PERSISTENT_ID_SIZE], BL::Object b_ob, Transform& tfm)
+void BlenderSync::sync_light(BL::Object& b_parent,
+                             int persistent_id[OBJECT_PERSISTENT_ID_SIZE],
+                             BL::Object& b_ob,
+                             Transform& tfm,
+                             bool *use_portal)
 {
 	/* test if we need to sync */
 	Light *light;
 	ObjectKey key(b_parent, persistent_id, b_ob);
 
-	if(!light_map.sync(&light, b_ob, b_parent, key))
+	if(!light_map.sync(&light, b_ob, b_parent, key)) {
+		if(light->is_portal)
+			*use_portal = true;
 		return;
+	}
 	
 	BL::Lamp b_lamp(b_ob.data());
 
@@ -146,15 +154,11 @@ void BlenderSync::sync_light(BL::Object b_parent, int persistent_id[OBJECT_PERSI
 	/* location and (inverted!) direction */
 	light->co = transform_get_column(&tfm, 3);
 	light->dir = -transform_get_column(&tfm, 2);
+	light->tfm = tfm;
 
 	/* shader */
-	vector<uint> used_shaders;
-
+	vector<Shader*> used_shaders;
 	find_shader(b_lamp, used_shaders, scene->default_light);
-
-	if(used_shaders.size() == 0)
-		used_shaders.push_back(scene->default_light);
-
 	light->shader = used_shaders[0];
 
 	/* shadow */
@@ -171,6 +175,14 @@ void BlenderSync::sync_light(BL::Object b_parent, int persistent_id[OBJECT_PERSI
 
 	light->max_bounces = get_int(clamp, "max_bounces");
 
+	if(light->type == LIGHT_AREA)
+		light->is_portal = get_boolean(clamp, "is_portal");
+	else
+		light->is_portal = false;
+
+	if(light->is_portal)
+		*use_portal = true;
+
 	/* visibility */
 	uint visibility = object_ray_visibility(b_ob);
 	light->use_diffuse = (visibility & PATH_RAY_DIFFUSE) != 0;
@@ -182,7 +194,7 @@ void BlenderSync::sync_light(BL::Object b_parent, int persistent_id[OBJECT_PERSI
 	light->tag_update(scene);
 }
 
-void BlenderSync::sync_background_light()
+void BlenderSync::sync_background_light(bool use_portal)
 {
 	BL::World b_world = b_scene.world();
 
@@ -191,19 +203,21 @@ void BlenderSync::sync_background_light()
 		PointerRNA cworld = RNA_pointer_get(&b_world.ptr, "cycles");
 		bool sample_as_light = get_boolean(cworld, "sample_as_light");
 
-		if(sample_as_light) {
+		if(sample_as_light || use_portal) {
 			/* test if we need to sync */
 			Light *light;
 			ObjectKey key(b_world, 0, b_world);
 
 			if(light_map.sync(&light, b_world, b_world, key) ||
-			   world_recalc ||
-			   b_world.ptr.data != world_map)
+			    world_recalc ||
+			    b_world.ptr.data != world_map)
 			{
 				light->type = LIGHT_BACKGROUND;
 				light->map_resolution  = get_int(cworld, "sample_map_resolution");
 				light->shader = scene->default_background;
-				
+				light->use_mis = sample_as_light;
+				light->max_bounces = get_int(cworld, "max_bounces");
+
 				int samples = get_int(cworld, "samples");
 				if(get_boolean(cscene, "use_square_samples"))
 					light->samples = samples * samples;
@@ -222,8 +236,15 @@ void BlenderSync::sync_background_light()
 
 /* Object */
 
-Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_PERSISTENT_ID_SIZE], BL::DupliObject b_dupli_ob,
-                                 Transform& tfm, uint layer_flag, float motion_time, bool hide_tris)
+Object *BlenderSync::sync_object(BL::Object& b_parent,
+                                 int persistent_id[OBJECT_PERSISTENT_ID_SIZE],
+                                 BL::DupliObject& b_dupli_ob,
+                                 Transform& tfm,
+                                 uint layer_flag,
+                                 float motion_time,
+                                 bool hide_tris,
+                                 BlenderObjectCulling& culling,
+                                 bool *use_portal)
 {
 	BL::Object b_ob = (b_dupli_ob ? b_dupli_ob.object() : b_parent);
 	bool motion = motion_time != 0.0f;
@@ -232,14 +253,20 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 	if(object_is_light(b_ob)) {
 		/* don't use lamps for excluded layers used as mask layer */
 		if(!motion && !((layer_flag & render_layer.holdout_layer) && (layer_flag & render_layer.exclude_layer)))
-			sync_light(b_parent, persistent_id, b_ob, tfm);
+			sync_light(b_parent, persistent_id, b_ob, tfm, use_portal);
 
 		return NULL;
 	}
 
 	/* only interested in object that we can create meshes from */
-	if(!object_is_mesh(b_ob))
+	if(!object_is_mesh(b_ob)) {
 		return NULL;
+	}
+
+	/* Perform object culling. */
+	if(culling.test(scene, b_ob, tfm)) {
+		return NULL;
+	}
 
 	/* key to lookup object */
 	ObjectKey key(b_parent, persistent_id, b_ob);
@@ -249,18 +276,22 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 	if(motion) {
 		object = object_map.find(key);
 
-		if(object && (scene->need_motion() == Scene::MOTION_PASS || object_use_motion(b_ob))) {
+		if(object && (scene->need_motion() == Scene::MOTION_PASS ||
+		              object_use_motion(b_parent, b_ob)))
+		{
 			/* object transformation */
 			if(tfm != object->tfm) {
 				VLOG(1) << "Object " << b_ob.name() << " motion detected.";
-				if(motion_time == -1.0f) {
-					object->motion.pre = tfm;
+				if(motion_time == -1.0f || motion_time == 1.0f) {
 					object->use_motion = true;
 				}
-				else if(motion_time == 1.0f) {
-					object->motion.post = tfm;
-					object->use_motion = true;
-				}
+			}
+
+			if(motion_time == -1.0f) {
+				object->motion.pre = tfm;
+			}
+			else if(motion_time == 1.0f) {
+				object->motion.post = tfm;
 			}
 
 			/* mesh deformation */
@@ -298,18 +329,24 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 	}
 
 	/* make holdout objects on excluded layer invisible for non-camera rays */
-	if(use_holdout && (layer_flag & render_layer.exclude_layer))
+	if(use_holdout && (layer_flag & render_layer.exclude_layer)) {
 		visibility &= ~(PATH_RAY_ALL_VISIBILITY - PATH_RAY_CAMERA);
+	}
 
-	/* camera flag is not actually used, instead is tested against render layer
-	 * flags */
-	if(visibility & PATH_RAY_CAMERA) {
-		visibility |= layer_flag << PATH_RAY_LAYER_SHIFT;
+	/* hide objects not on render layer from camera rays */
+	if(!(layer_flag & render_layer.layer)) {
 		visibility &= ~PATH_RAY_CAMERA;
 	}
 
 	if(visibility != object->visibility) {
 		object->visibility = visibility;
+		object_updated = true;
+	}
+
+	PointerRNA cobject = RNA_pointer_get(&b_ob.ptr, "cycles");
+	bool is_shadow_catcher = get_boolean(cobject, "is_shadow_catcher");
+	if(is_shadow_catcher != object->is_shadow_catcher) {
+		object->is_shadow_catcher = is_shadow_catcher;
 		object_updated = true;
 	}
 
@@ -320,8 +357,8 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 		object->name = b_ob.name().c_str();
 		object->pass_id = b_ob.pass_index();
 		object->tfm = tfm;
-		object->motion.pre = tfm;
-		object->motion.post = tfm;
+		object->motion.pre = transform_empty();
+		object->motion.post = transform_empty();
 		object->use_motion = false;
 
 		/* motion blur */
@@ -330,8 +367,8 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 
 			mesh->use_motion_blur = false;
 
-			if(object_use_motion(b_ob)) {
-				if(object_use_deform_motion(b_ob)) {
+			if(object_use_motion(b_parent, b_ob)) {
+				if(object_use_deform_motion(b_parent, b_ob)) {
 					mesh->motion_steps = object_motion_steps(b_ob);
 					mesh->use_motion_blur = true;
 				}
@@ -342,27 +379,16 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 			}
 		}
 
-		/* random number */
-		object->random_id = hash_string(object->name.c_str());
-
-		if(persistent_id) {
-			for(int i = 0; i < OBJECT_PERSISTENT_ID_SIZE; i++)
-				object->random_id = hash_int_2d(object->random_id, persistent_id[i]);
-		}
-		else
-			object->random_id = hash_int_2d(object->random_id, 0);
-
-		if(b_parent.ptr.data != b_ob.ptr.data)
-			object->random_id ^= hash_int(hash_string(b_parent.name().c_str()));
-
-		/* dupli texture coordinates */
-		if (b_dupli_ob) {
+		/* dupli texture coordinates and random_id */
+		if(b_dupli_ob) {
 			object->dupli_generated = 0.5f*get_float3(b_dupli_ob.orco()) - make_float3(0.5f, 0.5f, 0.5f);
 			object->dupli_uv = get_float2(b_dupli_ob.uv());
+			object->random_id = b_dupli_ob.random_id();
 		}
 		else {
 			object->dupli_generated = make_float3(0.0f, 0.0f, 0.0f);
 			object->dupli_uv = make_float2(0.0f, 0.0f);
+			object->random_id =  hash_int_2d(hash_string(object->name.c_str()), 0);
 		}
 
 		object->tag_update(scene);
@@ -371,7 +397,8 @@ Object *BlenderSync::sync_object(BL::Object b_parent, int persistent_id[OBJECT_P
 	return object;
 }
 
-static bool object_render_hide_original(BL::Object::type_enum ob_type, BL::Object::dupli_type_enum dupli_type)
+static bool object_render_hide_original(BL::Object::type_enum ob_type,
+                                        BL::Object::dupli_type_enum dupli_type)
 {
 	/* metaball exception, they duplicate self */
 	if(ob_type == BL::Object::type_META)
@@ -382,7 +409,10 @@ static bool object_render_hide_original(BL::Object::type_enum ob_type, BL::Objec
 	        dupli_type == BL::Object::dupli_type_FRAMES);
 }
 
-static bool object_render_hide(BL::Object b_ob, bool top_level, bool parent_hide, bool& hide_triangles)
+static bool object_render_hide(BL::Object& b_ob,
+                               bool top_level,
+                               bool parent_hide,
+                               bool& hide_triangles)
 {
 	/* check if we should render or hide particle emitter */
 	BL::Object::particle_systems_iterator b_psys;
@@ -439,7 +469,7 @@ static bool object_render_hide(BL::Object b_ob, bool top_level, bool parent_hide
 	}
 }
 
-static bool object_render_hide_duplis(BL::Object b_ob)
+static bool object_render_hide_duplis(BL::Object& b_ob)
 {
 	BL::Object parent = b_ob.parent();
 
@@ -448,7 +478,7 @@ static bool object_render_hide_duplis(BL::Object b_ob)
 
 /* Object Loop */
 
-void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
+void BlenderSync::sync_objects(float motion_time)
 {
 	/* layer data */
 	uint scene_layer = render_layer.scene_layer;
@@ -466,6 +496,9 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 		mesh_motion_synced.clear();
 	}
 
+	/* initialize culling */
+	BlenderObjectCulling culling(scene, b_scene);
+
 	/* object loop */
 	BL::Scene::object_bases_iterator b_base;
 	BL::Scene b_sce = b_scene;
@@ -473,19 +506,31 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 	 * 1 : DAG_EVAL_PREVIEW
 	 * 2 : DAG_EVAL_RENDER
 	 */
-	int dupli_settings = preview ? 1 : 2;
+	int dupli_settings = (render_layer.use_viewport_visibility) ? 1 : 2;
 
 	bool cancel = false;
+	bool use_portal = false;
 
+	uint layer_override = get_layer(b_engine.layer_override());
 	for(; b_sce && !cancel; b_sce = b_sce.background_set()) {
+		/* Render layer's scene_layer is affected by local view already,
+		 * which is not a desired behavior here.
+		 */
+		uint scene_layers = layer_override ? layer_override : get_layer(b_scene.layers());
 		for(b_sce.object_bases.begin(b_base); b_base != b_sce.object_bases.end() && !cancel; ++b_base) {
 			BL::Object b_ob = b_base->object();
 			bool hide = (render_layer.use_viewport_visibility)? b_ob.hide(): b_ob.hide_render();
-			uint ob_layer = get_layer(b_base->layers(), b_base->layers_local_view(), render_layer.use_localview, object_is_light(b_ob));
+			uint ob_layer = get_layer(b_base->layers(),
+			                          b_base->layers_local_view(),
+			                          object_is_light(b_ob),
+			                          scene_layers);
 			hide = hide || !(ob_layer & scene_layer);
 
 			if(!hide) {
 				progress.set_sync_status("Synchronizing object", b_ob.name());
+
+				/* load per-object culling data */
+				culling.init_object(scene, b_ob);
 
 				if(b_ob.is_duplicator() && !object_render_hide_duplis(b_ob)) {
 					/* dupli objects */
@@ -496,7 +541,7 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 					for(b_ob.dupli_list.begin(b_dup); b_dup != b_ob.dupli_list.end(); ++b_dup) {
 						Transform tfm = get_transform(b_dup->matrix());
 						BL::Object b_dup_ob = b_dup->object();
-						bool dup_hide = (b_v3d)? b_dup_ob.hide(): b_dup_ob.hide_render();
+						bool dup_hide = (render_layer.use_viewport_visibility)? b_dup_ob.hide(): b_dup_ob.hide_render();
 						bool in_dupli_group = (b_dup->type() == BL::DupliObject::type_GROUP);
 						bool hide_tris;
 
@@ -506,7 +551,15 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 							BL::Array<int, OBJECT_PERSISTENT_ID_SIZE> persistent_id = b_dup->persistent_id();
 
 							/* sync object and mesh or light data */
-							Object *object = sync_object(b_ob, persistent_id.data, *b_dup, tfm, ob_layer, motion_time, hide_tris);
+							Object *object = sync_object(b_ob,
+							                             persistent_id.data,
+							                             *b_dup,
+							                             tfm,
+							                             ob_layer,
+							                             motion_time,
+							                             hide_tris,
+							                             culling,
+							                             &use_portal);
 
 							/* sync possible particle data, note particle_id
 							 * starts counting at 1, first is dummy particle */
@@ -526,7 +579,16 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 				if(!object_render_hide(b_ob, true, true, hide_tris)) {
 					/* object itself */
 					Transform tfm = get_transform(b_ob.matrix_world());
-					sync_object(b_ob, NULL, PointerRNA_NULL, tfm, ob_layer, motion_time, hide_tris);
+					BL::DupliObject b_empty_dupli_ob(PointerRNA_NULL);
+					sync_object(b_ob,
+					            NULL,
+					            b_empty_dupli_ob,
+					            tfm,
+					            ob_layer,
+					            motion_time,
+					            hide_tris,
+					            culling,
+					            &use_portal);
 				}
 			}
 
@@ -537,7 +599,7 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 	progress.set_sync_status("");
 
 	if(!cancel && !motion) {
-		sync_background_light();
+		sync_background_light(use_portal);
 
 		/* handle removed data and modified pointers */
 		if(light_map.post_sync())
@@ -554,7 +616,10 @@ void BlenderSync::sync_objects(BL::SpaceView3D b_v3d, float motion_time)
 		mesh_motion_synced.clear();
 }
 
-void BlenderSync::sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override, void **python_thread_state)
+void BlenderSync::sync_motion(BL::RenderSettings& b_render,
+                              BL::Object& b_override,
+                              int width, int height,
+                              void **python_thread_state)
 {
 	if(scene->need_motion() == Scene::MOTION_NONE)
 		return;
@@ -567,6 +632,29 @@ void BlenderSync::sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override, void
 	Camera prevcam = *(scene->camera);
 
 	int frame_center = b_scene.frame_current();
+	float subframe_center = b_scene.frame_subframe();
+	float frame_center_delta = 0.0f;
+
+	if(scene->need_motion() != Scene::MOTION_PASS &&
+	   scene->camera->motion_position != Camera::MOTION_POSITION_CENTER)
+	{
+		float shuttertime = scene->camera->shuttertime;
+		if(scene->camera->motion_position == Camera::MOTION_POSITION_END) {
+			frame_center_delta = -shuttertime * 0.5f;
+		}
+		else {
+			assert(scene->camera->motion_position == Camera::MOTION_POSITION_START);
+			frame_center_delta = shuttertime * 0.5f;
+		}
+		float time = frame_center + subframe_center + frame_center_delta;
+		int frame = (int)floorf(time);
+		float subframe = time - frame;
+		python_thread_state_restore(python_thread_state);
+		b_engine.frame_set(frame, subframe);
+		python_thread_state_save(python_thread_state);
+		sync_camera_motion(b_render, b_cam, width, height, 0.0f);
+		sync_objects(0.0f);
+	}
 
 	/* always sample these times for camera motion */
 	motion_times.insert(-1.0f);
@@ -574,16 +662,14 @@ void BlenderSync::sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override, void
 
 	/* note iteration over motion_times set happens in sorted order */
 	foreach(float relative_time, motion_times) {
-		/* fixed shutter time to get previous and next frame for motion pass */
-		float shuttertime;
+		VLOG(1) << "Synchronizing motion for the relative time "
+		        << relative_time << ".";
 
-		if(scene->need_motion() == Scene::MOTION_PASS)
-			shuttertime = 2.0f;
-		else
-			shuttertime = scene->camera->shuttertime;
+		/* fixed shutter time to get previous and next frame for motion pass */
+		float shuttertime = scene->motion_shutter_time();
 
 		/* compute frame and subframe time */
-		float time = frame_center + relative_time * shuttertime * 0.5f;
+		float time = frame_center + subframe_center + frame_center_delta + relative_time * shuttertime * 0.5f;
 		int frame = (int)floorf(time);
 		float subframe = time - frame;
 
@@ -593,18 +679,22 @@ void BlenderSync::sync_motion(BL::SpaceView3D b_v3d, BL::Object b_override, void
 		python_thread_state_save(python_thread_state);
 
 		/* sync camera, only supports two times at the moment */
-		if(relative_time == -1.0f || relative_time == 1.0f)
-			sync_camera_motion(b_cam, relative_time);
+		if(relative_time == -1.0f || relative_time == 1.0f) {
+			sync_camera_motion(b_render,
+			                   b_cam,
+			                   width, height,
+			                   relative_time);
+		}
 
 		/* sync object */
-		sync_objects(b_v3d, relative_time);
+		sync_objects(relative_time);
 	}
 
 	/* we need to set the python thread state again because this
 	 * function assumes it is being executed from python and will
 	 * try to save the thread state */
 	python_thread_state_restore(python_thread_state);
-	b_engine.frame_set(frame_center, 0.0f);
+	b_engine.frame_set(frame_center, subframe_center);
 	python_thread_state_save(python_thread_state);
 
 	/* tag camera for motion update */

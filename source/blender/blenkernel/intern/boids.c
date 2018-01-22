@@ -80,6 +80,9 @@ static int rule_goal_avoid(BoidRule *rule, BoidBrainData *bbd, BoidValues *val, 
 	float priority = 0.0f, len = 0.0f;
 	int ret = 0;
 
+	int p = 0;
+	efd.index = cur_efd.index = &p;
+
 	pd_point_from_particle(bbd->sim, pa, &pa->state, &epoint);
 
 	/* first find out goal/predator with highest priority */
@@ -189,6 +192,7 @@ static int rule_goal_avoid(BoidRule *rule, BoidBrainData *bbd, BoidValues *val, 
 
 static int rule_avoid_collision(BoidRule *rule, BoidBrainData *bbd, BoidValues *val, ParticleData *pa)
 {
+	const int raycast_flag = BVH_RAYCAST_DEFAULT & ~(BVH_RAYCAST_WATERTIGHT);
 	BoidRuleAvoidCollision *acbr = (BoidRuleAvoidCollision*) rule;
 	KDTreeNearest *ptn = NULL;
 	ParticleTarget *pt;
@@ -214,7 +218,7 @@ static int rule_avoid_collision(BoidRule *rule, BoidBrainData *bbd, BoidValues *
 		mul_v3_fl(ray_dir, acbr->look_ahead);
 		col.f = 0.0f;
 		hit.index = -1;
-		hit.dist = col.original_ray_length = len_v3(ray_dir);
+		hit.dist = col.original_ray_length = normalize_v3(ray_dir);
 
 		/* find out closest deflector object */
 		for (coll = bbd->sim->colliders->first; coll; coll=coll->next) {
@@ -225,8 +229,11 @@ static int rule_avoid_collision(BoidRule *rule, BoidBrainData *bbd, BoidValues *
 			col.current = coll->ob;
 			col.md = coll->collmd;
 
-			if (col.md && col.md->bvhtree)
-				BLI_bvhtree_ray_cast(col.md->bvhtree, col.co1, ray_dir, radius, &hit, BKE_psys_collision_neartest_cb, &col);
+			if (col.md && col.md->bvhtree) {
+				BLI_bvhtree_ray_cast_ex(
+				        col.md->bvhtree, col.co1, ray_dir, radius, &hit,
+				        BKE_psys_collision_neartest_cb, &col, raycast_flag);
+			}
 		}
 		/* then avoid that object */
 		if (hit.index>=0) {
@@ -303,6 +310,7 @@ static int rule_avoid_collision(BoidRule *rule, BoidBrainData *bbd, BoidValues *
 		ParticleSystem *epsys = psys_get_target_system(bbd->sim->ob, pt);
 
 		if (epsys) {
+			BLI_assert(epsys->tree != NULL);
 			neighbors = BLI_kdtree_range_search__normal(
 			        epsys->tree, pa->prev_state.co, pa->prev_state.ave,
 			        &ptn, acbr->look_ahead * len_v3(pa->prev_state.vel));
@@ -759,6 +767,7 @@ static void set_boid_values(BoidValues *val, BoidSettings *boids, ParticleData *
 
 static Object *boid_find_ground(BoidBrainData *bbd, ParticleData *pa, float ground_co[3], float ground_nor[3])
 {
+	const int raycast_flag = BVH_RAYCAST_DEFAULT & ~(BVH_RAYCAST_WATERTIGHT);
 	BoidParticle *bpa = pa->boid;
 
 	if (bpa->data.mode == eBoidMode_Climbing) {
@@ -794,7 +803,7 @@ static Object *boid_find_ground(BoidBrainData *bbd, ParticleData *pa, float grou
 		sub_v3_v3v3(ray_dir, col.co2, col.co1);
 		col.f = 0.0f;
 		hit.index = -1;
-		hit.dist = col.original_ray_length = len_v3(ray_dir);
+		hit.dist = col.original_ray_length = normalize_v3(ray_dir);
 		col.pce.inside = 0;
 
 		for (coll = bbd->sim->colliders->first; coll; coll = coll->next) {
@@ -802,8 +811,11 @@ static Object *boid_find_ground(BoidBrainData *bbd, ParticleData *pa, float grou
 			col.md = coll->collmd;
 			col.fac1 = col.fac2 = 0.f;
 
-			if (col.md && col.md->bvhtree)
-				BLI_bvhtree_ray_cast(col.md->bvhtree, col.co1, ray_dir, radius, &hit, BKE_psys_collision_neartest_cb, &col);
+			if (col.md && col.md->bvhtree) {
+				BLI_bvhtree_ray_cast_ex(
+				        col.md->bvhtree, col.co1, ray_dir, radius, &hit,
+				        BKE_psys_collision_neartest_cb, &col, raycast_flag);
+			}
 		}
 		/* then use that object */
 		if (hit.index>=0) {
@@ -820,14 +832,17 @@ static Object *boid_find_ground(BoidBrainData *bbd, ParticleData *pa, float grou
 		sub_v3_v3v3(ray_dir, col.co2, col.co1);
 		col.f = 0.0f;
 		hit.index = -1;
-		hit.dist = col.original_ray_length = len_v3(ray_dir);
+		hit.dist = col.original_ray_length = normalize_v3(ray_dir);
 
 		for (coll = bbd->sim->colliders->first; coll; coll = coll->next) {
 			col.current = coll->ob;
 			col.md = coll->collmd;
 
-			if (col.md && col.md->bvhtree)
-				BLI_bvhtree_ray_cast(col.md->bvhtree, col.co1, ray_dir, radius, &hit, BKE_psys_collision_neartest_cb, &col);
+			if (col.md && col.md->bvhtree) {
+				BLI_bvhtree_ray_cast_ex(
+				        col.md->bvhtree, col.co1, ray_dir, radius, &hit,
+				        BKE_psys_collision_neartest_cb, &col, raycast_flag);
+			}
 		}
 		/* then use that object */
 		if (hit.index>=0) {
@@ -995,9 +1010,11 @@ void boid_brain(BoidBrainData *bbd, int p, ParticleData *pa)
 		case eBoidRulesetType_Random:
 		{
 			/* use random rule for each particle (always same for same particle though) */
-			rule = BLI_findlink(&state->rules, rand % BLI_listbase_count(&state->rules));
-
-			apply_boid_rule(bbd, rule, &val, pa, -1.0);
+			const int n = BLI_listbase_count(&state->rules);
+			if (n) {
+				rule = BLI_findlink(&state->rules, rand % n);
+				apply_boid_rule(bbd, rule, &val, pa, -1.0);
+			}
 			break;
 		}
 		case eBoidRulesetType_Average:
@@ -1489,7 +1506,7 @@ BoidRule *boid_new_rule(int type)
 
 	rule->type = type;
 	rule->flag |= BOIDRULE_IN_AIR|BOIDRULE_ON_LAND;
-	BLI_strncpy(rule->name, boidrule_type_items[type-1].name, sizeof(rule->name));
+	BLI_strncpy(rule->name, rna_enum_boidrule_type_items[type-1].name, sizeof(rule->name));
 
 	return rule;
 }
@@ -1564,7 +1581,7 @@ void boid_free_settings(BoidSettings *boids)
 		MEM_freeN(boids);
 	}
 }
-BoidSettings *boid_copy_settings(BoidSettings *boids)
+BoidSettings *boid_copy_settings(const BoidSettings *boids)
 {
 	BoidSettings *nboids = NULL;
 

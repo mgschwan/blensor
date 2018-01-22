@@ -39,6 +39,8 @@ import mathutils
 from bpy_extras.io_utils import unpack_list
 from bpy_extras.image_utils import load_image
 
+from progress_report import ProgressReport, ProgressReportSubstep
+
 
 def line_value(line_split):
     """
@@ -56,22 +58,37 @@ def line_value(line_split):
         return b' '.join(line_split[1:])
 
 
-def obj_image_load(imagepath, DIR, recursive, relpath):
+def obj_image_load(context_imagepath_map, line, DIR, recursive, relpath):
     """
     Mainly uses comprehensiveImageLoad
-    but tries to replace '_' with ' ' for Max's exporter replaces spaces with underscores.
+    But we try all space-separated items from current line when file is not found with last one
+    (users keep generating/using image files with spaces in a format that does not support them, sigh...)
+    Also tries to replace '_' with ' ' for Max's exporter replaces spaces with underscores.
     """
-    if b'_' in imagepath:
-        image = load_image(imagepath.replace(b'_', b' '), DIR, recursive=recursive, relpath=relpath)
-        if image:
-            return image
+    filepath_parts = line.split(b' ')
+    image = None
+    for i in range(-1, -len(filepath_parts), -1):
+        imagepath = os.fsdecode(b" ".join(filepath_parts[i:]))
+        image = context_imagepath_map.get(imagepath, ...)
+        if image is ...:
+            image = load_image(imagepath, DIR, recursive=recursive, relpath=relpath)
+            if image is None and "_" in imagepath:
+                image = load_image(imagepath.replace("_", " "), DIR, recursive=recursive, relpath=relpath)
+            if image is not None:
+                context_imagepath_map[imagepath] = image
+                break;
 
-    return load_image(imagepath, DIR, recursive=recursive, place_holder=True, relpath=relpath)
+    if image is None:
+        imagepath = os.fsdecode(filepath_parts[-1])
+        image = load_image(imagepath, DIR, recursive=recursive, place_holder=True, relpath=relpath)
+        context_imagepath_map[imagepath] = image
+
+    return image
 
 
 def create_materials(filepath, relpath,
                      material_libs, unique_materials, unique_material_images,
-                     use_image_search, float_func):
+                     use_image_search, use_cycles, float_func):
     """
     Create all the used materials in this obj,
     assign colors and images to the materials from all referenced material libs
@@ -79,20 +96,43 @@ def create_materials(filepath, relpath,
     DIR = os.path.dirname(filepath)
     context_material_vars = set()
 
-    def load_material_image(blender_material, context_material_name, imagepath, type):
+    # Don't load the same image multiple times
+    context_imagepath_map = {}
+
+    cycles_material_wrap_map = {}
+
+    def load_material_image(blender_material, mat_wrap, use_cycles, context_material_name, img_data, line, type):
         """
         Set textures defined in .mtl file.
         """
-        texture = bpy.data.textures.new(name=type, type='IMAGE')
+        map_options = {}
+
+        curr_token = []
+        for token in img_data[:-1]:
+            if token.startswith(b'-') and token[1:].isalpha():
+                if curr_token:
+                    map_options[curr_token[0]] = curr_token[1:]
+                curr_token[:] = []
+            curr_token.append(token)
+        if curr_token:
+            map_options[curr_token[0]] = curr_token[1:]
 
         # Absolute path - c:\.. etc would work here
-        image = obj_image_load(imagepath, DIR, use_image_search, relpath)
+        image = obj_image_load(context_imagepath_map, line, DIR, use_image_search, relpath)
 
+        texture = bpy.data.textures.new(name=type, type='IMAGE')
         if image is not None:
             texture.image = image
 
+        map_offset = map_options.get(b'-o')
+        map_scale = map_options.get(b'-s')
+
         # Adds textures for materials (rendering)
         if type == 'Kd':
+            if use_cycles:
+                mat_wrap.diffuse_image_set(image)
+                mat_wrap.diffuse_mapping_set(coords='UV', translation=map_offset, scale=map_scale)
+
             mtex = blender_material.texture_slots.add()
             mtex.texture = texture
             mtex.texture_coords = 'UV'
@@ -103,33 +143,63 @@ def create_materials(filepath, relpath,
             unique_material_images[context_material_name] = image  # set the texface image
 
         elif type == 'Ka':
+            if use_cycles:
+                # XXX Not supported?
+                print("WARNING, currently unsupported ambient texture, skipped.")
+
             mtex = blender_material.texture_slots.add()
             mtex.use_map_color_diffuse = False
-
             mtex.texture = texture
             mtex.texture_coords = 'UV'
             mtex.use_map_ambient = True
 
         elif type == 'Ks':
+            if use_cycles:
+                mat_wrap.specular_image_set(image)
+                mat_wrap.specular_mapping_set(coords='UV', translation=map_offset, scale=map_scale)
+
             mtex = blender_material.texture_slots.add()
             mtex.use_map_color_diffuse = False
-
             mtex.texture = texture
             mtex.texture_coords = 'UV'
-            mtex.use_map_specular = True
+            mtex.use_map_color_spec = True
 
-        elif type == 'Bump':
+        elif type == 'Ke':
+            if use_cycles:
+                # XXX Not supported?
+                print("WARNING, currently unsupported emit texture, skipped.")
+
             mtex = blender_material.texture_slots.add()
             mtex.use_map_color_diffuse = False
+            mtex.texture = texture
+            mtex.texture_coords = 'UV'
+            mtex.use_map_emit = True
 
+        elif type == 'Bump':
+            bump_mult = map_options.get(b'-bm')
+            bump_mult = float(bump_mult[0]) if (bump_mult is not None and len(bump_mult) > 1) else 1.0
+
+            if use_cycles:
+                mat_wrap.normal_image_set(image)
+                mat_wrap.normal_mapping_set(coords='UV', translation=map_offset, scale=map_scale)
+                if bump_mult:
+                    mat_wrap.normal_factor_set(bump_mult)
+
+            mtex = blender_material.texture_slots.add()
+            mtex.use_map_color_diffuse = False
             mtex.texture = texture
             mtex.texture_coords = 'UV'
             mtex.use_map_normal = True
+            if bump_mult:
+                mtex.normal_factor = bump_mult
 
         elif type == 'D':
+            if use_cycles:
+                mat_wrap.alpha_image_set(image)
+                mat_wrap.alpha_mapping_set(coords='UV', translation=map_offset, scale=map_scale)
+
             mtex = blender_material.texture_slots.add()
             mtex.use_map_color_diffuse = False
-
             mtex.texture = texture
             mtex.texture_coords = 'UV'
             mtex.use_map_alpha = True
@@ -137,50 +207,92 @@ def create_materials(filepath, relpath,
             blender_material.transparency_method = 'Z_TRANSPARENCY'
             if "alpha" not in context_material_vars:
                 blender_material.alpha = 0.0
-            # Todo, unset deffuse material alpha if it has an alpha channel
+            # Todo, unset diffuse material alpha if it has an alpha channel
 
         elif type == 'disp':
+            if use_cycles:
+                mat_wrap.bump_image_set(image)
+                mat_wrap.bump_mapping_set(coords='UV', translation=map_offset, scale=map_scale)
+
             mtex = blender_material.texture_slots.add()
             mtex.use_map_color_diffuse = False
-
             mtex.texture = texture
             mtex.texture_coords = 'UV'
             mtex.use_map_displacement = True
 
         elif type == 'refl':
+            map_type = map_options.get(b'-type')
+            if map_type and map_type != [b'sphere']:
+                print("WARNING, unsupported reflection type '%s', defaulting to 'sphere'"
+                      "" % ' '.join(i.decode() for i in map_type))
+
+            if use_cycles:
+                mat_wrap.diffuse_image_set(image, projection='SPHERE')
+                mat_wrap.diffuse_mapping_set(coords='Reflection', translation=map_offset, scale=map_scale)
+
             mtex = blender_material.texture_slots.add()
             mtex.use_map_color_diffuse = False
-
             mtex.texture = texture
             mtex.texture_coords = 'REFLECTION'
             mtex.use_map_color_diffuse = True
+            mtex.mapping = 'SPHERE'
         else:
             raise Exception("invalid type %r" % type)
 
-    # Add an MTL with the same name as the obj if no MTLs are spesified.
-    temp_mtl = os.path.splitext((os.path.basename(filepath)))[0] + b'.mtl'
+        if map_offset:
+            mtex.offset.x = float(map_offset[0])
+            if len(map_offset) >= 2:
+                mtex.offset.y = float(map_offset[1])
+            if len(map_offset) >= 3:
+                mtex.offset.z = float(map_offset[2])
+        if map_scale:
+            mtex.scale.x = float(map_scale[0])
+            if len(map_scale) >= 2:
+                mtex.scale.y = float(map_scale[1])
+            if len(map_scale) >= 3:
+                mtex.scale.z = float(map_scale[2])
 
-    if os.path.exists(os.path.join(DIR, temp_mtl)) and temp_mtl not in material_libs:
-        material_libs.append(temp_mtl)
+    # Add an MTL with the same name as the obj if no MTLs are spesified.
+    temp_mtl = os.path.splitext((os.path.basename(filepath)))[0] + ".mtl"
+
+    if os.path.exists(os.path.join(DIR, temp_mtl)):
+        material_libs.add(temp_mtl)
     del temp_mtl
 
     # Create new materials
     for name in unique_materials:  # .keys()
         if name is not None:
-            unique_materials[name] = bpy.data.materials.new(name.decode('utf-8', "replace"))
+            ma = unique_materials[name] = bpy.data.materials.new(name.decode('utf-8', "replace"))
             unique_material_images[name] = None  # assign None to all material images to start with, add to later.
+            if use_cycles:
+                from modules import cycles_shader_compat
+                ma_wrap = cycles_shader_compat.CyclesShaderWrapper(ma)
+                cycles_material_wrap_map[ma] = ma_wrap
 
-    unique_materials[None] = None
-    unique_material_images[None] = None
 
-    for libname in material_libs:
+    # XXX Why was this needed? Cannot find any good reason, and adds stupid empty matslot in case we do not separate
+    #     mesh (see T44947).
+    #~ unique_materials[None] = None
+    #~ unique_material_images[None] = None
+
+    for libname in sorted(material_libs):
         # print(libname)
         mtlpath = os.path.join(DIR, libname)
         if not os.path.exists(mtlpath):
             print("\tMaterial not found MTL: %r" % mtlpath)
         else:
+            do_ambient = True
+            do_highlight = False
+            do_reflection = False
+            do_transparency = False
+            do_glass = False
+            do_fresnel = False
+            do_raytrace = False
+            emit_colors = [0.0, 0.0, 0.0]
+
             # print('\t\tloading mtl: %e' % mtlpath)
             context_material = None
+            context_mat_wrap = None
             mtl = open(mtlpath, 'rb')
             for line in mtl:  # .readlines():
                 line = line.strip()
@@ -191,46 +303,130 @@ def create_materials(filepath, relpath,
                 line_id = line_split[0].lower()
 
                 if line_id == b'newmtl':
+                    # Finalize previous mat, if any.
+                    if context_material:
+                        emit_value = sum(emit_colors) / 3.0
+                        if emit_value > 1e-6:
+                            if use_cycles:
+                                print("WARNING, currently unsupported emit value, skipped.")
+                            # We have to adapt it to diffuse color too...
+                            emit_value /= sum(context_material.diffuse_color) / 3.0
+                        context_material.emit = emit_value
+
+                        if not do_ambient:
+                            context_material.ambient = 0.0
+
+                        if do_highlight:
+                            if use_cycles:
+                                context_mat_wrap.hardness_value_set(1.0)
+                            # FIXME, how else to use this?
+                            context_material.specular_intensity = 1.0
+                        else:
+                            if use_cycles:
+                                context_mat_wrap.hardness_value_set(0.0)
+
+                        if do_reflection:
+                            if use_cycles:
+                                context_mat_wrap.reflect_factor_set(1.0)
+                            context_material.raytrace_mirror.use = True
+                            context_material.raytrace_mirror.reflect_factor = 1.0
+
+                        if do_transparency:
+                            context_material.use_transparency = True
+                            context_material.transparency_method = 'RAYTRACE' if do_raytrace else 'Z_TRANSPARENCY'
+                            if "alpha" not in context_material_vars:
+                                if use_cycles:
+                                    context_mat_wrap.alpha_value_set(0.0)
+                                context_material.alpha = 0.0
+
+                        if do_glass:
+                            if use_cycles:
+                                print("WARNING, currently unsupported glass material, skipped.")
+                            if "ior" not in context_material_vars:
+                                context_material.raytrace_transparency.ior = 1.5
+
+                        if do_fresnel:
+                            if use_cycles:
+                                print("WARNING, currently unsupported fresnel option, skipped.")
+                            context_material.raytrace_mirror.fresnel = 1.0  # could be any value for 'ON'
+
+                        """
+                        if do_raytrace:
+                            context_material.use_raytrace = True
+                        else:
+                            context_material.use_raytrace = False
+                        """
+                        # XXX, this is not following the OBJ spec, but this was
+                        # written when raytracing wasnt default, annoying to disable for blender users.
+                        context_material.use_raytrace = True
+
                     context_material_name = line_value(line_split)
                     context_material = unique_materials.get(context_material_name)
+                    if use_cycles and context_material is not None:
+                        context_mat_wrap = cycles_material_wrap_map[context_material]
                     context_material_vars.clear()
+
+                    emit_colors[:] = [0.0, 0.0, 0.0]
+                    do_ambient = True
+                    do_highlight = False
+                    do_reflection = False
+                    do_transparency = False
+                    do_glass = False
+                    do_fresnel = False
+                    do_raytrace = False
+
 
                 elif context_material:
                     # we need to make a material to assign properties to it.
                     if line_id == b'ka':
-                        context_material.mirror_color = (
-                            float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3]))
+                        col = (float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3]))
+                        if use_cycles:
+                            context_mat_wrap.reflect_color_set(col)
+                        context_material.mirror_color = col
+                        # This is highly approximated, but let's try to stick as close from exporter as possible... :/
+                        context_material.ambient = sum(context_material.mirror_color) / 3
                     elif line_id == b'kd':
-                        context_material.diffuse_color = (
-                            float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3]))
+                        col = (float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3]))
+                        if use_cycles:
+                            context_mat_wrap.diffuse_color_set(col)
+                        context_material.diffuse_color = col
+                        context_material.diffuse_intensity = 1.0
                     elif line_id == b'ks':
-                        context_material.specular_color = (
-                            float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3]))
+                        col = (float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3]))
+                        if use_cycles:
+                            context_mat_wrap.specular_color_set(col)
+                            context_mat_wrap.hardness_value_set(1.0)
+                        context_material.specular_color = col
+                        context_material.specular_intensity = 1.0
+                    elif line_id == b'ke':
+                        # We cannot set context_material.emit right now, we need final diffuse color as well for this.
+                        emit_colors[:] = [
+                            float_func(line_split[1]), float_func(line_split[2]), float_func(line_split[3])]
                     elif line_id == b'ns':
-                        context_material.specular_hardness = int((float_func(line_split[1]) * 0.51))
+                        if use_cycles:
+                            context_mat_wrap.hardness_value_set(((float_func(line_split[1]) + 3.0) / 50.0) - 0.65)
+                        context_material.specular_hardness = int((float_func(line_split[1]) * 0.51) + 1)
                     elif line_id == b'ni':  # Refraction index (between 1 and 3).
+                        if use_cycles:
+                            print("WARNING, currently unsupported glass material, skipped.")
                         context_material.raytrace_transparency.ior = max(1, min(float_func(line_split[1]), 3))
                         context_material_vars.add("ior")
-                    elif line_id == b'd':  # dissolve (trancparency)
+                    elif line_id == b'd':  # dissolve (transparency)
+                        if use_cycles:
+                            context_mat_wrap.alpha_value_set(float_func(line_split[1]))
                         context_material.alpha = float_func(line_split[1])
                         context_material.use_transparency = True
                         context_material.transparency_method = 'Z_TRANSPARENCY'
                         context_material_vars.add("alpha")
-                    elif line_id == b'tr':  # trancelucency
+                    elif line_id == b'tr':  # translucency
+                        if use_cycles:
+                            print("WARNING, currently unsupported translucency option, skipped.")
                         context_material.translucency = float_func(line_split[1])
                     elif line_id == b'tf':
                         # rgb, filter color, blender has no support for this.
                         pass
                     elif line_id == b'illum':
                         illum = int(line_split[1])
-
-                        do_ambient = True
-                        do_highlight = False
-                        do_reflection = False
-                        do_transparency = False
-                        do_glass = False
-                        do_fresnel = False
-                        do_raytrace = False
 
                         # inline comments are from the spec, v4.2
                         if illum == 0:
@@ -283,75 +479,51 @@ def create_materials(filepath, relpath,
                         elif illum == 10:
                             # Casts shadows onto invisible surfaces
 
-                            # blender cant do this
+                            # blender can't do this
                             pass
 
-                        if do_ambient:
-                            context_material.ambient = 1.0
-                        else:
-                            context_material.ambient = 0.0
-
-                        if do_highlight:
-                            # FIXME, how else to use this?
-                            context_material.specular_intensity = 1.0
-
-                        if do_reflection:
-                            context_material.raytrace_mirror.use = True
-                            context_material.raytrace_mirror.reflect_factor = 1.0
-
-                        if do_transparency:
-                            context_material.use_transparency = True
-                            context_material.transparency_method = 'RAYTRACE' if do_raytrace else 'Z_TRANSPARENCY'
-                            if "alpha" not in context_material_vars:
-                                context_material.alpha = 0.0
-
-                        if do_glass:
-                            if "ior" not in context_material_vars:
-                                context_material.raytrace_transparency.ior = 1.5
-
-                        if do_fresnel:
-                            context_material.raytrace_mirror.fresnel = 1.0  # could be any value for 'ON'
-
-                        """
-                        if do_raytrace:
-                            context_material.use_raytrace = True
-                        else:
-                            context_material.use_raytrace = False
-                        """
-                        # XXX, this is not following the OBJ spec, but this was
-                        # written when raytracing wasnt default, annoying to disable for blender users.
-                        context_material.use_raytrace = True
-
                     elif line_id == b'map_ka':
-                        img_filepath = line_value(line.split())
-                        if img_filepath:
-                            load_material_image(context_material, context_material_name, img_filepath, 'Ka')
+                        img_data = line.split()[1:]
+                        if img_data:
+                            load_material_image(context_material, context_mat_wrap, use_cycles,
+                                                context_material_name, img_data, line, 'Ka')
                     elif line_id == b'map_ks':
-                        img_filepath = line_value(line.split())
-                        if img_filepath:
-                            load_material_image(context_material, context_material_name, img_filepath, 'Ks')
+                        img_data = line.split()[1:]
+                        if img_data:
+                            load_material_image(context_material, context_mat_wrap, use_cycles,
+                                                context_material_name, img_data, line, 'Ks')
                     elif line_id == b'map_kd':
-                        img_filepath = line_value(line.split())
-                        if img_filepath:
-                            load_material_image(context_material, context_material_name, img_filepath, 'Kd')
+                        img_data = line.split()[1:]
+                        if img_data:
+                            load_material_image(context_material, context_mat_wrap, use_cycles,
+                                                context_material_name, img_data, line, 'Kd')
+                    elif line_id == b'map_ke':
+                        img_data = line.split()[1:]
+                        if img_data:
+                            load_material_image(context_material, context_mat_wrap, use_cycles,
+                                                context_material_name, img_data, line, 'Ke')
                     elif line_id in {b'map_bump', b'bump'}:  # 'bump' is incorrect but some files use it.
-                        img_filepath = line_value(line.split())
-                        if img_filepath:
-                            load_material_image(context_material, context_material_name, img_filepath, 'Bump')
+                        img_data = line.split()[1:]
+                        if img_data:
+                            load_material_image(context_material, context_mat_wrap, use_cycles,
+                                                context_material_name, img_data, line, 'Bump')
                     elif line_id in {b'map_d', b'map_tr'}:  # Alpha map - Dissolve
-                        img_filepath = line_value(line.split())
-                        if img_filepath:
-                            load_material_image(context_material, context_material_name, img_filepath, 'D')
+                        img_data = line.split()[1:]
+                        if img_data:
+                            load_material_image(context_material, context_mat_wrap, use_cycles,
+                                                context_material_name, img_data, line, 'D')
 
                     elif line_id in {b'map_disp', b'disp'}:  # displacementmap
-                        img_filepath = line_value(line.split())
-                        if img_filepath:
-                            load_material_image(context_material, context_material_name, img_filepath, 'disp')
+                        img_data = line.split()[1:]
+                        if img_data:
+                            load_material_image(context_material, context_mat_wrap, use_cycles,
+                                                context_material_name, img_data, line, 'disp')
 
                     elif line_id in {b'map_refl', b'refl'}:  # reflectionmap
-                        img_filepath = line_value(line.split())
-                        if img_filepath:
-                            load_material_image(context_material, context_material_name, img_filepath, 'refl')
+                        img_data = line.split()[1:]
+                        if img_data:
+                            load_material_image(context_material, context_mat_wrap, use_cycles,
+                                                context_material_name, img_data, line, 'refl')
                     else:
                         print("\t%r:%r (ignored)" % (filepath, line))
             mtl.close()
@@ -366,15 +538,17 @@ def split_mesh(verts_loc, faces, unique_materials, filepath, SPLIT_OB_OR_GROUP):
     filename = os.path.splitext((os.path.basename(filepath)))[0]
 
     if not SPLIT_OB_OR_GROUP or not faces:
+        use_verts_nor = any((False if f[1] is ... else True) for f in faces)
+        use_verts_tex = any((False if f[2] is ... else True) for f in faces)
         # use the filename for the object name since we aren't chopping up the mesh.
-        return [(verts_loc, faces, unique_materials, filename)]
+        return [(verts_loc, faces, unique_materials, filename, use_verts_nor, use_verts_tex)]
 
     def key_to_name(key):
         # if the key is a tuple, join it to make a string
         if not key:
             return filename  # assume its a string. make sure this is true if the splitting code is changed
         else:
-            return key
+            return key.decode('utf-8', 'replace')
 
     # Return a key that makes the faces unique.
     face_split_dict = {}
@@ -386,11 +560,17 @@ def split_mesh(verts_loc, faces, unique_materials, filepath, SPLIT_OB_OR_GROUP):
 
         if oldkey != key:
             # Check the key has changed.
-            (verts_split, faces_split,
-             unique_materials_split, vert_remap) = face_split_dict.setdefault(key, ([], [], {}, {}))
+            (verts_split, faces_split, unique_materials_split, vert_remap,
+             use_verts_nor, use_verts_tex) = face_split_dict.setdefault(key, ([], [], {}, {}, [], []))
             oldkey = key
 
         face_vert_loc_indices = face[0]
+
+        if not use_verts_nor and face[1] is not ...:
+            use_verts_nor.append(True)
+
+        if not use_verts_tex and face[2] is not ...:
+            use_verts_tex.append(True)
 
         # Remap verts to new vert list and add where needed
         for enum, i in enumerate(face_vert_loc_indices):
@@ -409,8 +589,9 @@ def split_mesh(verts_loc, faces, unique_materials, filepath, SPLIT_OB_OR_GROUP):
         faces_split.append(face)
 
     # remove one of the items and reorder
-    return [(verts_split, faces_split, unique_materials_split, key_to_name(key))
-            for key, (verts_split, faces_split, unique_materials_split, _) in face_split_dict.items()]
+    return [(verts_split, faces_split, unique_materials_split, key_to_name(key), bool(use_vnor), bool(use_vtex))
+            for key, (verts_split, faces_split, unique_materials_split, _, use_vnor, use_vtex)
+            in face_split_dict.items()]
 
 
 def create_mesh(new_objects,
@@ -457,7 +638,8 @@ def create_mesh(new_objects,
         if len_face_vert_loc_indices == 1:
             faces.pop(f_idx)  # cant add single vert faces
 
-        elif not face_vert_tex_indices or len_face_vert_loc_indices == 2:  # faces that have no texture coords are lines
+        # Face with a single item in face_vert_nor_indices is actually a polyline!
+        elif len(face_vert_nor_indices) == 1 or len_face_vert_loc_indices == 2:
             if use_edges:
                 edges.extend((face_vert_loc_indices[i], face_vert_loc_indices[i + 1])
                              for i in range(len_face_vert_loc_indices - 1))
@@ -479,43 +661,46 @@ def create_mesh(new_objects,
 
             # NGons into triangles
             if face_invalid_blenpoly:
-                from bpy_extras.mesh_utils import ngon_tessellate
-                ngon_face_indices = ngon_tessellate(verts_loc, face_vert_loc_indices)
-                faces.extend([([face_vert_loc_indices[ngon[0]],
-                                face_vert_loc_indices[ngon[1]],
-                                face_vert_loc_indices[ngon[2]],
-                                ],
-                               [face_vert_nor_indices[ngon[0]],
-                                face_vert_nor_indices[ngon[1]],
-                                face_vert_nor_indices[ngon[2]],
-                                ],
-                               [face_vert_tex_indices[ngon[0]],
-                                face_vert_tex_indices[ngon[1]],
-                                face_vert_tex_indices[ngon[2]],
-                                ],
-                               context_material,
-                               context_smooth_group,
-                               context_object,
-                               [],
-                               )
-                             for ngon in ngon_face_indices]
-                             )
-                tot_loops += 3 * len(ngon_face_indices)
+                # ignore triangles with invalid indices
+                if len(face_vert_loc_indices) > 3:
+                    from bpy_extras.mesh_utils import ngon_tessellate
+                    ngon_face_indices = ngon_tessellate(verts_loc, face_vert_loc_indices)
+                    faces.extend([([face_vert_loc_indices[ngon[0]],
+                                    face_vert_loc_indices[ngon[1]],
+                                    face_vert_loc_indices[ngon[2]],
+                                    ],
+                                [face_vert_nor_indices[ngon[0]],
+                                    face_vert_nor_indices[ngon[1]],
+                                    face_vert_nor_indices[ngon[2]],
+                                    ] if face_vert_nor_indices else [],
+                                [face_vert_tex_indices[ngon[0]],
+                                    face_vert_tex_indices[ngon[1]],
+                                    face_vert_tex_indices[ngon[2]],
+                                    ] if face_vert_tex_indices else [],
+                                context_material,
+                                context_smooth_group,
+                                context_object,
+                                [],
+                                )
+                                for ngon in ngon_face_indices]
+                                )
+                    tot_loops += 3 * len(ngon_face_indices)
 
-                # edges to make ngons
-                edge_users = set()
-                for ngon in ngon_face_indices:
-                    prev_vidx = face_vert_loc_indices[ngon[-1]]
-                    for ngidx in ngon:
-                        vidx = face_vert_loc_indices[ngidx]
-                        if vidx == prev_vidx:
-                            continue  # broken OBJ... Just skip.
-                        edge_key = (prev_vidx, vidx) if (prev_vidx < vidx) else (vidx, prev_vidx)
-                        prev_vidx = vidx
-                        if edge_key in edge_users:
-                            fgon_edges.add(edge_key)
-                        else:
-                            edge_users.add(edge_key)
+                    # edges to make ngons
+                    if len(ngon_face_indices) > 1:
+                        edge_users = set()
+                        for ngon in ngon_face_indices:
+                            prev_vidx = face_vert_loc_indices[ngon[-1]]
+                            for ngidx in ngon:
+                                vidx = face_vert_loc_indices[ngidx]
+                                if vidx == prev_vidx:
+                                    continue  # broken OBJ... Just skip.
+                                edge_key = (prev_vidx, vidx) if (prev_vidx < vidx) else (vidx, prev_vidx)
+                                prev_vidx = vidx
+                                if edge_key in edge_users:
+                                    fgon_edges.add(edge_key)
+                                else:
+                                    edge_users.add(edge_key)
 
                 faces.pop(f_idx)
             else:
@@ -536,7 +721,7 @@ def create_mesh(new_objects,
     for name, index in material_mapping.items():
         materials[index] = unique_materials[name]
 
-    me = bpy.data.meshes.new(dataname.decode('utf-8', "replace"))
+    me = bpy.data.meshes.new(dataname)
 
     # make sure the list isnt too big
     for material in materials:
@@ -598,11 +783,11 @@ def create_mesh(new_objects,
                 context_material_old = context_material
             blen_poly.material_index = mat
 
-        if verts_nor:
+        if verts_nor and face_vert_nor_indices:
             for face_noidx, lidx in zip(face_vert_nor_indices, blen_poly.loop_indices):
-                me.loops[lidx].normal[:] = verts_nor[face_noidx]
+                me.loops[lidx].normal[:] = verts_nor[0 if (face_noidx is ...) else face_noidx]
 
-        if verts_tex:
+        if verts_tex and face_vert_tex_indices:
             if context_material:
                 image = unique_material_images[context_material]
                 if image:  # Can be none if the material dosnt have an image.
@@ -610,7 +795,7 @@ def create_mesh(new_objects,
 
             blen_uvs = me.uv_layers[0]
             for face_uvidx, lidx in zip(face_vert_tex_indices, blen_poly.loop_indices):
-                blen_uvs.data[lidx].uv = verts_tex[face_uvidx]
+                blen_uvs.data[lidx].uv = verts_tex[0 if (face_uvidx is ...) else face_uvidx]
 
     use_edges = use_edges and bool(edges)
     if use_edges:
@@ -772,7 +957,9 @@ def get_float_func(filepath):
     return float
 
 
-def load(operator, context, filepath,
+def load(context,
+         filepath,
+         *,
          global_clamp_size=0.0,
          use_smooth_groups=True,
          use_edges=True,
@@ -780,8 +967,9 @@ def load(operator, context, filepath,
          use_split_groups=True,
          use_image_search=True,
          use_groups_as_vgroups=False,
+         use_cycles=True,
          relpath=None,
-         global_matrix=None,
+         global_matrix=None
          ):
     """
     Called by the user interface or another script.
@@ -814,330 +1002,332 @@ def load(operator, context, filepath,
             [],  # If non-empty, that face is a Blender-invalid ngon (holes...), need a mutable object for that...
         )
 
-    print('\nimporting obj %r' % filepath)
+    with ProgressReport(context.window_manager) as progress:
+        progress.enter_substeps(1, "Importing OBJ %r..." % filepath)
 
-    filepath = os.fsencode(filepath)
+        if global_matrix is None:
+            global_matrix = mathutils.Matrix()
 
-    if global_matrix is None:
-        global_matrix = mathutils.Matrix()
+        if use_split_objects or use_split_groups:
+            use_groups_as_vgroups = False
 
-    if use_split_objects or use_split_groups:
-        use_groups_as_vgroups = False
+        time_main = time.time()
 
-    time_main = time.time()
+        verts_loc = []
+        verts_nor = []
+        verts_tex = []
+        faces = []  # tuples of the faces
+        material_libs = set()  # filenames to material libs this OBJ uses
+        vertex_groups = {}  # when use_groups_as_vgroups is true
 
-    verts_loc = []
-    verts_nor = []
-    verts_tex = []
-    faces = []  # tuples of the faces
-    material_libs = []  # filanems to material libs this uses
-    vertex_groups = {}  # when use_groups_as_vgroups is true
+        # Get the string to float conversion func for this file- is 'float' for almost all files.
+        float_func = get_float_func(filepath)
 
-    # Get the string to float conversion func for this file- is 'float' for almost all files.
-    float_func = get_float_func(filepath)
+        # Context variables
+        context_material = None
+        context_smooth_group = None
+        context_object = None
+        context_vgroup = None
 
-    # Context variables
-    context_material = None
-    context_smooth_group = None
-    context_object = None
-    context_vgroup = None
+        # Nurbs
+        context_nurbs = {}
+        nurbs = []
+        context_parm = b''  # used by nurbs too but could be used elsewhere
 
-    # Nurbs
-    context_nurbs = {}
-    nurbs = []
-    context_parm = b''  # used by nurbs too but could be used elsewhere
+        # Until we can use sets
+        unique_materials = {}
+        unique_material_images = {}
+        unique_smooth_groups = {}
+        # unique_obects= {} - no use for this variable since the objects are stored in the face.
 
-    # Until we can use sets
-    unique_materials = {}
-    unique_material_images = {}
-    unique_smooth_groups = {}
-    # unique_obects= {} - no use for this variable since the objects are stored in the face.
+        # when there are faces that end with \
+        # it means they are multiline-
+        # since we use xreadline we cant skip to the next line
+        # so we need to know whether
+        context_multi_line = b''
 
-    # when there are faces that end with \
-    # it means they are multiline-
-    # since we use xreadline we cant skip to the next line
-    # so we need to know whether
-    context_multi_line = b''
+        # Per-face handling data.
+        face_vert_loc_indices = None
+        face_vert_nor_indices = None
+        face_vert_tex_indices = None
+        face_vert_nor_valid = face_vert_tex_valid = False
+        face_items_usage = set()
+        face_invalid_blenpoly = None
+        prev_vidx = None
+        face = None
+        vec = []
 
-    # Per-face handling data.
-    face_vert_loc_indices = None
-    face_vert_nor_indices = None
-    face_vert_tex_indices = None
-    face_items_usage = set()
-    face_invalid_blenpoly = None
-    prev_vidx = None
-    face = None
-    vec = []
+        progress.enter_substeps(3, "Parsing OBJ file...")
+        with open(filepath, 'rb') as f:
+            for line in f:  # .readlines():
+                line_split = line.split()
 
-    print("\tparsing obj file...")
-    time_sub = time.time()
+                if not line_split:
+                    continue
 
-    file = open(filepath, 'rb')
-    for line in file:  # .readlines():
-        line_split = line.split()
+                line_start = line_split[0]  # we compare with this a _lot_
 
-        if not line_split:
-            continue
+                if line_start == b'v' or context_multi_line == b'v':
+                    context_multi_line = handle_vec(line_start, context_multi_line, line_split, b'v', verts_loc, vec, 3)
 
-        line_start = line_split[0]  # we compare with this a _lot_
+                elif line_start == b'vn' or context_multi_line == b'vn':
+                    context_multi_line = handle_vec(line_start, context_multi_line, line_split, b'vn', verts_nor, vec, 3)
 
-        if line_start == b'v' or context_multi_line == b'v':
-            context_multi_line = handle_vec(line_start, context_multi_line, line_split, b'v', verts_loc, vec, 3)
+                elif line_start == b'vt' or context_multi_line == b'vt':
+                    context_multi_line = handle_vec(line_start, context_multi_line, line_split, b'vt', verts_tex, vec, 2)
 
-        elif line_start == b'vn' or context_multi_line == b'vn':
-            context_multi_line = handle_vec(line_start, context_multi_line, line_split, b'vn', verts_nor, vec, 3)
+                # Handle faces lines (as faces) and the second+ lines of fa multiline face here
+                # use 'f' not 'f ' because some objs (very rare have 'fo ' for faces)
+                elif line_start == b'f' or context_multi_line == b'f':
+                    if not context_multi_line:
+                        line_split = line_split[1:]
+                        # Instantiate a face
+                        face = create_face(context_material, context_smooth_group, context_object)
+                        (face_vert_loc_indices, face_vert_nor_indices, face_vert_tex_indices,
+                         _1, _2, _3, face_invalid_blenpoly) = face
+                        faces.append(face)
+                        face_items_usage.clear()
+                    # Else, use face_vert_loc_indices and face_vert_tex_indices previously defined and used the obj_face
 
-        elif line_start == b'vt' or context_multi_line == b'vt':
-            context_multi_line = handle_vec(line_start, context_multi_line, line_split, b'vt', verts_tex, vec, 2)
+                    context_multi_line = b'f' if strip_slash(line_split) else b''
 
-        # Handle faces lines (as faces) and the second+ lines of fa multiline face here
-        # use 'f' not 'f ' because some objs (very rare have 'fo ' for faces)
-        elif line_start == b'f' or context_multi_line == b'f':
-            if not context_multi_line:
-                line_split = line_split[1:]
-                # Instantiate a face
-                face = create_face(context_material, context_smooth_group, context_object)
-                (face_vert_loc_indices, face_vert_nor_indices, face_vert_tex_indices,
-                 _1, _2, _3, face_invalid_blenpoly) = face
-                faces.append(face)
-                face_items_usage.clear()
-            # Else, use face_vert_loc_indices and face_vert_tex_indices previously defined and used the obj_face
+                    for v in line_split:
+                        obj_vert = v.split(b'/')
+                        idx = int(obj_vert[0]) - 1
+                        vert_loc_index = (idx + len(verts_loc) + 1) if (idx < 0) else idx
+                        # Add the vertex to the current group
+                        # *warning*, this wont work for files that have groups defined around verts
+                        if use_groups_as_vgroups and context_vgroup:
+                            vertex_groups[context_vgroup].append(vert_loc_index)
+                        # This a first round to quick-detect ngons that *may* use a same edge more than once.
+                        # Potential candidate will be re-checked once we have done parsing the whole face.
+                        if not face_invalid_blenpoly:
+                            # If we use more than once a same vertex, invalid ngon is suspected.
+                            if vert_loc_index in face_items_usage:
+                                face_invalid_blenpoly.append(True)
+                            else:
+                                face_items_usage.add(vert_loc_index)
+                        face_vert_loc_indices.append(vert_loc_index)
 
-            context_multi_line = b'f' if strip_slash(line_split) else b''
+                        # formatting for faces with normals and textures is
+                        # loc_index/tex_index/nor_index
+                        if len(obj_vert) > 1 and obj_vert[1] and obj_vert[1] != b'0':
+                            idx = int(obj_vert[1]) - 1
+                            face_vert_tex_indices.append((idx + len(verts_tex) + 1) if (idx < 0) else idx)
+                            face_vert_tex_valid = True
+                        else:
+                            face_vert_tex_indices.append(...)
 
-            for v in line_split:
-                obj_vert = v.split(b'/')
-                idx = int(obj_vert[0]) - 1
-                vert_loc_index = (idx + len(verts_loc) + 1) if (idx < 0) else idx
-                # Add the vertex to the current group
-                # *warning*, this wont work for files that have groups defined around verts
-                if use_groups_as_vgroups and context_vgroup:
-                    vertex_groups[context_vgroup].append(vert_loc_index)
-                # This a first round to quick-detect ngons that *may* use a same edge more than once.
-                # Potential candidate will be re-checked once we have done parsing the whole face.
-                if not face_invalid_blenpoly:
-                    # If we use more than once a same vertex, invalid ngon is suspected.
-                    if vert_loc_index in face_items_usage:
-                        face_invalid_blenpoly.append(True)
+                        if len(obj_vert) > 2 and obj_vert[2] and obj_vert[2] != b'0':
+                            idx = int(obj_vert[2]) - 1
+                            face_vert_nor_indices.append((idx + len(verts_nor) + 1) if (idx < 0) else idx)
+                            face_vert_nor_valid = True
+                        else:
+                            face_vert_nor_indices.append(...)
+
+                    if not context_multi_line:
+                        # Clear nor/tex indices in case we had none defined for this face.
+                        if not face_vert_nor_valid:
+                            face_vert_nor_indices.clear()
+                        if not face_vert_tex_valid:
+                            face_vert_tex_indices.clear()
+                        face_vert_nor_valid = face_vert_tex_valid = False
+
+                        # Means we have finished a face, we have to do final check if ngon is suspected to be blender-invalid...
+                        if face_invalid_blenpoly:
+                            face_invalid_blenpoly.clear()
+                            face_items_usage.clear()
+                            prev_vidx = face_vert_loc_indices[-1]
+                            for vidx in face_vert_loc_indices:
+                                edge_key = (prev_vidx, vidx) if (prev_vidx < vidx) else (vidx, prev_vidx)
+                                if edge_key in face_items_usage:
+                                    face_invalid_blenpoly.append(True)
+                                    break
+                                face_items_usage.add(edge_key)
+                                prev_vidx = vidx
+
+                elif use_edges and (line_start == b'l' or context_multi_line == b'l'):
+                    # very similar to the face load function above with some parts removed
+                    if not context_multi_line:
+                        line_split = line_split[1:]
+                        # Instantiate a face
+                        face = create_face(context_material, context_smooth_group, context_object)
+                        face_vert_loc_indices = face[0]
+                        # XXX A bit hackish, we use special 'value' of face_vert_nor_indices (a single True item) to tag this
+                        #     as a polyline, and not a regular face...
+                        face[1][:] = [True]
+                        faces.append(face)
+                    # Else, use face_vert_loc_indices previously defined and used the obj_face
+
+                    context_multi_line = b'l' if strip_slash(line_split) else b''
+
+                    for v in line_split:
+                        obj_vert = v.split(b'/')
+                        idx = int(obj_vert[0]) - 1
+                        face_vert_loc_indices.append((idx + len(verts_loc) + 1) if (idx < 0) else idx)
+
+                elif line_start == b's':
+                    if use_smooth_groups:
+                        context_smooth_group = line_value(line_split)
+                        if context_smooth_group == b'off':
+                            context_smooth_group = None
+                        elif context_smooth_group:  # is not None
+                            unique_smooth_groups[context_smooth_group] = None
+
+                elif line_start == b'o':
+                    if use_split_objects:
+                        context_object = line_value(line_split)
+                        # unique_obects[context_object]= None
+
+                elif line_start == b'g':
+                    if use_split_groups:
+                        context_object = line_value(line.split())
+                        # print 'context_object', context_object
+                        # unique_obects[context_object]= None
+                    elif use_groups_as_vgroups:
+                        context_vgroup = line_value(line.split())
+                        if context_vgroup and context_vgroup != b'(null)':
+                            vertex_groups.setdefault(context_vgroup, [])
+                        else:
+                            context_vgroup = None  # dont assign a vgroup
+
+                elif line_start == b'usemtl':
+                    context_material = line_value(line.split())
+                    unique_materials[context_material] = None
+                elif line_start == b'mtllib':  # usemap or usemat
+                    # can have multiple mtllib filenames per line, mtllib can appear more than once,
+                    # so make sure only occurrence of material exists
+                    material_libs |= {os.fsdecode(f) for f in line.split()[1:]}
+
+                    # Nurbs support
+                elif line_start == b'cstype':
+                    context_nurbs[b'cstype'] = line_value(line.split())  # 'rat bspline' / 'bspline'
+                elif line_start == b'curv' or context_multi_line == b'curv':
+                    curv_idx = context_nurbs[b'curv_idx'] = context_nurbs.get(b'curv_idx', [])  # in case were multiline
+
+                    if not context_multi_line:
+                        context_nurbs[b'curv_range'] = float_func(line_split[1]), float_func(line_split[2])
+                        line_split[0:3] = []  # remove first 3 items
+
+                    if strip_slash(line_split):
+                        context_multi_line = b'curv'
                     else:
-                        face_items_usage.add(vert_loc_index)
-                face_vert_loc_indices.append(vert_loc_index)
+                        context_multi_line = b''
 
-                # formatting for faces with normals and textures is
-                # loc_index/tex_index/nor_index
-                if len(obj_vert) > 1 and obj_vert[1]:
-                    idx = int(obj_vert[1]) - 1
-                    face_vert_tex_indices.append((idx + len(verts_tex) + 1) if (idx < 0) else idx)
-                else:
-                    # dummy
-                    face_vert_tex_indices.append(0)
+                    for i in line_split:
+                        vert_loc_index = int(i) - 1
 
-                if len(obj_vert) > 2 and obj_vert[2]:
-                    idx = int(obj_vert[2]) - 1
-                    face_vert_nor_indices.append((idx + len(verts_nor) + 1) if (idx < 0) else idx)
-                else:
-                    # dummy
-                    face_vert_nor_indices.append(0)
+                        if vert_loc_index < 0:
+                            vert_loc_index = len(verts_loc) + vert_loc_index + 1
 
-            if not context_multi_line:
-                # Means we have finished a face, we have to do final check if ngon is suspected to be blender-invalid...
-                if face_invalid_blenpoly:
-                    face_invalid_blenpoly.clear()
-                    face_items_usage.clear()
-                    prev_vidx = face_vert_loc_indices[-1]
-                    for vidx in face_vert_loc_indices:
-                        edge_key = (prev_vidx, vidx) if (prev_vidx < vidx) else (vidx, prev_vidx)
-                        if edge_key in face_items_usage:
-                            face_invalid_blenpoly.append(True)
-                            break
-                        face_items_usage.add(edge_key)
-                        prev_vidx = vidx
+                        curv_idx.append(vert_loc_index)
 
-        elif use_edges and (line_start == b'l' or context_multi_line == b'l'):
-            # very similar to the face load function above with some parts removed
-            if not context_multi_line:
-                line_split = line_split[1:]
-                # Instantiate a face
-                face = create_face(context_material, context_smooth_group, context_object)
-                face_vert_loc_indices = face[0]
-                faces.append(face)
-            # Else, use face_vert_loc_indices and face_vert_tex_indices previously defined and used the obj_face
+                elif line_start == b'parm' or context_multi_line == b'parm':
+                    if context_multi_line:
+                        context_multi_line = b''
+                    else:
+                        context_parm = line_split[1]
+                        line_split[0:2] = []  # remove first 2
 
-            context_multi_line = b'l' if strip_slash(line_split) else b''
+                    if strip_slash(line_split):
+                        context_multi_line = b'parm'
+                    else:
+                        context_multi_line = b''
 
-            for v in line_split:
-                obj_vert = v.split(b'/')
-                idx = int(obj_vert[0]) - 1
-                face_vert_loc_indices.append((idx + len(verts_loc) + 1) if (idx < 0) else idx)
+                    if context_parm.lower() == b'u':
+                        context_nurbs.setdefault(b'parm_u', []).extend([float_func(f) for f in line_split])
+                    elif context_parm.lower() == b'v':  # surfaces not supported yet
+                        context_nurbs.setdefault(b'parm_v', []).extend([float_func(f) for f in line_split])
+                    # else: # may want to support other parm's ?
 
-        elif line_start == b's':
-            if use_smooth_groups:
-                context_smooth_group = line_value(line_split)
-                if context_smooth_group == b'off':
-                    context_smooth_group = None
-                elif context_smooth_group:  # is not None
-                    unique_smooth_groups[context_smooth_group] = None
+                elif line_start == b'deg':
+                    context_nurbs[b'deg'] = [int(i) for i in line.split()[1:]]
+                elif line_start == b'end':
+                    # Add the nurbs curve
+                    if context_object:
+                        context_nurbs[b'name'] = context_object
+                    nurbs.append(context_nurbs)
+                    context_nurbs = {}
+                    context_parm = b''
 
-        elif line_start == b'o':
-            if use_split_objects:
-                context_object = line_value(line_split)
-                # unique_obects[context_object]= None
+                ''' # How to use usemap? depricated?
+                elif line_start == b'usema': # usemap or usemat
+                    context_image= line_value(line_split)
+                '''
 
-        elif line_start == b'g':
-            if use_split_groups:
-                context_object = line_value(line.split())
-                # print 'context_object', context_object
-                # unique_obects[context_object]= None
-            elif use_groups_as_vgroups:
-                context_vgroup = line_value(line.split())
-                if context_vgroup and context_vgroup != b'(null)':
-                    vertex_groups.setdefault(context_vgroup, [])
-                else:
-                    context_vgroup = None  # dont assign a vgroup
+        progress.step("Done, loading materials and images...")
 
-        elif line_start == b'usemtl':
-            context_material = line_value(line.split())
-            unique_materials[context_material] = None
-        elif line_start == b'mtllib':  # usemap or usemat
-            # can have multiple mtllib filenames per line, mtllib can appear more than once,
-            # so make sure only occurrence of material exists
-            material_libs = list(set(material_libs) | set(line.split()[1:]))
+        create_materials(filepath, relpath, material_libs, unique_materials,
+                         unique_material_images, use_image_search, use_cycles, float_func)
 
-            # Nurbs support
-        elif line_start == b'cstype':
-            context_nurbs[b'cstype'] = line_value(line.split())  # 'rat bspline' / 'bspline'
-        elif line_start == b'curv' or context_multi_line == b'curv':
-            curv_idx = context_nurbs[b'curv_idx'] = context_nurbs.get(b'curv_idx', [])  # in case were multiline
+        progress.step("Done, building geometries (verts:%i faces:%i materials: %i smoothgroups:%i) ..." %
+                      (len(verts_loc), len(faces), len(unique_materials), len(unique_smooth_groups)))
 
-            if not context_multi_line:
-                context_nurbs[b'curv_range'] = float_func(line_split[1]), float_func(line_split[2])
-                line_split[0:3] = []  # remove first 3 items
+        # deselect all
+        if bpy.ops.object.select_all.poll():
+            bpy.ops.object.select_all(action='DESELECT')
 
-            if strip_slash(line_split):
-                context_multi_line = b'curv'
-            else:
-                context_multi_line = b''
+        scene = context.scene
+        new_objects = []  # put new objects here
 
-            for i in line_split:
-                vert_loc_index = int(i) - 1
+        # Split the mesh by objects/materials, may
+        SPLIT_OB_OR_GROUP = bool(use_split_objects or use_split_groups)
 
-                if vert_loc_index < 0:
-                    vert_loc_index = len(verts_loc) + vert_loc_index + 1
+        for data in split_mesh(verts_loc, faces, unique_materials, filepath, SPLIT_OB_OR_GROUP):
+            verts_loc_split, faces_split, unique_materials_split, dataname, use_vnor, use_vtex = data
+            # Create meshes from the data, warning 'vertex_groups' wont support splitting
+            #~ print(dataname, use_vnor, use_vtex)
+            create_mesh(new_objects,
+                        use_edges,
+                        verts_loc_split,
+                        verts_nor if use_vnor else [],
+                        verts_tex if use_vtex else [],
+                        faces_split,
+                        unique_materials_split,
+                        unique_material_images,
+                        unique_smooth_groups,
+                        vertex_groups,
+                        dataname,
+                        )
 
-                curv_idx.append(vert_loc_index)
+        # nurbs support
+        for context_nurbs in nurbs:
+            create_nurbs(context_nurbs, verts_loc, new_objects)
 
-        elif line_start == b'parm' or context_multi_line == b'parm':
-            if context_multi_line:
-                context_multi_line = b''
-            else:
-                context_parm = line_split[1]
-                line_split[0:2] = []  # remove first 2
-
-            if strip_slash(line_split):
-                context_multi_line = b'parm'
-            else:
-                context_multi_line = b''
-
-            if context_parm.lower() == b'u':
-                context_nurbs.setdefault(b'parm_u', []).extend([float_func(f) for f in line_split])
-            elif context_parm.lower() == b'v':  # surfaces not supported yet
-                context_nurbs.setdefault(b'parm_v', []).extend([float_func(f) for f in line_split])
-            # else: # may want to support other parm's ?
-
-        elif line_start == b'deg':
-            context_nurbs[b'deg'] = [int(i) for i in line.split()[1:]]
-        elif line_start == b'end':
-            # Add the nurbs curve
-            if context_object:
-                context_nurbs[b'name'] = context_object
-            nurbs.append(context_nurbs)
-            context_nurbs = {}
-            context_parm = b''
-
-        ''' # How to use usemap? depricated?
-        elif line_start == b'usema': # usemap or usemat
-            context_image= line_value(line_split)
-        '''
-
-    file.close()
-    time_new = time.time()
-    print("%.4f sec" % (time_new - time_sub))
-    time_sub = time_new
-
-    print('\tloading materials and images...')
-    create_materials(filepath, relpath, material_libs, unique_materials,
-                     unique_material_images, use_image_search, float_func)
-
-    time_new = time.time()
-    print("%.4f sec" % (time_new - time_sub))
-    time_sub = time_new
-
-    # deselect all
-    if bpy.ops.object.select_all.poll():
-        bpy.ops.object.select_all(action='DESELECT')
-
-    scene = context.scene
-    new_objects = []  # put new objects here
-
-    print('\tbuilding geometry...\n\tverts:%i faces:%i materials: %i smoothgroups:%i ...' %
-          (len(verts_loc), len(faces), len(unique_materials), len(unique_smooth_groups)))
-    # Split the mesh by objects/materials, may
-    SPLIT_OB_OR_GROUP = bool(use_split_objects or use_split_groups)
-
-    for data in split_mesh(verts_loc, faces, unique_materials, filepath, SPLIT_OB_OR_GROUP):
-        verts_loc_split, faces_split, unique_materials_split, dataname = data
-        # Create meshes from the data, warning 'vertex_groups' wont support splitting
-        create_mesh(new_objects,
-                    use_edges,
-                    verts_loc_split,
-                    verts_nor,
-                    verts_tex,
-                    faces_split,
-                    unique_materials_split,
-                    unique_material_images,
-                    unique_smooth_groups,
-                    vertex_groups,
-                    dataname,
-                    )
-
-    # nurbs support
-    for context_nurbs in nurbs:
-        create_nurbs(context_nurbs, verts_loc, new_objects)
-
-    # Create new obj
-    for obj in new_objects:
-        base = scene.objects.link(obj)
-        base.select = True
-
-        # we could apply this anywhere before scaling.
-        obj.matrix_world = global_matrix
-
-    scene.update()
-
-    axis_min = [1000000000] * 3
-    axis_max = [-1000000000] * 3
-
-    if global_clamp_size:
-        # Get all object bounds
-        for ob in new_objects:
-            for v in ob.bound_box:
-                for axis, value in enumerate(v):
-                    if axis_min[axis] > value:
-                        axis_min[axis] = value
-                    if axis_max[axis] < value:
-                        axis_max[axis] = value
-
-        # Scale objects
-        max_axis = max(axis_max[0] - axis_min[0], axis_max[1] - axis_min[1], axis_max[2] - axis_min[2])
-        scale = 1.0
-
-        while global_clamp_size < max_axis * scale:
-            scale = scale / 10.0
-
+        # Create new obj
         for obj in new_objects:
-            obj.scale = scale, scale, scale
+            base = scene.objects.link(obj)
+            base.select = True
 
-    time_new = time.time()
+            # we could apply this anywhere before scaling.
+            obj.matrix_world = global_matrix
 
-    print("finished importing: %r in %.4f sec." % (filepath, (time_new - time_main)))
+        scene.update()
+
+        axis_min = [1000000000] * 3
+        axis_max = [-1000000000] * 3
+
+        if global_clamp_size:
+            # Get all object bounds
+            for ob in new_objects:
+                for v in ob.bound_box:
+                    for axis, value in enumerate(v):
+                        if axis_min[axis] > value:
+                            axis_min[axis] = value
+                        if axis_max[axis] < value:
+                            axis_max[axis] = value
+
+            # Scale objects
+            max_axis = max(axis_max[0] - axis_min[0], axis_max[1] - axis_min[1], axis_max[2] - axis_min[2])
+            scale = 1.0
+
+            while global_clamp_size < max_axis * scale:
+                scale = scale / 10.0
+
+            for obj in new_objects:
+                obj.scale = scale, scale, scale
+
+        progress.leave_substeps("Done.")
+        progress.leave_substeps("Finished importing: %r" % filepath)
+
     return {'FINISHED'}

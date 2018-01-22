@@ -31,14 +31,17 @@
 
 #include "DNA_scene_types.h"
 #include "DNA_material_types.h"
+#include "DNA_meta_types.h"
 #include "DNA_object_types.h"
 #include "DNA_key_types.h"
 #include "DNA_mesh_types.h"
-#include "DNA_ipo_types.h"
+#include "DNA_curve_types.h"
 
 #include "BLI_utildefines.h"
 #include "BLI_math.h"
+#include "BLI_linklist.h"
 #include "BLI_listbase.h"
+#include "BLI_memarena.h"
 #include "BLI_edgehash.h"
 #include "BLI_string.h"
 
@@ -49,6 +52,8 @@
 #include "BKE_mesh.h"
 #include "BKE_displist.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
+#include "BKE_library_remap.h"
 #include "BKE_material.h"
 #include "BKE_modifier.h"
 #include "BKE_multires.h"
@@ -61,6 +66,12 @@
 #include "BKE_object.h"
 #include "BKE_editmesh.h"
 
+#include "DEG_depsgraph.h"
+
+/* Define for cases when you want extra validation of mesh
+ * after certain modifications.
+ */
+// #undef VALIDATE_MESH
 
 enum {
 	MESHCMP_DVERT_WEIGHTMISMATCH = 1,
@@ -140,13 +151,15 @@ static int customdata_compare(CustomData *c1, CustomData *c2, Mesh *m1, Mesh *m2
 		while (i1 < c1->totlayer && !ELEM(l1->type, CD_MVERT, CD_MEDGE, CD_MPOLY,
 		                                  CD_MLOOPUV, CD_MLOOPCOL, CD_MTEXPOLY, CD_MDEFORMVERT))
 		{
-			i1++, l1++;
+			i1++;
+			l1++;
 		}
 
 		while (i2 < c2->totlayer && !ELEM(l2->type, CD_MVERT, CD_MEDGE, CD_MPOLY,
 		                                  CD_MLOOPUV, CD_MLOOPCOL, CD_MTEXPOLY, CD_MDEFORMVERT))
 		{
-			i2++, l2++;
+			i2++;
+			l2++;
 		}
 		
 		if (l1->type == CD_MVERT) {
@@ -424,37 +437,10 @@ bool BKE_mesh_has_custom_loop_normals(Mesh *me)
 	}
 }
 
-/* Note: unlinking is called when me->id.us is 0, question remains how
- * much unlinking of Library data in Mesh should be done... probably
- * we need a more generic method, like the expand() functions in
- * readfile.c */
-
-void BKE_mesh_unlink(Mesh *me)
+/** Free (or release) any data used by this mesh (does not free the mesh itself). */
+void BKE_mesh_free(Mesh *me)
 {
-	int a;
-	
-	if (me == NULL) return;
-
-	if (me->mat) {
-		for (a = 0; a < me->totcol; a++) {
-			if (me->mat[a]) me->mat[a]->id.us--;
-			me->mat[a] = NULL;
-		}
-	}
-
-	if (me->key) {
-		me->key->id.us--;
-	}
-	me->key = NULL;
-	
-	if (me->texcomesh) me->texcomesh = NULL;
-}
-
-/* do not free mesh itself */
-void BKE_mesh_free(Mesh *me, int unlink)
-{
-	if (unlink)
-		BKE_mesh_unlink(me);
+	BKE_animdata_free(&me->id, false);
 
 	CustomData_free(&me->vdata, me->totvert);
 	CustomData_free(&me->edata, me->totedge);
@@ -462,16 +448,10 @@ void BKE_mesh_free(Mesh *me, int unlink)
 	CustomData_free(&me->ldata, me->totloop);
 	CustomData_free(&me->pdata, me->totpoly);
 
-	if (me->adt) {
-		BKE_free_animdata(&me->id);
-		me->adt = NULL;
-	}
-	
-	if (me->mat) MEM_freeN(me->mat);
-	
-	if (me->bb) MEM_freeN(me->bb);
-	if (me->mselect) MEM_freeN(me->mselect);
-	if (me->edit_btmesh) MEM_freeN(me->edit_btmesh);
+	MEM_SAFE_FREE(me->mat);
+	MEM_SAFE_FREE(me->bb);
+	MEM_SAFE_FREE(me->mselect);
+	MEM_SAFE_FREE(me->edit_btmesh);
 }
 
 static void mesh_tessface_clear_intern(Mesh *mesh, int free_customdata)
@@ -489,14 +469,12 @@ static void mesh_tessface_clear_intern(Mesh *mesh, int free_customdata)
 	mesh->totface = 0;
 }
 
-Mesh *BKE_mesh_add(Main *bmain, const char *name)
+void BKE_mesh_init(Mesh *me)
 {
-	Mesh *me;
-	
-	me = BKE_libblock_alloc(bmain, ID_ME, name);
-	
+	BLI_assert(MEMCMP_STRUCT_OFS_IS_ZERO(me, id));
+
 	me->size[0] = me->size[1] = me->size[2] = 1.0;
-	me->smoothresh = 30;
+	me->smoothresh = DEG2RADF(30);
 	me->texflag = ME_AUTOSPACE;
 
 	/* disable because its slow on many GPU's, see [#37518] */
@@ -510,19 +488,26 @@ Mesh *BKE_mesh_add(Main *bmain, const char *name)
 	CustomData_reset(&me->fdata);
 	CustomData_reset(&me->pdata);
 	CustomData_reset(&me->ldata);
+}
+
+Mesh *BKE_mesh_add(Main *bmain, const char *name)
+{
+	Mesh *me;
+
+	me = BKE_libblock_alloc(bmain, ID_ME, name);
+
+	BKE_mesh_init(me);
 
 	return me;
 }
 
-Mesh *BKE_mesh_copy_ex(Main *bmain, Mesh *me)
+Mesh *BKE_mesh_copy(Main *bmain, const Mesh *me)
 {
 	Mesh *men;
-	MTFace *tface;
-	MTexPoly *txface;
-	int a, i;
+	int a;
 	const int do_tessface = ((me->totface != 0) && (me->totpoly == 0)); /* only do tessface if we have no polys */
 	
-	men = BKE_libblock_copy_ex(bmain, &me->id);
+	men = BKE_libblock_copy(bmain, &me->id);
 	
 	men->mat = MEM_dupallocN(me->mat);
 	for (a = 0; a < men->totcol; a++) {
@@ -543,143 +528,41 @@ Mesh *BKE_mesh_copy_ex(Main *bmain, Mesh *me)
 
 	BKE_mesh_update_customdata_pointers(men, do_tessface);
 
-	/* ensure indirect linked data becomes lib-extern */
-	for (i = 0; i < me->fdata.totlayer; i++) {
-		if (me->fdata.layers[i].type == CD_MTFACE) {
-			tface = (MTFace *)me->fdata.layers[i].data;
-
-			for (a = 0; a < me->totface; a++, tface++)
-				if (tface->tpage)
-					id_lib_extern((ID *)tface->tpage);
-		}
-	}
-	
-	for (i = 0; i < me->pdata.totlayer; i++) {
-		if (me->pdata.layers[i].type == CD_MTEXPOLY) {
-			txface = (MTexPoly *)me->pdata.layers[i].data;
-
-			for (a = 0; a < me->totpoly; a++, txface++)
-				if (txface->tpage)
-					id_lib_extern((ID *)txface->tpage);
-		}
-	}
-
 	men->edit_btmesh = NULL;
 
 	men->mselect = MEM_dupallocN(men->mselect);
 	men->bb = MEM_dupallocN(men->bb);
-	
-	men->key = BKE_key_copy(me->key);
-	if (men->key) men->key->from = (ID *)men;
 
-	if (me->id.lib) {
-		BKE_id_lib_local_paths(bmain, me->id.lib, &men->id);
+	if (me->key) {
+		men->key = BKE_key_copy(bmain, me->key);
+		men->key->from = (ID *)men;
 	}
+
+	BKE_id_copy_ensure_local(bmain, &me->id, &men->id);
 
 	return men;
 }
 
-Mesh *BKE_mesh_copy(Mesh *me)
-{
-	return BKE_mesh_copy_ex(G.main, me);
-}
-
-BMesh *BKE_mesh_to_bmesh(Mesh *me, Object *ob)
+BMesh *BKE_mesh_to_bmesh(
+        Mesh *me, Object *ob,
+        const bool add_key_index, const struct BMeshCreateParams *params)
 {
 	BMesh *bm;
 	const BMAllocTemplate allocsize = BMALLOC_TEMPLATE_FROM_ME(me);
 
-	bm = BM_mesh_create(&allocsize);
+	bm = BM_mesh_create(&allocsize, params);
 
-	BM_mesh_bm_from_me(bm, me, false, true, ob->shapenr);
+	BM_mesh_bm_from_me(
+	        bm, me, (&(struct BMeshFromMeshParams){
+	            .add_key_index = add_key_index, .use_shapekey = true, .active_shapekey = ob->shapenr,
+	        }));
 
 	return bm;
 }
 
-static void expand_local_mesh(Mesh *me)
+void BKE_mesh_make_local(Main *bmain, Mesh *me, const bool lib_local)
 {
-	id_lib_extern((ID *)me->texcomesh);
-
-	if (me->mtface || me->mtpoly) {
-		int a, i;
-
-		for (i = 0; i < me->pdata.totlayer; i++) {
-			if (me->pdata.layers[i].type == CD_MTEXPOLY) {
-				MTexPoly *txface = (MTexPoly *)me->pdata.layers[i].data;
-
-				for (a = 0; a < me->totpoly; a++, txface++) {
-					/* special case: ima always local immediately */
-					if (txface->tpage) {
-						id_lib_extern((ID *)txface->tpage);
-					}
-				}
-			}
-		}
-
-		for (i = 0; i < me->fdata.totlayer; i++) {
-			if (me->fdata.layers[i].type == CD_MTFACE) {
-				MTFace *tface = (MTFace *)me->fdata.layers[i].data;
-
-				for (a = 0; a < me->totface; a++, tface++) {
-					/* special case: ima always local immediately */
-					if (tface->tpage) {
-						id_lib_extern((ID *)tface->tpage);
-					}
-				}
-			}
-		}
-	}
-
-	if (me->mat) {
-		extern_local_matarar(me->mat, me->totcol);
-	}
-}
-
-void BKE_mesh_make_local(Mesh *me)
-{
-	Main *bmain = G.main;
-	Object *ob;
-	bool is_local = false, is_lib = false;
-
-	/* - only lib users: do nothing
-	 * - only local users: set flag
-	 * - mixed: make copy
-	 */
-
-	if (me->id.lib == NULL) return;
-	if (me->id.us == 1) {
-		id_clear_lib_data(bmain, &me->id);
-		expand_local_mesh(me);
-		return;
-	}
-
-	for (ob = bmain->object.first; ob && ELEM(0, is_lib, is_local); ob = ob->id.next) {
-		if (me == ob->data) {
-			if (ob->id.lib) is_lib = true;
-			else is_local = true;
-		}
-	}
-
-	if (is_local && is_lib == false) {
-		id_clear_lib_data(bmain, &me->id);
-		expand_local_mesh(me);
-	}
-	else if (is_local && is_lib) {
-		Mesh *me_new = BKE_mesh_copy(me);
-		me_new->id.us = 0;
-
-
-		/* Remap paths of new ID using old library as base. */
-		BKE_id_lib_local_paths(bmain, me->id.lib, &me_new->id);
-
-		for (ob = bmain->object.first; ob; ob = ob->id.next) {
-			if (me == ob->data) {
-				if (ob->id.lib == NULL) {
-					BKE_mesh_assign_object(ob, me_new);
-				}
-			}
-		}
-	}
+	BKE_id_make_local_generic(bmain, &me->id, true, lib_local);
 }
 
 bool BKE_mesh_uv_cdlayer_rename_index(Mesh *me, const int poly_index, const int loop_index, const int face_index,
@@ -986,7 +869,7 @@ int test_index_face(MFace *mface, CustomData *fdata, int mfindex, int nr)
 			SWAP(unsigned int, mface->v2, mface->v3);
 
 			if (fdata)
-				CustomData_swap(fdata, mfindex, corner_indices);
+				CustomData_swap_corners(fdata, mfindex, corner_indices);
 		}
 	}
 	else if (nr == 4) {
@@ -997,7 +880,7 @@ int test_index_face(MFace *mface, CustomData *fdata, int mfindex, int nr)
 			SWAP(unsigned int, mface->v2, mface->v4);
 
 			if (fdata)
-				CustomData_swap(fdata, mfindex, corner_indices);
+				CustomData_swap_corners(fdata, mfindex, corner_indices);
 		}
 	}
 
@@ -1023,12 +906,12 @@ void BKE_mesh_assign_object(Object *ob, Mesh *me)
 	if (ob->type == OB_MESH) {
 		old = ob->data;
 		if (old)
-			old->id.us--;
+			id_us_min(&old->id);
 		ob->data = me;
 		id_us_plus((ID *)me);
 	}
 	
-	test_object_materials(G.main, (ID *)me);
+	test_object_materials(ob, (ID *)me);
 
 	test_object_modifiers(ob);
 }
@@ -1174,9 +1057,10 @@ static void make_edges_mdata_extend(MEdge **r_alledge, int *r_totedge,
 
 /* Initialize mverts, medges and, faces for converting nurbs to mesh and derived mesh */
 /* return non-zero on error */
-int BKE_mesh_nurbs_to_mdata(Object *ob, MVert **allvert, int *totvert,
-                            MEdge **alledge, int *totedge, MLoop **allloop, MPoly **allpoly,
-                            int *totloop, int *totpoly)
+int BKE_mesh_nurbs_to_mdata(
+        Object *ob, MVert **r_allvert, int *r_totvert,
+        MEdge **r_alledge, int *r_totedge, MLoop **r_allloop, MPoly **r_allpoly,
+        int *r_totloop, int *r_totpoly)
 {
 	ListBase disp = {NULL, NULL};
 
@@ -1184,11 +1068,12 @@ int BKE_mesh_nurbs_to_mdata(Object *ob, MVert **allvert, int *totvert,
 		disp = ob->curve_cache->disp;
 	}
 
-	return BKE_mesh_nurbs_displist_to_mdata(ob, &disp,
-	                                        allvert, totvert,
-	                                        alledge, totedge,
-	                                        allloop, allpoly, NULL,
-	                                        totloop, totpoly);
+	return BKE_mesh_nurbs_displist_to_mdata(
+	        ob, &disp,
+	        r_allvert, r_totvert,
+	        r_alledge, r_totedge,
+	        r_allloop, r_allpoly, NULL,
+	        r_totloop, r_totpoly);
 }
 
 /* BMESH: this doesn't calculate all edges from polygons,
@@ -1196,12 +1081,13 @@ int BKE_mesh_nurbs_to_mdata(Object *ob, MVert **allvert, int *totvert,
 
 /* Initialize mverts, medges and, faces for converting nurbs to mesh and derived mesh */
 /* use specified dispbase */
-int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
-                                     MVert **allvert, int *_totvert,
-                                     MEdge **alledge, int *_totedge,
-                                     MLoop **allloop, MPoly **allpoly,
-                                     MLoopUV **alluv,
-                                     int *_totloop, int *_totpoly)
+int BKE_mesh_nurbs_displist_to_mdata(
+        Object *ob, const ListBase *dispbase,
+        MVert **r_allvert, int *r_totvert,
+        MEdge **r_alledge, int *r_totedge,
+        MLoop **r_allloop, MPoly **r_allpoly,
+        MLoopUV **r_alluv,
+        int *r_totloop, int *r_totpoly)
 {
 	Curve *cu = ob->data;
 	DispList *dl;
@@ -1252,20 +1138,20 @@ int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
 		return -1;
 	}
 
-	*allvert = mvert = MEM_callocN(sizeof(MVert) * totvert, "nurbs_init mvert");
-	*alledge = medge = MEM_callocN(sizeof(MEdge) * totedge, "nurbs_init medge");
-	*allloop = mloop = MEM_callocN(sizeof(MLoop) * totvlak * 4, "nurbs_init mloop"); // totloop
-	*allpoly = mpoly = MEM_callocN(sizeof(MPoly) * totvlak, "nurbs_init mloop");
+	*r_allvert = mvert = MEM_callocN(sizeof(MVert) * totvert, "nurbs_init mvert");
+	*r_alledge = medge = MEM_callocN(sizeof(MEdge) * totedge, "nurbs_init medge");
+	*r_allloop = mloop = MEM_callocN(sizeof(MLoop) * totvlak * 4, "nurbs_init mloop"); // totloop
+	*r_allpoly = mpoly = MEM_callocN(sizeof(MPoly) * totvlak, "nurbs_init mloop");
 
-	if (alluv)
-		*alluv = mloopuv = MEM_callocN(sizeof(MLoopUV) * totvlak * 4, "nurbs_init mloopuv");
+	if (r_alluv)
+		*r_alluv = mloopuv = MEM_callocN(sizeof(MLoopUV) * totvlak * 4, "nurbs_init mloopuv");
 	
 	/* verts and faces */
 	vertcount = 0;
 
 	dl = dispbase->first;
 	while (dl) {
-		int smooth = dl->rt & CU_SMOOTH ? 1 : 0;
+		const bool is_smooth = (dl->rt & CU_SMOOTH) != 0;
 
 		if (dl->type == DL_SEGM) {
 			startvert = vertcount;
@@ -1331,7 +1217,7 @@ int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
 				mloop[0].v = startvert + index[0];
 				mloop[1].v = startvert + index[2];
 				mloop[2].v = startvert + index[1];
-				mpoly->loopstart = (int)(mloop - (*allloop));
+				mpoly->loopstart = (int)(mloop - (*r_allloop));
 				mpoly->totloop = 3;
 				mpoly->mat_nr = dl->col;
 
@@ -1344,7 +1230,7 @@ int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
 					}
 				}
 
-				if (smooth) mpoly->flag |= ME_SMOOTH;
+				if (is_smooth) mpoly->flag |= ME_SMOOTH;
 				mpoly++;
 				mloop += 3;
 				index += 3;
@@ -1389,7 +1275,7 @@ int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
 					mloop[1].v = p3;
 					mloop[2].v = p4;
 					mloop[3].v = p2;
-					mpoly->loopstart = (int)(mloop - (*allloop));
+					mpoly->loopstart = (int)(mloop - (*r_allloop));
 					mpoly->totloop = 4;
 					mpoly->mat_nr = dl->col;
 
@@ -1423,7 +1309,7 @@ int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
 						}
 					}
 
-					if (smooth) mpoly->flag |= ME_SMOOTH;
+					if (is_smooth) mpoly->flag |= ME_SMOOTH;
 					mpoly++;
 					mloop += 4;
 
@@ -1439,21 +1325,21 @@ int BKE_mesh_nurbs_displist_to_mdata(Object *ob, ListBase *dispbase,
 	}
 	
 	if (totvlak) {
-		make_edges_mdata_extend(alledge, &totedge,
-		                        *allpoly, *allloop, totvlak);
+		make_edges_mdata_extend(r_alledge, &totedge,
+		                        *r_allpoly, *r_allloop, totvlak);
 	}
 
-	*_totpoly = totvlak;
-	*_totloop = totloop;
-	*_totedge = totedge;
-	*_totvert = totvert;
+	*r_totpoly = totvlak;
+	*r_totloop = totloop;
+	*r_totedge = totedge;
+	*r_totvert = totvert;
 
 	return 0;
 }
 
 
 /* this may fail replacing ob->data, be sure to check ob->type */
-void BKE_mesh_from_nurbs_displist(Object *ob, ListBase *dispbase, const bool use_orco_uv)
+void BKE_mesh_from_nurbs_displist(Object *ob, ListBase *dispbase, const bool use_orco_uv, const char *obdata_name)
 {
 	Main *bmain = G.main;
 	Object *ob1;
@@ -1480,7 +1366,7 @@ void BKE_mesh_from_nurbs_displist(Object *ob, ListBase *dispbase, const bool use
 		}
 
 		/* make mesh */
-		me = BKE_mesh_add(G.main, "Mesh");
+		me = BKE_mesh_add(bmain, obdata_name);
 		me->totvert = totvert;
 		me->totedge = totedge;
 		me->totloop = totloop;
@@ -1500,7 +1386,7 @@ void BKE_mesh_from_nurbs_displist(Object *ob, ListBase *dispbase, const bool use
 		BKE_mesh_calc_normals(me);
 	}
 	else {
-		me = BKE_mesh_add(G.main, "Mesh");
+		me = BKE_mesh_add(bmain, obdata_name);
 		DM_to_mesh(dm, me, ob, CD_MASK_MESH, false);
 	}
 
@@ -1512,9 +1398,7 @@ void BKE_mesh_from_nurbs_displist(Object *ob, ListBase *dispbase, const bool use
 	cu->mat = NULL;
 	cu->totcol = 0;
 
-	if (ob->data) {
-		BKE_libblock_free(bmain, ob->data);
-	}
+	/* Do not decrement ob->data usercount here, it's done at end of func with BKE_libblock_free_us() call. */
 	ob->data = me;
 	ob->type = OB_MESH;
 
@@ -1524,11 +1408,14 @@ void BKE_mesh_from_nurbs_displist(Object *ob, ListBase *dispbase, const bool use
 		if (ob1->data == cu) {
 			ob1->type = OB_MESH;
 		
+			id_us_min((ID *)ob1->data);
 			ob1->data = ob->data;
-			id_us_plus((ID *)ob->data);
+			id_us_plus((ID *)ob1->data);
 		}
 		ob1 = ob1->id.next;
 	}
+
+	BKE_libblock_free_us(bmain, cu);
 }
 
 void BKE_mesh_from_nurbs(Object *ob)
@@ -1541,7 +1428,7 @@ void BKE_mesh_from_nurbs(Object *ob)
 		disp = ob->curve_cache->disp;
 	}
 
-	BKE_mesh_from_nurbs_displist(ob, &disp, use_orco_uv);
+	BKE_mesh_from_nurbs_displist(ob, &disp, use_orco_uv, cu->id.name);
 }
 
 typedef struct EdgeLink {
@@ -1717,7 +1604,7 @@ void BKE_mesh_to_curve(Scene *scene, Object *ob)
 
 		cu->nurb = nurblist;
 
-		((Mesh *)ob->data)->id.us--;
+		id_us_min(&((Mesh *)ob->data)->id);
 		ob->data = cu;
 		ob->type = OB_CURVE;
 
@@ -1773,13 +1660,43 @@ void BKE_mesh_material_index_clear(Mesh *me)
 	}
 }
 
+void BKE_mesh_material_remap(Mesh *me, const unsigned int *remap, unsigned int remap_len)
+{
+	const short remap_len_short = (short)remap_len;
+
+#define MAT_NR_REMAP(n) \
+	if (n < remap_len_short) { \
+		BLI_assert(n >= 0 && remap[n] < remap_len_short); \
+		n = remap[n]; \
+	} ((void)0)
+
+	if (me->edit_btmesh) {
+		BMEditMesh *em = me->edit_btmesh;
+		BMIter iter;
+		BMFace *efa;
+
+		BM_ITER_MESH(efa, &iter, em->bm, BM_FACES_OF_MESH) {
+			MAT_NR_REMAP(efa->mat_nr);
+		}
+	}
+	else {
+		int i;
+		for (i = 0; i < me->totpoly; i++) {
+			MAT_NR_REMAP(me->mpoly[i].mat_nr);
+		}
+	}
+
+#undef MAT_NR_REMAP
+
+}
+
 void BKE_mesh_smooth_flag_set(Object *meshOb, int enableSmooth) 
 {
 	Mesh *me = meshOb->data;
 	int i;
 
 	for (i = 0; i < me->totpoly; i++) {
-		MPoly *mp = &((MPoly *) me->mpoly)[i];
+		MPoly *mp = &me->mpoly[i];
 
 		if (enableSmooth) {
 			mp->flag |= ME_SMOOTH;
@@ -1790,7 +1707,7 @@ void BKE_mesh_smooth_flag_set(Object *meshOb, int enableSmooth)
 	}
 	
 	for (i = 0; i < me->totface; i++) {
-		MFace *mf = &((MFace *) me->mface)[i];
+		MFace *mf = &me->mface[i];
 
 		if (enableSmooth) {
 			mf->flag |= ME_SMOOTH;
@@ -1805,7 +1722,7 @@ void BKE_mesh_smooth_flag_set(Object *meshOb, int enableSmooth)
  * Return a newly MEM_malloc'd array of all the mesh vertex locations
  * \note \a r_numVerts may be NULL
  */
-float (*BKE_mesh_vertexCos_get(Mesh *me, int *r_numVerts))[3]
+float (*BKE_mesh_vertexCos_get(const Mesh *me, int *r_numVerts))[3]
 {
 	int i, numVerts = me->totvert;
 	float (*cos)[3] = MEM_mallocN(sizeof(*cos) * numVerts, "vertexcos1");
@@ -1821,8 +1738,9 @@ float (*BKE_mesh_vertexCos_get(Mesh *me, int *r_numVerts))[3]
  * Find the index of the loop in 'poly' which references vertex,
  * returns -1 if not found
  */
-int poly_find_loop_from_vert(const MPoly *poly, const MLoop *loopstart,
-                             unsigned vert)
+int poly_find_loop_from_vert(
+        const MPoly *poly, const MLoop *loopstart,
+        unsigned vert)
 {
 	int j;
 	for (j = 0; j < poly->totloop; j++, loopstart++) {
@@ -1838,20 +1756,23 @@ int poly_find_loop_from_vert(const MPoly *poly, const MLoop *loopstart,
  * vertex. Returns the index of the loop matching vertex, or -1 if the
  * vertex is not in \a poly
  */
-int poly_get_adj_loops_from_vert(unsigned r_adj[3], const MPoly *poly,
-                                 const MLoop *mloop, unsigned vert)
+int poly_get_adj_loops_from_vert(
+        const MPoly *poly,
+        const MLoop *mloop, unsigned int vert,
+        unsigned int r_adj[2])
 {
 	int corner = poly_find_loop_from_vert(poly,
 	                                      &mloop[poly->loopstart],
 	                                      vert);
 		
 	if (corner != -1) {
+#if 0	/* unused - this loop */
 		const MLoop *ml = &mloop[poly->loopstart + corner];
+#endif
 
 		/* vertex was found */
 		r_adj[0] = ME_POLY_LOOP_PREV(mloop, poly, corner)->v;
-		r_adj[1] = ml->v;
-		r_adj[2] = ME_POLY_LOOP_NEXT(mloop, poly, corner)->v;
+		r_adj[1] = ME_POLY_LOOP_NEXT(mloop, poly, corner)->v;
 	}
 
 	return corner;
@@ -1872,7 +1793,7 @@ int BKE_mesh_edge_other_vert(const MEdge *e, int v)
 }
 
 /* basic vertex data functions */
-bool BKE_mesh_minmax(Mesh *me, float r_min[3], float r_max[3])
+bool BKE_mesh_minmax(const Mesh *me, float r_min[3], float r_max[3])
 {
 	int i = me->totvert;
 	MVert *mvert;
@@ -1887,6 +1808,7 @@ void BKE_mesh_transform(Mesh *me, float mat[4][4], bool do_keys)
 {
 	int i;
 	MVert *mvert = me->mvert;
+	float (*lnors)[3] = CustomData_get_layer(&me->ldata, CD_NORMAL);
 
 	for (i = 0; i < me->totvert; i++, mvert++)
 		mul_m4_v3(mat, mvert->co);
@@ -1901,7 +1823,17 @@ void BKE_mesh_transform(Mesh *me, float mat[4][4], bool do_keys)
 		}
 	}
 
-	/* don't update normals, caller can do this explicitly */
+	/* don't update normals, caller can do this explicitly.
+	 * We do update loop normals though, those may not be auto-generated (see e.g. STL import script)! */
+	if (lnors) {
+		float m3[3][3];
+
+		copy_m3_m4(m3, mat);
+		normalize_m3(m3);
+		for (i = 0; i < me->totloop; i++, lnors++) {
+			mul_m3_v3(m3, *lnors);
+		}
+	}
 }
 
 void BKE_mesh_translate(Mesh *me, const float offset[3], const bool do_keys)
@@ -2124,7 +2056,7 @@ void BKE_mesh_mselect_active_set(Mesh *me, int index, int type)
 	           (me->mselect[me->totselect - 1].type  == type));
 }
 
-void BKE_mesh_calc_normals_split(Mesh *mesh)
+void BKE_mesh_calc_normals_split_ex(Mesh *mesh, MLoopNorSpaceArray *r_lnors_spacearr)
 {
 	float (*r_loopnors)[3];
 	float (*polynors)[3];
@@ -2150,118 +2082,346 @@ void BKE_mesh_calc_normals_split(Mesh *mesh)
 	}
 	else {
 		polynors = MEM_mallocN(sizeof(float[3]) * mesh->totpoly, __func__);
-		BKE_mesh_calc_normals_poly(mesh->mvert, mesh->totvert, mesh->mloop, mesh->mpoly, mesh->totloop, mesh->totpoly,
-		                           polynors, false);
+		BKE_mesh_calc_normals_poly(
+		            mesh->mvert, NULL, mesh->totvert,
+		            mesh->mloop, mesh->mpoly, mesh->totloop, mesh->totpoly, polynors, false);
 		free_polynors = true;
 	}
 
 	BKE_mesh_normals_loop_split(
 	        mesh->mvert, mesh->totvert, mesh->medge, mesh->totedge,
 	        mesh->mloop, r_loopnors, mesh->totloop, mesh->mpoly, (const float (*)[3])polynors, mesh->totpoly,
-	        (mesh->flag & ME_AUTOSMOOTH) != 0, mesh->smoothresh, NULL, clnors, NULL);
+	        (mesh->flag & ME_AUTOSMOOTH) != 0, mesh->smoothresh, r_lnors_spacearr, clnors, NULL);
 
 	if (free_polynors) {
 		MEM_freeN(polynors);
 	}
 }
 
-/* Spli faces based on the edge angle.
- * Matches behavior of face splitting in render engines.
- */
-void BKE_mesh_split_faces(Mesh *mesh)
+void BKE_mesh_calc_normals_split(Mesh *mesh)
 {
-	const int num_verts = mesh->totvert;
-	const int num_edges = mesh->totedge;
-	const int num_polys = mesh->totpoly;
+	BKE_mesh_calc_normals_split_ex(mesh, NULL);
+}
+
+/* Split faces helper functions. */
+
+typedef struct SplitFaceNewVert {
+	struct SplitFaceNewVert *next;
+	int new_index;
+	int orig_index;
+	float *vnor;
+} SplitFaceNewVert;
+
+typedef struct SplitFaceNewEdge {
+	struct SplitFaceNewEdge *next;
+	int new_index;
+	int orig_index;
+	int v1;
+	int v2;
+} SplitFaceNewEdge;
+
+/* Detect needed new vertices, and update accordingly loops' vertex indices.
+ * WARNING! Leaves mesh in invalid state. */
+static int split_faces_prepare_new_verts(
+        const Mesh *mesh, MLoopNorSpaceArray *lnors_spacearr, SplitFaceNewVert **new_verts, MemArena *memarena,
+        bool *r_need_vnors_recalc)
+{
+	/* Note: if lnors_spacearr is NULL, ther is no autosmooth handling, and we only split out flat polys. */
+	const int num_loops = mesh->totloop;
+	int num_verts = mesh->totvert;
 	MVert *mvert = mesh->mvert;
+	MLoop *mloop = mesh->mloop;
+
+	BLI_bitmap *verts_used = BLI_BITMAP_NEW(num_verts, __func__);
+
+	if (lnors_spacearr) {
+		BLI_bitmap *done_loops = BLI_BITMAP_NEW(num_loops, __func__);
+
+		MLoop *ml = mloop;
+		MLoopNorSpace **lnor_space = lnors_spacearr->lspacearr;
+		for (int loop_idx = 0; loop_idx < num_loops; loop_idx++, ml++, lnor_space++) {
+			if (!BLI_BITMAP_TEST(done_loops, loop_idx)) {
+				const int vert_idx = ml->v;
+				const bool vert_used = BLI_BITMAP_TEST_BOOL(verts_used, vert_idx);
+				/* If vert is already used by another smooth fan, we need a new vert for this one. */
+				const int new_vert_idx = vert_used ? num_verts++ : vert_idx;
+
+				BLI_assert(*lnor_space);
+
+				if ((*lnor_space)->loops) {
+					for (LinkNode *lnode = (*lnor_space)->loops; lnode; lnode = lnode->next) {
+						const int ml_fan_idx = GET_INT_FROM_POINTER(lnode->link);
+						BLI_BITMAP_ENABLE(done_loops, ml_fan_idx);
+						if (vert_used) {
+							mloop[ml_fan_idx].v = new_vert_idx;
+						}
+					}
+				}
+				else {
+					/* Single loop in this fan... */
+					BLI_BITMAP_ENABLE(done_loops, loop_idx);
+					if (vert_used) {
+						ml->v = new_vert_idx;
+					}
+				}
+
+				if (!vert_used) {
+					BLI_BITMAP_ENABLE(verts_used, vert_idx);
+					/* We need to update that vertex's normal here, we won't go over it again. */
+					/* This is important! *DO NOT* set vnor to final computed lnor, vnor should always be defined to
+					 * 'automatic normal' value computed from its polys, not some custom normal.
+					 * Fortunately, that's the loop normal space's 'lnor' reference vector. ;) */
+					normal_float_to_short_v3(mvert[vert_idx].no, (*lnor_space)->vec_lnor);
+				}
+				else {
+					/* Add new vert to list. */
+					SplitFaceNewVert *new_vert = BLI_memarena_alloc(memarena, sizeof(*new_vert));
+					new_vert->orig_index = vert_idx;
+					new_vert->new_index = new_vert_idx;
+					new_vert->vnor = (*lnor_space)->vec_lnor;  /* See note above. */
+					new_vert->next = *new_verts;
+					*new_verts = new_vert;
+				}
+			}
+		}
+
+		MEM_freeN(done_loops);
+	}
+	else {
+		/* No loop normal spaces available, we only split out flat polys. */
+		const int num_polys = mesh->totpoly;
+		const MPoly *mpoly = mesh->mpoly;
+
+		/* We do that in two loops, to keep original edges/verts to smooth polys preferencially. */
+		const MPoly *mp = mpoly;
+		for (int i = 0; i < num_polys; i++, mp++) {
+			if (mp->flag & ME_SMOOTH) {
+				const MLoop *ml = &mloop[mp->loopstart];
+				for (int j = 0; j < mp->totloop; j++, ml++) {
+					/* Just mark the vertex as used/reserved, that way neighbor flat polys, if any,
+					 * will have to create their own. */
+					BLI_BITMAP_ENABLE(verts_used, ml->v);
+				}
+			}
+		}
+
+		mp = mpoly;
+		for (int i = 0; i < num_polys; i++, mp++) {
+			if (!(mp->flag & ME_SMOOTH)) {
+				MLoop *ml = &mloop[mp->loopstart];
+				for (int j = 0; j < mp->totloop; j++, ml++) {
+					const int vert_idx = ml->v;
+
+					if (BLI_BITMAP_TEST(verts_used, vert_idx)) {
+						/* Add new vert to list. */
+						const int new_vert_idx = num_verts++;
+						ml->v = new_vert_idx;
+
+						SplitFaceNewVert *new_vert = BLI_memarena_alloc(memarena, sizeof(*new_vert));
+						new_vert->orig_index = vert_idx;
+						new_vert->new_index = new_vert_idx;
+						new_vert->vnor = NULL;  /* See note below about normals. */
+						new_vert->next = *new_verts;
+						*new_verts = new_vert;
+					}
+					else {
+						BLI_BITMAP_ENABLE(verts_used, vert_idx);
+					}
+				}
+				/* Note: there is no way to get new normals for smooth vertices here (and we don't have direct access
+				 * to poly normals either for flat ones), so we'll have to recompute all vnors at the end... */
+				*r_need_vnors_recalc = true;
+			}
+		}
+	}
+
+	MEM_freeN(verts_used);
+
+	return num_verts - mesh->totvert;
+}
+
+/* Detect needed new edges, and update accordingly loops' edge indices.
+ * WARNING! Leaves mesh in invalid state. */
+static int split_faces_prepare_new_edges(
+        const Mesh *mesh, SplitFaceNewEdge **new_edges, MemArena *memarena)
+{
+	const int num_polys = mesh->totpoly;
+	int num_edges = mesh->totedge;
 	MEdge *medge = mesh->medge;
 	MLoop *mloop = mesh->mloop;
-	MPoly *mpoly = mesh->mpoly;
-	float (*lnors)[3];
-	int poly, num_new_verts = 0;
-	if ((mesh->flag & ME_AUTOSMOOTH) == 0) {
+	const MPoly *mpoly = mesh->mpoly;
+
+	BLI_bitmap *edges_used = BLI_BITMAP_NEW(num_edges, __func__);
+	EdgeHash *edges_hash = BLI_edgehash_new_ex(__func__, num_edges);
+
+	const MPoly *mp = mpoly;
+	for (int poly_idx = 0; poly_idx < num_polys; poly_idx++, mp++) {
+		MLoop *ml_prev = &mloop[mp->loopstart + mp->totloop - 1];
+		MLoop *ml = &mloop[mp->loopstart];
+		for (int loop_idx = 0; loop_idx < mp->totloop; loop_idx++, ml++) {
+			void **eval;
+			if (!BLI_edgehash_ensure_p(edges_hash, ml_prev->v, ml->v, &eval)) {
+				const int edge_idx = ml_prev->e;
+
+				/* That edge has not been encountered yet, define it. */
+				if (BLI_BITMAP_TEST(edges_used, edge_idx)) {
+					/* Original edge has already been used, we need to define a new one. */
+					const int new_edge_idx = num_edges++;
+					*eval = SET_INT_IN_POINTER(new_edge_idx);
+					ml_prev->e = new_edge_idx;
+
+					SplitFaceNewEdge *new_edge = BLI_memarena_alloc(memarena, sizeof(*new_edge));
+					new_edge->orig_index = edge_idx;
+					new_edge->new_index = new_edge_idx;
+					new_edge->v1 = ml_prev->v;
+					new_edge->v2 = ml->v;
+					new_edge->next = *new_edges;
+					*new_edges = new_edge;
+				}
+				else {
+					/* We can re-use original edge. */
+					medge[edge_idx].v1 = ml_prev->v;
+					medge[edge_idx].v2 = ml->v;
+					*eval = SET_INT_IN_POINTER(edge_idx);
+					BLI_BITMAP_ENABLE(edges_used, edge_idx);
+				}
+			}
+			else {
+				/* Edge already known, just update loop's edge index. */
+				ml_prev->e = GET_INT_FROM_POINTER(*eval);
+			}
+
+			ml_prev = ml;
+		}
+	}
+
+	MEM_freeN(edges_used);
+	BLI_edgehash_free(edges_hash, NULL);
+
+	return num_edges - mesh->totedge;
+}
+
+/* Perform actual split of vertices. */
+static void split_faces_split_new_verts(
+        Mesh *mesh, SplitFaceNewVert *new_verts, const int num_new_verts)
+{
+	const int num_verts = mesh->totvert - num_new_verts;
+	MVert *mvert = mesh->mvert;
+
+	/* Remember new_verts is a single linklist, so its items are in reversed order... */
+	MVert *new_mv = &mvert[mesh->totvert - 1];
+	for (int i = mesh->totvert - 1; i >= num_verts ; i--, new_mv--, new_verts = new_verts->next) {
+		BLI_assert(new_verts->new_index == i);
+		BLI_assert(new_verts->new_index != new_verts->orig_index);
+		CustomData_copy_data(&mesh->vdata, &mesh->vdata, new_verts->orig_index, i, 1);
+		if (new_verts->vnor) {
+			normal_float_to_short_v3(new_mv->no, new_verts->vnor);
+		}
+	}
+}
+
+/* Perform actual split of edges. */
+static void split_faces_split_new_edges(
+        Mesh *mesh, SplitFaceNewEdge *new_edges, const int num_new_edges)
+{
+	const int num_edges = mesh->totedge - num_new_edges;
+	MEdge *medge = mesh->medge;
+
+	/* Remember new_edges is a single linklist, so its items are in reversed order... */
+	MEdge *new_med = &medge[mesh->totedge - 1];
+	for (int i = mesh->totedge - 1; i >= num_edges ; i--, new_med--, new_edges = new_edges->next) {
+		BLI_assert(new_edges->new_index == i);
+		BLI_assert(new_edges->new_index != new_edges->orig_index);
+		CustomData_copy_data(&mesh->edata, &mesh->edata, new_edges->orig_index, i, 1);
+		new_med->v1 = new_edges->v1;
+		new_med->v2 = new_edges->v2;
+	}
+}
+
+/* Split faces based on the edge angle and loop normals.
+ * Matches behavior of face splitting in render engines.
+ *
+ * NOTE: Will leave CD_NORMAL loop data layer which is
+ * used by render engines to set shading up.
+ */
+void BKE_mesh_split_faces(Mesh *mesh, bool free_loop_normals)
+{
+	const int num_polys = mesh->totpoly;
+
+	if (num_polys == 0) {
 		return;
 	}
 	BKE_mesh_tessface_clear(mesh);
-	/* Compute loop normals if needed. */
-	if (!CustomData_has_layer(&mesh->ldata, CD_NORMAL)) {
-		BKE_mesh_calc_normals_split(mesh);
-	}
-	lnors = CustomData_get_layer(&mesh->ldata, CD_NORMAL);
-	/* Count. */
-	for (poly = 0; poly < num_polys; poly++) {
-		MPoly *mp = &mpoly[poly];
-		int loop;
-		for (loop = 0; loop < mp->totloop; loop++) {
-			MLoop *ml = &mloop[mp->loopstart + loop];
-			MVert *mv = &mvert[ml->v];
-			float vn[3];
-			normal_short_to_float_v3(vn, mv->no);
-			if (!equals_v3v3(vn, lnors[mp->loopstart + loop])) {
-				num_new_verts++;
-			}
-		}
-	}
-	if (num_new_verts == 0) {
-		/* No new vertices are to be added, can do early exit. */
-		return;
-	}
-	/* Actual split. */
-	mesh->totvert += num_new_verts;
-	mesh->totedge += 2 * num_new_verts;
-	mvert = mesh->mvert = MEM_reallocN(mesh->mvert,
-	                                   sizeof(MVert) * mesh->totvert);
-	medge = mesh->medge = MEM_reallocN(mesh->medge,
-	                                   sizeof(MEdge) * mesh->totedge);
-	CustomData_set_layer(&mesh->vdata, CD_MVERT, mesh->mvert);
-	CustomData_set_layer(&mesh->edata, CD_MEDGE, mesh->medge);
-	num_new_verts = 0;
-	for (poly = 0; poly < num_polys; poly++) {
-		MPoly *mp = &mpoly[poly];
-		int loop;
-		for (loop = 0; loop < mp->totloop; loop++) {
-			int poly_loop = mp->loopstart + loop;
-			MLoop *ml = &mloop[poly_loop];
-			MVert *mv = &mvert[ml->v];
-			float vn[3];
-			normal_short_to_float_v3(vn, mv->no);
-			if (!equals_v3v3(vn, lnors[mp->loopstart + loop])) {
-				int poly_loop_prev = mp->loopstart + (loop + mp->totloop - 1) % mp->totloop;
-				MLoop *ml_prev = &mloop[poly_loop_prev];
-				int new_edge_prev, new_edge;
-				/* Cretae new vertex. */
-				int new_vert = num_verts + num_new_verts;
-				CustomData_copy_data(&mesh->vdata, &mesh->vdata,
-				                     ml->v, new_vert, 1);
-				normal_float_to_short_v3(mvert[new_vert].no,
-				                         lnors[poly_loop]);
-				/* Create new edges. */
-				new_edge_prev = num_edges + 2 * num_new_verts;
-				new_edge = num_edges + 2 * num_new_verts + 1;
-				CustomData_copy_data(&mesh->edata, &mesh->edata,
-				                     ml_prev->e, new_edge_prev, 1);
-				CustomData_copy_data(&mesh->edata, &mesh->edata,
-				                     ml->e, new_edge, 1);
-				if (medge[new_edge_prev].v1 == ml->v) {
-					medge[new_edge_prev].v1 = new_vert;
-				}
-				else {
-					medge[new_edge_prev].v2 = new_vert;
-				}
-				if (medge[new_edge].v1 == ml->v) {
-					medge[new_edge].v1 = new_vert;
-				}
-				else {
-					medge[new_edge].v2 = new_vert;
-				}
 
-				ml->v = new_vert;
-				ml_prev->e = new_edge_prev;
-				ml->e = new_edge;
-				num_new_verts++;
-			}
+	MLoopNorSpaceArray *lnors_spacearr = NULL;
+	MemArena *memarena;
+	bool need_vnors_recalc = false;
+
+	if (mesh->flag & ME_AUTOSMOOTH) {
+		lnors_spacearr = MEM_callocN(sizeof(*lnors_spacearr), __func__);
+		/* Compute loop normals and loop normal spaces (a.k.a. smooth fans of faces around vertices). */
+		BKE_mesh_calc_normals_split_ex(mesh, lnors_spacearr);
+		/* Stealing memarena from loop normals space array. */
+		memarena = lnors_spacearr->mem;
+	}
+	else {
+		/* We still have to split out flat faces... */
+		memarena = BLI_memarena_new(BLI_MEMARENA_STD_BUFSIZE, __func__);
+	}
+
+	SplitFaceNewVert *new_verts = NULL;
+	SplitFaceNewEdge *new_edges = NULL;
+
+	/* Detect loop normal spaces (a.k.a. smooth fans) that will need a new vert. */
+	const int num_new_verts = split_faces_prepare_new_verts(mesh, lnors_spacearr, &new_verts, memarena, &need_vnors_recalc);
+
+	if (num_new_verts > 0) {
+		/* Reminder: beyond this point, there is no way out, mesh is in invalid state (due to early-reassignment of
+		 * loops' vertex and edge indices to new, to-be-created split ones). */
+
+		const int num_new_edges = split_faces_prepare_new_edges(mesh, &new_edges, memarena);
+		/* We can have to split a vertex without having to add a single new edge... */
+		const bool do_edges = (num_new_edges > 0);
+
+		/* Reallocate all vert and edge related data. */
+		mesh->totvert += num_new_verts;
+		mesh->totedge += num_new_edges;
+		CustomData_realloc(&mesh->vdata, mesh->totvert);
+		if (do_edges) {
+			CustomData_realloc(&mesh->edata, mesh->totedge);
+		}
+		/* Update pointers to a newly allocated memory. */
+		BKE_mesh_update_customdata_pointers(mesh, false);
+
+		/* Perform actual split of vertices and edges. */
+		split_faces_split_new_verts(mesh, new_verts, num_new_verts);
+		if (do_edges) {
+			split_faces_split_new_edges(mesh, new_edges, num_new_edges);
 		}
 	}
+
+	/* Note: after this point mesh is expected to be valid again. */
+
+	/* CD_NORMAL is expected to be temporary only. */
+	if (free_loop_normals) {
+		CustomData_free_layers(&mesh->ldata, CD_NORMAL, mesh->totloop);
+	}
+
+	if (lnors_spacearr) {
+		/* Also frees new_verts/edges temp data, since we used its memarena to allocate them. */
+		BKE_lnor_spacearr_free(lnors_spacearr);
+		MEM_freeN(lnors_spacearr);
+	}
+	else {
+		BLI_memarena_free(memarena);
+	}
+
+	if (need_vnors_recalc) {
+		BKE_mesh_calc_normals(mesh);
+	}
+#ifdef VALIDATE_MESH
+	BKE_mesh_validate(mesh, true, true);
+#endif
 }
 
 /* settings: 1 - preview, 2 - render */
@@ -2271,9 +2431,10 @@ Mesh *BKE_mesh_new_from_object(
 {
 	Mesh *tmpmesh;
 	Curve *tmpcu = NULL, *copycu;
-	Object *tmpobj = NULL;
-	int render = settings == eModifierMode_Render, i;
-	int cage = !apply_modifiers;
+	int i;
+	const bool render = (settings == eModifierMode_Render);
+	const bool cage = !apply_modifiers;
+	bool do_mat_id_data_us = true;
 
 	/* perform the mesh extraction based on type */
 	switch (ob->type) {
@@ -2286,16 +2447,29 @@ Mesh *BKE_mesh_new_from_object(
 			int uv_from_orco;
 
 			/* copies object and modifiers (but not the data) */
-			tmpobj = BKE_object_copy_ex(bmain, ob, true);
+			Object *tmpobj = BKE_object_copy_ex(bmain, ob, true);
 			tmpcu = (Curve *)tmpobj->data;
-			tmpcu->id.us--;
+			id_us_min(&tmpcu->id);
+
+			/* Copy cached display list, it might be needed by the stack evaluation.
+			 * Ideally stack should be able to use render-time display list, but doing
+			 * so is quite tricky and not safe so close to the release.
+			 *
+			 * TODO(sergey): Look into more proper solution.
+			 */
+			if (ob->curve_cache != NULL) {
+				if (tmpobj->curve_cache == NULL) {
+					tmpobj->curve_cache = MEM_callocN(sizeof(CurveCache), "CurveCache for curve types");
+				}
+				BKE_displist_copy(&tmpobj->curve_cache->disp, &ob->curve_cache->disp);
+			}
 
 			/* if getting the original caged mesh, delete object modifiers */
 			if (cage)
 				BKE_object_free_modifiers(tmpobj);
 
 			/* copies the data */
-			copycu = tmpobj->data = BKE_curve_copy((Curve *) ob->data);
+			copycu = tmpobj->data = BKE_curve_copy(bmain, (Curve *) ob->data);
 
 			/* temporarily set edit so we get updates from edit mode, but
 			 * also because for text datablocks copying it while in edit
@@ -2313,7 +2487,7 @@ Mesh *BKE_mesh_new_from_object(
 
 			/* convert object type to mesh */
 			uv_from_orco = (tmpcu->flag & CU_UV_ORCO) != 0;
-			BKE_mesh_from_nurbs_displist(tmpobj, &dispbase, uv_from_orco);
+			BKE_mesh_from_nurbs_displist(tmpobj, &dispbase, uv_from_orco, tmpcu->id.name + 2);
 
 			tmpmesh = tmpobj->data;
 
@@ -2330,6 +2504,12 @@ Mesh *BKE_mesh_new_from_object(
 			BKE_mesh_texspace_copy_from_object(tmpmesh, ob);
 
 			BKE_libblock_free_us(bmain, tmpobj);
+
+			/* XXX The curve to mesh conversion is convoluted... But essentially, BKE_mesh_from_nurbs_displist()
+			 *     already transfers the ownership of materials from the temp copy of the Curve ID to the new
+			 *     Mesh ID, so we do not want to increase materials' usercount later. */
+			do_mat_id_data_us = false;
+
 			break;
 		}
 
@@ -2343,9 +2523,9 @@ Mesh *BKE_mesh_new_from_object(
 			if (ob != basis_ob)
 				return NULL;  /* only do basis metaball */
 
-			tmpmesh = BKE_mesh_add(bmain, "Mesh");
+			tmpmesh = BKE_mesh_add(bmain, ((ID *)ob->data)->name + 2);
 			/* BKE_mesh_add gives us a user count we don't need */
-			tmpmesh->id.us--;
+			id_us_min(&tmpmesh->id);
 
 			if (render) {
 				ListBase disp = {NULL, NULL};
@@ -2353,8 +2533,8 @@ Mesh *BKE_mesh_new_from_object(
 				 *               only contains for_render flag. As soon as CoW is
 				 *               implemented, this is to be rethinked.
 				 */
-				EvaluationContext eval_ctx = {0};
-				eval_ctx.mode = DAG_EVAL_RENDER;
+				EvaluationContext eval_ctx;
+				DEG_evaluation_context_init(&eval_ctx, DAG_EVAL_RENDER);
 				BKE_displist_make_mball_forRender(&eval_ctx, sce, ob, &disp);
 				BKE_mesh_from_metaball(&disp, tmpmesh);
 				BKE_displist_free(&disp);
@@ -2376,15 +2556,18 @@ Mesh *BKE_mesh_new_from_object(
 			/* copies object and modifiers (but not the data) */
 			if (cage) {
 				/* copies the data */
-				tmpmesh = BKE_mesh_copy_ex(bmain, ob->data);
-				/* if not getting the original caged mesh, get final derived mesh */
+				tmpmesh = BKE_mesh_copy(bmain, ob->data);
+
+				/* XXX BKE_mesh_copy() already handles materials usercount. */
+				do_mat_id_data_us = false;
 			}
+			/* if not getting the original caged mesh, get final derived mesh */
 			else {
 				/* Make a dummy mesh, saves copying */
 				DerivedMesh *dm;
 				/* CustomDataMask mask = CD_MASK_BAREMESH|CD_MASK_MTFACE|CD_MASK_MCOL; */
 				CustomDataMask mask = CD_MASK_MESH; /* this seems more suitable, exporter,
-			                                         * for example, needs CD_MASK_MDEFORMVERT */
+				                                     * for example, needs CD_MASK_MDEFORMVERT */
 
 				if (calc_undeformed)
 					mask |= CD_MASK_ORCO;
@@ -2395,12 +2578,17 @@ Mesh *BKE_mesh_new_from_object(
 				else
 					dm = mesh_create_derived_view(sce, ob, mask);
 
-				tmpmesh = BKE_mesh_add(bmain, "Mesh");
+				tmpmesh = BKE_mesh_add(bmain, ((ID *)ob->data)->name + 2);
 				DM_to_mesh(dm, tmpmesh, ob, mask, true);
+
+				/* Copy autosmooth settings from original mesh. */
+				Mesh *me = (Mesh *)ob->data;
+				tmpmesh->flag |= (me->flag & ME_AUTOSMOOTH);
+				tmpmesh->smoothresh = me->smoothresh;
 			}
 
 			/* BKE_mesh_add/copy gives us a user count we don't need */
-			tmpmesh->id.us--;
+			id_us_min(&tmpmesh->id);
 
 			break;
 		default:
@@ -2419,33 +2607,34 @@ Mesh *BKE_mesh_new_from_object(
 			if (tmpcu->mat) {
 				for (i = tmpcu->totcol; i-- > 0; ) {
 					/* are we an object material or data based? */
+					tmpmesh->mat[i] = give_current_material(ob, i + 1);
 
-					tmpmesh->mat[i] = ob->matbits[i] ? ob->mat[i] : tmpcu->mat[i];
-
-					if (tmpmesh->mat[i]) {
-						tmpmesh->mat[i]->id.us++;
+					if (((ob->matbits && ob->matbits[i]) || do_mat_id_data_us)  && tmpmesh->mat[i]) {
+						id_us_plus(&tmpmesh->mat[i]->id);
 					}
 				}
 			}
 			break;
 
-#if 0
-		/* Crashes when assigning the new material, not sure why */
 		case OB_MBALL:
-			tmpmb = (MetaBall *)ob->data;
+		{
+			MetaBall *tmpmb = (MetaBall *)ob->data;
+			tmpmesh->mat = MEM_dupallocN(tmpmb->mat);
 			tmpmesh->totcol = tmpmb->totcol;
 
 			/* free old material list (if it exists) and adjust user counts */
 			if (tmpmb->mat) {
 				for (i = tmpmb->totcol; i-- > 0; ) {
-					tmpmesh->mat[i] = tmpmb->mat[i]; /* CRASH HERE ??? */
-					if (tmpmesh->mat[i]) {
-						tmpmb->mat[i]->id.us++;
+					/* are we an object material or data based? */
+					tmpmesh->mat[i] = give_current_material(ob, i + 1);
+
+					if (((ob->matbits && ob->matbits[i]) || do_mat_id_data_us) && tmpmesh->mat[i]) {
+						id_us_plus(&tmpmesh->mat[i]->id);
 					}
 				}
 			}
 			break;
-#endif
+		}
 
 		case OB_MESH:
 			if (!cage) {
@@ -2457,10 +2646,10 @@ Mesh *BKE_mesh_new_from_object(
 				if (origmesh->mat) {
 					for (i = origmesh->totcol; i-- > 0; ) {
 						/* are we an object material or data based? */
-						tmpmesh->mat[i] = ob->matbits[i] ? ob->mat[i] : origmesh->mat[i];
+						tmpmesh->mat[i] = give_current_material(ob, i + 1);
 
-						if (tmpmesh->mat[i]) {
-							tmpmesh->mat[i]->id.us++;
+						if (((ob->matbits && ob->matbits[i]) || do_mat_id_data_us)  && tmpmesh->mat[i]) {
+							id_us_plus(&tmpmesh->mat[i]->id);
 						}
 					}
 				}
@@ -2473,9 +2662,18 @@ Mesh *BKE_mesh_new_from_object(
 		BKE_mesh_tessface_ensure(tmpmesh);
 	}
 
-	/* make sure materials get updated in objects */
-	test_object_materials(bmain, &tmpmesh->id);
-
 	return tmpmesh;
 }
 
+/* **** Depsgraph evaluation **** */
+
+void BKE_mesh_eval_geometry(EvaluationContext *UNUSED(eval_ctx),
+                            Mesh *mesh)
+{
+	if (G.debug & G_DEBUG_DEPSGRAPH) {
+		printf("%s on %s\n", __func__, mesh->id.name);
+	}
+	if (mesh->bb == NULL || (mesh->bb->flag & BOUNDBOX_DIRTY)) {
+		BKE_mesh_texspace_calc(mesh);
+	}
+}

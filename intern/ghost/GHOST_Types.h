@@ -57,7 +57,8 @@ typedef struct {
 
 typedef enum {
 	GHOST_glStereoVisual = (1 << 0),
-	GHOST_glWarnSupport  = (1 << 1)
+	GHOST_glDebugContext = (1 << 1),
+	GHOST_glAlphaBackground = (1 << 2),
 } GHOST_GLFlags;
 
 
@@ -126,12 +127,8 @@ typedef enum {
 	GHOST_kWindowStateMinimized,
 	GHOST_kWindowStateFullScreen,
 	GHOST_kWindowStateEmbedded,
-	GHOST_kWindowState8Normal = 8,
-	GHOST_kWindowState8Maximized,
-	GHOST_kWindowState8Minimized,
-	GHOST_kWindowState8FullScreen,
-	GHOST_kWindowStateModified,
-	GHOST_kWindowStateUnModified
+	// GHOST_kWindowStateModified,
+	// GHOST_kWindowStateUnModified,
 } GHOST_TWindowState;
 
 
@@ -175,8 +172,10 @@ typedef enum {
 	GHOST_kEventWheel,          /// Mouse wheel event
 	GHOST_kEventTrackpad,       /// Trackpad event
 
+#ifdef WITH_INPUT_NDOF
 	GHOST_kEventNDOFMotion,     /// N degree of freedom device motion event
 	GHOST_kEventNDOFButton,     /// N degree of freedom device button event
+#endif
 
 	GHOST_kEventKeyDown,
 	GHOST_kEventKeyUp,
@@ -190,6 +189,7 @@ typedef enum {
 	GHOST_kEventWindowUpdate,
 	GHOST_kEventWindowSize,
 	GHOST_kEventWindowMove,
+	GHOST_kEventWindowDPIHintChanged,
 	
 	GHOST_kEventDraggingEntered,
 	GHOST_kEventDraggingUpdated,
@@ -253,6 +253,7 @@ typedef enum {
 	GHOST_kKeyQuote  = 0x27,
 	GHOST_kKeyComma  = ',',
 	GHOST_kKeyMinus  = '-',
+	GHOST_kKeyPlus   = '+',
 	GHOST_kKeyPeriod = '.',
 	GHOST_kKeySlash  = '/',
 
@@ -480,6 +481,7 @@ typedef enum {
 	GHOST_kFinished
 } GHOST_TProgress;
 
+#ifdef WITH_INPUT_NDOF
 typedef struct {
 	/** N-degree of freedom device data v3 [GSoC 2010] */
 	// Each component normally ranges from -1 to +1, but can exceed that.
@@ -499,6 +501,7 @@ typedef struct {
 	GHOST_TButtonAction action;
 	short button;
 } GHOST_TEventNDOFButtonData;
+#endif // WITH_INPUT_NDOF
 
 typedef struct {
 	/** The key code. */
@@ -532,7 +535,7 @@ typedef struct {
 
 
 #ifdef _WIN32
-typedef long GHOST_TEmbedderWindowID;
+typedef void* GHOST_TEmbedderWindowID;
 #endif // _WIN32
 
 #ifndef _WIN32

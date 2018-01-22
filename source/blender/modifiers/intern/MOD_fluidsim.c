@@ -44,8 +44,11 @@
 #include "BKE_modifier.h"
 
 #include "depsgraph_private.h"
+#include "DEG_depsgraph_build.h"
 
 #include "MOD_fluidsim_util.h"
+#include "MOD_modifiertypes.h"
+
 #include "MEM_guardedalloc.h"
 
 /* Fluidsim */
@@ -67,12 +70,13 @@ static void copyData(ModifierData *md, ModifierData *target)
 	FluidsimModifierData *fluidmd = (FluidsimModifierData *) md;
 	FluidsimModifierData *tfluidmd = (FluidsimModifierData *) target;
 	
-	if (tfluidmd->fss)
-		MEM_freeN(tfluidmd->fss);
-	
-	tfluidmd->fss = MEM_dupallocN(fluidmd->fss);
-	if (tfluidmd->fss->meshVelocities != NULL) {
-		tfluidmd->fss->meshVelocities = MEM_dupallocN(tfluidmd->fss->meshVelocities);
+	fluidsim_free(tfluidmd);
+
+	if (fluidmd->fss) {
+		tfluidmd->fss = MEM_dupallocN(fluidmd->fss);
+		if (tfluidmd->fss && (tfluidmd->fss->meshVelocities != NULL)) {
+			tfluidmd->fss->meshVelocities = MEM_dupallocN(tfluidmd->fss->meshVelocities);
+		}
 	}
 }
 
@@ -126,6 +130,32 @@ static void updateDepgraph(
 	}
 }
 
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *scene,
+                            Object *ob,
+                            struct DepsNodeHandle *node)
+{
+	FluidsimModifierData *fluidmd = (FluidsimModifierData *) md;
+	if (fluidmd && fluidmd->fss) {
+		if (fluidmd->fss->type == OB_FLUIDSIM_DOMAIN) {
+			Base *base;
+			for (base = scene->base.first; base; base = base->next) {
+				Object *ob1 = base->object;
+				if (ob1 != ob) {
+					FluidsimModifierData *fluidmdtmp =
+					        (FluidsimModifierData *)modifiers_findByType(ob1, eModifierType_Fluidsim);
+
+					/* Only put dependencies from NON-DOMAIN fluids in here. */
+					if (fluidmdtmp && fluidmdtmp->fss && (fluidmdtmp->fss->type != OB_FLUIDSIM_DOMAIN)) {
+						DEG_add_object_relation(node, ob1, DEG_OB_COMP_TRANSFORM, "Fluidsim Object");
+					}
+				}
+			}
+		}
+	}
+}
+
 static bool dependsOnTime(ModifierData *UNUSED(md))
 {
 	return true;
@@ -154,6 +184,7 @@ ModifierTypeInfo modifierType_Fluidsim = {
 	/* freeData */          freeData,
 	/* isDisabled */        NULL,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     dependsOnTime,
 	/* dependsOnNormals */	NULL,
 	/* foreachObjectLink */ NULL,

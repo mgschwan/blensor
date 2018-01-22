@@ -34,14 +34,17 @@
 
 #include "render_types.h"
 
-struct HaloRen;
+#include "RE_engine.h"
+
+#include "DNA_node_types.h"
+
+#include "NOD_composite.h"
+
 struct ShadeInput;
 struct ShadeResult;
 struct World;
 struct RenderPart;
 struct RenderLayer;
-struct ObjectRen;
-struct ListBase;
 struct RayObject;
 
 /* ------------------------------------------------------------------------- */
@@ -80,6 +83,8 @@ void zbufshade_sss_tile(struct RenderPart *pa);
 
 int get_sample_layers(struct RenderPart *pa, struct RenderLayer *rl, struct RenderLayer **rlpp);
 
+void render_internal_update_passes(struct RenderEngine *engine, struct Scene *scene, struct SceneRenderLayer *srl);
+
 
 /* -------- ray.c ------- */
 
@@ -93,7 +98,7 @@ extern void ray_shadow(ShadeInput *shi, LampRen *lar, float shadfac[4]);
 extern void ray_trace(ShadeInput *shi, ShadeResult *);
 extern void ray_ao(ShadeInput *shi, float ao[3], float env[3]);
 extern void init_jitter_plane(LampRen *lar);
-extern void init_ao_sphere(struct World *wrld);
+extern void init_ao_sphere(Render *re, struct World *wrld);
 extern void init_render_qmcsampler(Render *re);
 extern void free_render_qmcsampler(Render *re);
 

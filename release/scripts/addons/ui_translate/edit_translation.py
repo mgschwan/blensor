@@ -24,15 +24,16 @@ if "bpy" in locals():
     importlib.reload(utils_i18n)
 else:
     import bpy
-    from bpy.props import (BoolProperty,
-                           CollectionProperty,
-                           EnumProperty,
-                           FloatProperty,
-                           FloatVectorProperty,
-                           IntProperty,
-                           PointerProperty,
-                           StringProperty,
-                           )
+    from bpy.props import (
+            BoolProperty,
+            CollectionProperty,
+            EnumProperty,
+            FloatProperty,
+            FloatVectorProperty,
+            IntProperty,
+            PointerProperty,
+            StringProperty,
+            )
     from . import settings
     from bl_i18n_utils import utils as utils_i18n
 
@@ -307,3 +308,9 @@ class UI_OT_i18n_edittranslation(bpy.types.Operator):
         row.prop(self, "update_po", text="Save to PO File", toggle=True)
         row.prop(self, "update_mo", text="Rebuild MO File", toggle=True)
         row.prop(self, "clean_mo", text="Erase Local MO files", toggle=True)
+
+
+classes = (
+    UI_OT_i18n_edittranslation_update_mo,
+    UI_OT_i18n_edittranslation,
+)

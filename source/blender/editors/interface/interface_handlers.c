@@ -50,17 +50,18 @@
 #include "BLI_math.h"
 #include "BLI_listbase.h"
 #include "BLI_linklist.h"
+#include "BLI_path_util.h"
 #include "BLI_string.h"
 #include "BLI_string_utf8.h"
+#include "BLI_string_cursor_utf8.h"
 #include "BLI_rect.h"
 #include "BLI_utildefines.h"
-#include "BLI_string_cursor_utf8.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "PIL_time.h"
 
-#include "BKE_blender.h"
+#include "BKE_blender_undo.h"
 #include "BKE_brush.h"
 #include "BKE_colortools.h"
 #include "BKE_context.h"
@@ -86,9 +87,11 @@
 
 #include "WM_api.h"
 #include "WM_types.h"
+#include "wm_event_system.h"
 
 #ifdef WITH_INPUT_IME
 #  include "wm_window.h"
+#  include "BLT_lang.h"
 #endif
 
 /* place the mouse at the scaled down location when un-grabbing */
@@ -98,6 +101,9 @@
 
 /* support dragging multiple number buttons at once */
 #define USE_DRAG_MULTINUM
+
+/* allow dragging/editing all other selected items at once */
+#define USE_ALLSELECT
 
 /* so we can avoid very small mouse-moves from jumping away from keyboard navigation [#34936] */
 #define USE_KEYNAV_LIMIT
@@ -115,6 +121,7 @@ static void ui_but_smart_controller_add(bContext *C, uiBut *from, uiBut *to);
 static void ui_but_link_add(bContext *C, uiBut *from, uiBut *to);
 static int ui_do_but_EXIT(bContext *C, uiBut *but, struct uiHandleButtonData *data, const wmEvent *event);
 static bool ui_but_find_select_in_enum__cmp(const uiBut *but_a, const uiBut *but_b);
+static void ui_textedit_string_set(uiBut *but, struct uiHandleButtonData *data, const char *str);
 
 #ifdef USE_KEYNAV_LIMIT
 static void ui_mouse_motion_keynav_init(struct uiKeyNavLock *keynav, const wmEvent *event);
@@ -134,6 +141,8 @@ static bool ui_mouse_motion_keynav_test(struct uiKeyNavLock *keynav, const wmEve
 
 #define MENU_TOWARDS_MARGIN 20  /* margin in pixels */
 #define MENU_TOWARDS_WIGGLE_ROOM 64  /* tolerance in pixels */
+/* drag-lock distance threshold in pixels */
+#define BUTTON_DRAGLOCK_THRESH      3
 
 typedef enum uiButtonActivateType {
 	BUTTON_ACTIVATE_OVER,
@@ -158,17 +167,63 @@ typedef enum uiHandleButtonState {
 } uiHandleButtonState;
 
 
+#ifdef USE_ALLSELECT
+
+/* Unfortunately theres no good way handle more generally:
+ * (propagate single clicks on layer buttons to other objects) */
+#define USE_ALLSELECT_LAYER_HACK
+
+typedef struct uiSelectContextElem {
+	PointerRNA ptr;
+	union {
+		bool  val_b;
+		int   val_i;
+		float val_f;
+	};
+} uiSelectContextElem;
+
+typedef struct uiSelectContextStore {
+	uiSelectContextElem *elems;
+	int elems_len;
+	bool do_free;
+	bool is_enabled;
+	/* When set, simply copy values (don't apply difference).
+	 * Rules are:
+	 * - dragging numbers uses delta.
+	 * - typing in values will assign to all. */
+	bool is_copy;
+} uiSelectContextStore;
+
+static bool ui_selectcontext_begin(
+        bContext *C, uiBut *but, struct uiSelectContextStore *selctx_data);
+static void ui_selectcontext_end(
+        uiBut *but, uiSelectContextStore *selctx_data);
+static void ui_selectcontext_apply(
+        bContext *C, uiBut *but, struct uiSelectContextStore *selctx_data,
+        const double value, const double value_orig);
+
+#define IS_ALLSELECT_EVENT(event) ((event)->alt != 0)
+
+/** just show a tinted color so users know its activated */
+#define UI_BUT_IS_SELECT_CONTEXT UI_BUT_NODE_ACTIVE
+
+#endif  /* USE_ALLSELECT */
+
+
 #ifdef USE_DRAG_MULTINUM
 
-/* how far to drag before we check for gesture direction (in pixels),
+/**
+ * how far to drag before we check for gesture direction (in pixels),
  * note: half the height of a button is about right... */
 #define DRAG_MULTINUM_THRESHOLD_DRAG_X (UI_UNIT_Y / 4)
 
-/* how far to drag horizontally before we stop checking which buttons the gesture spans (in pixels),
+/**
+ * how far to drag horizontally before we stop checking which buttons the gesture spans (in pixels),
  * locking down the buttons so we can drag freely without worrying about vertical movement. */
 #define DRAG_MULTINUM_THRESHOLD_DRAG_Y (UI_UNIT_Y / 4)
 
-/* how strict to be when detecting a vertical gesture, [0.5 == sloppy], [0.9 == strict], (unsigned dot-product)
+/**
+ * how strict to be when detecting a vertical gesture, [0.5 == sloppy], [0.9 == strict], (unsigned dot-product)
  * note: we should be quite strict here, since doing a vertical gesture by accident should be avoided,
  * however with some care a user should be able to do a vertical movement without *missing*. */
 #define DRAG_MULTINUM_THRESHOLD_VERTICAL (0.75f)
@@ -178,6 +233,10 @@ typedef enum uiHandleButtonState {
 typedef struct uiButMultiState {
 	double origvalue;
 	uiBut *but;
+
+#ifdef USE_ALLSELECT
+	uiSelectContextStore select_others;
+#endif
 } uiButMultiState;
 
 typedef struct uiHandleButtonMulti {
@@ -210,8 +269,6 @@ typedef struct uiHandleButtonMulti {
 
 #endif  /* USE_DRAG_MULTINUM */
 
-
-
 typedef struct uiHandleButtonData {
 	wmWindowManager *wm;
 	wmWindow *window;
@@ -228,7 +285,9 @@ typedef struct uiHandleButtonData {
 	wmTimer *flashtimer;
 
 	/* edited value */
-	char *str, *origstr;
+	/* use 'ui_textedit_string_set' to assign new strings */
+	char *str;
+	char *origstr;
 	double value, origvalue, startvalue;
 	float vec[3], origvec[3];
 #if 0  /* UNUSED */
@@ -239,14 +298,25 @@ typedef struct uiHandleButtonData {
 	/* tooltip */
 	ARegion *tooltip;
 	wmTimer *tooltiptimer;
+	unsigned int tooltip_force : 1;
 	
 	/* auto open */
 	bool used_mouse;
 	wmTimer *autoopentimer;
 
 	/* text selection/editing */
-	int maxlen, selextend;
+	/* size of 'str' (including terminator) */
+	int maxlen;
+	/* Button text selection:
+	 * extension direction, selextend, inside ui_do_but_TEX */
+	enum {
+		EXTEND_NONE =     0,
+		EXTEND_LEFT =     1,
+		EXTEND_RIGHT =    2,
+	} selextend;
 	float selstartx;
+	/* allow to realloc str/editstr and use 'maxlen' to track alloc size (maxlen + 1) */
+	bool is_str_dynamic;
 
 	/* number editing / dragging */
 	/* coords are Window/uiBlock relative (depends on the button) */
@@ -280,6 +350,10 @@ typedef struct uiHandleButtonData {
 	uiHandleButtonMulti multi_data;
 #endif
 
+#ifdef USE_ALLSELECT
+	uiSelectContextStore select_others;
+#endif
+
 	/* post activate */
 	uiButtonActivateType posttype;
 	uiBut *postbut;
@@ -307,6 +381,7 @@ typedef struct uiAfterFunc {
 	void *butm_func_arg;
 	int a2;
 
+	wmOperator *popup_op;
 	wmOperatorType *optype;
 	int opcontext;
 	PointerRNA *opptr;
@@ -325,17 +400,16 @@ static bool ui_but_is_interactive(const uiBut *but, const bool labeledit);
 static bool ui_but_contains_pt(uiBut *but, float mx, float my);
 static bool ui_but_contains_point_px(ARegion *ar, uiBut *but, int x, int y);
 static uiBut *ui_but_find_mouse_over_ex(ARegion *ar, const int x, const int y, const bool labeledit);
-static uiBut *ui_but_find_mouse_over(ARegion *ar, const wmEvent *event);
 static void button_activate_init(bContext *C, ARegion *ar, uiBut *but, uiButtonActivateType type);
 static void button_activate_state(bContext *C, uiBut *but, uiHandleButtonState state);
-static void button_activate_exit(bContext *C, uiBut *but, uiHandleButtonData *data,
-                                 const bool mousemove, const bool onfree);
+static void button_activate_exit(
+        bContext *C, uiBut *but, uiHandleButtonData *data,
+        const bool mousemove, const bool onfree);
 static int ui_handler_region_menu(bContext *C, const wmEvent *event, void *userdata);
 static void ui_handle_button_activate(bContext *C, ARegion *ar, uiBut *but, uiButtonActivateType type);
-static void button_timers_tooltip_remove(bContext *C, uiBut *but);
 
 #ifdef USE_DRAG_MULTINUM
-static void ui_multibut_restore(uiHandleButtonData *data, uiBlock *block);
+static void ui_multibut_restore(bContext *C, uiHandleButtonData *data, uiBlock *block);
 static uiButMultiState *ui_multibut_lookup(uiHandleButtonData *data, const uiBut *but);
 #endif
 
@@ -366,7 +440,7 @@ static void ui_color_snap_hue(const enum eSnapType snap, float *r_hue)
 {
 	const float snap_increment = (snap == SNAP_ON_SMALL) ? 24 : 12;
 	BLI_assert(snap != SNAP_OFF);
-	*r_hue = floorf(0.5f + ((*r_hue) * snap_increment)) / snap_increment;
+	*r_hue = roundf((*r_hue) * snap_increment) / snap_increment;
 }
 
 /* assumes event type is MOUSEPAN */
@@ -413,7 +487,7 @@ bool ui_but_is_editable_as_text(const uiBut *but)
 {
 	return  ELEM(but->type,
 	             UI_BTYPE_TEXT, UI_BTYPE_NUM, UI_BTYPE_NUM_SLIDER,
-	             UI_BTYPE_SEARCH_MENU, UI_BTYPE_SEARCH_MENU_UNLINK);
+	             UI_BTYPE_SEARCH_MENU);
 
 }
 
@@ -473,15 +547,38 @@ static bool ui_but_is_cursor_warp(uiBut *but)
 	return false;
 }
 
+/**
+ * Ignore mouse movements within some horizontal pixel threshold before starting to drag
+ */
+static bool ui_but_dragedit_update_mval(uiHandleButtonData *data, int mx)
+{
+	if (mx == data->draglastx)
+		return false;
+
+	if (data->draglock) {
+		if (ABS(mx - data->dragstartx) <= BUTTON_DRAGLOCK_THRESH) {
+			return false;
+		}
+#ifdef USE_DRAG_MULTINUM
+		if (ELEM(data->multi_data.init, BUTTON_MULTI_INIT_UNSET, BUTTON_MULTI_INIT_SETUP)) {
+			return false;
+		}
+#endif
+		data->draglock = false;
+		data->dragstartx = mx;  /* ignore mouse movement within drag-lock */
+	}
+
+	return true;
+}
+
 static float ui_mouse_scale_warp_factor(const bool shift)
 {
 	return shift ? 0.05f : 1.0f;
 }
 
-static void ui_mouse_scale_warp(uiHandleButtonData *data,
-                                const float mx, const float my,
-                                float *r_mx, float *r_my,
-                                const bool shift)
+static void ui_mouse_scale_warp(
+        uiHandleButtonData *data, const float mx, const float my,
+        float *r_mx, float *r_my, const bool shift)
 {
 	const float fac = ui_mouse_scale_warp_factor(shift);
 	
@@ -540,6 +637,26 @@ PointerRNA *ui_handle_afterfunc_add_operator(wmOperatorType *ot, int opcontext, 
 	return ptr;
 }
 
+static void popup_check(bContext *C, wmOperator *op)
+{
+	if (op && op->type->check && op->type->check(C, op)) {
+		/* check for popup and re-layout buttons */
+		ARegion *ar_menu = CTX_wm_menu(C);
+		if (ar_menu)
+			ED_region_tag_refresh_ui(ar_menu);
+	}
+}
+
+/**
+ * Check if a #uiAfterFunc is needed for this button.
+ */
+static bool ui_afterfunc_check(const uiBlock *block, const uiBut *but)
+{
+	return (but->func || but->funcN || but->rename_func || but->optype || but->rnaprop || block->handle_func ||
+	        (but->type == UI_BTYPE_BUT_MENU && block->butm_func) ||
+	        (block->handle && block->handle->popup_op));
+}
+
 static void ui_apply_but_func(bContext *C, uiBut *but)
 {
 	uiAfterFunc *after;
@@ -549,9 +666,7 @@ static void ui_apply_but_func(bContext *C, uiBut *but)
 	 * handling is done, i.e. menus are closed, in order to avoid conflicts
 	 * with these functions removing the buttons we are working with */
 
-	if (but->func || but->funcN || block->handle_func || but->rename_func ||
-	    (but->type == UI_BTYPE_BUT_MENU && block->butm_func) || but->optype || but->rnaprop)
-	{
+	if (ui_afterfunc_check(block, but)) {
 		after = ui_afterfunc_new();
 
 		if (but->func && ELEM(but, but->func_arg1, but->func_arg2)) {
@@ -580,6 +695,9 @@ static void ui_apply_but_func(bContext *C, uiBut *but)
 			after->butm_func_arg = block->butm_func_arg;
 			after->a2 = but->a2;
 		}
+		
+		if (block->handle)
+			after->popup_op = block->handle->popup_op;
 
 		after->optype = but->optype;
 		after->opcontext = but->opcontext;
@@ -664,9 +782,12 @@ static void ui_apply_but_funcs_after(bContext *C)
 		if (after.context)
 			CTX_store_set(C, after.context);
 
+		if (after.popup_op)
+			popup_check(C, after.popup_op);
+		
 		if (after.opptr) {
 			/* free in advance to avoid leak on exit */
-			opptr = *after.opptr,
+			opptr = *after.opptr;
 			MEM_freeN(after.opptr);
 		}
 
@@ -728,7 +849,7 @@ static void ui_apply_but_BLOCK(bContext *C, uiBut *but, uiHandleButtonData *data
 	if (but->type == UI_BTYPE_MENU)
 		ui_but_value_set(but, data->value);
 
-	ui_but_update(but);
+	ui_but_update_edited(but);
 	ui_apply_but_func(C, but);
 	data->retval = but->retval;
 	data->applied = true;
@@ -748,7 +869,9 @@ static void ui_apply_but_TOG(bContext *C, uiBut *but, uiHandleButtonData *data)
 		else   lvalue = UI_BITBUT_SET(lvalue, but->bitnr);
 		
 		ui_but_value_set(but, (double)lvalue);
-		if (but->type == UI_BTYPE_ICON_TOGGLE || but->type == UI_BTYPE_ICON_TOGGLE_N) ui_but_update(but);
+		if (but->type == UI_BTYPE_ICON_TOGGLE || but->type == UI_BTYPE_ICON_TOGGLE_N) {
+			ui_but_update_edited(but);
+		}
 	}
 	else {
 		
@@ -757,7 +880,9 @@ static void ui_apply_but_TOG(bContext *C, uiBut *but, uiHandleButtonData *data)
 		
 		if (ELEM(but->type, UI_BTYPE_TOGGLE_N, UI_BTYPE_ICON_TOGGLE_N, UI_BTYPE_CHECKBOX_N)) push = !push;
 		ui_but_value_set(but, (double)push);
-		if (but->type == UI_BTYPE_ICON_TOGGLE || but->type == UI_BTYPE_ICON_TOGGLE_N) ui_but_update(but);
+		if (but->type == UI_BTYPE_ICON_TOGGLE || but->type == UI_BTYPE_ICON_TOGGLE_N) {
+			ui_but_update_edited(but);
+		}
 	}
 	
 	ui_apply_but_func(C, but);
@@ -775,9 +900,11 @@ static void ui_apply_but_ROW(bContext *C, uiBlock *block, uiBut *but, uiHandleBu
 	ui_apply_but_func(C, but);
 
 	/* states of other row buttons */
-	for (bt = block->buttons.first; bt; bt = bt->next)
-		if (bt != but && bt->poin == but->poin && ELEM(bt->type, UI_BTYPE_ROW, UI_BTYPE_LISTROW))
-			ui_but_update(bt);
+	for (bt = block->buttons.first; bt; bt = bt->next) {
+		if (bt != but && bt->poin == but->poin && ELEM(bt->type, UI_BTYPE_ROW, UI_BTYPE_LISTROW)) {
+			ui_but_update_edited(bt);
+		}
+	}
 
 	data->retval = but->retval;
 	data->applied = true;
@@ -789,7 +916,7 @@ static void ui_apply_but_TEX(bContext *C, uiBut *but, uiHandleButtonData *data)
 		return;
 
 	ui_but_string_set(C, but, data->str);
-	ui_but_update(but);
+	ui_but_update_edited(but);
 
 	/* give butfunc a copy of the original text too.
 	 * feature used for bone renaming, channels, etc.
@@ -799,7 +926,8 @@ static void ui_apply_but_TEX(bContext *C, uiBut *but, uiHandleButtonData *data)
 		 * having typed something already. */
 		but->rename_orig = BLI_strdup(data->origstr);
 	}
-	else {
+	/* only if there are afterfuncs, otherwise 'renam_orig' isn't freed */
+	else if (ui_afterfunc_check(but->block, but)) {
 		but->rename_orig = data->origstr;
 		data->origstr = NULL;
 	}
@@ -820,10 +948,11 @@ static void ui_apply_but_NUM(bContext *C, uiBut *but, uiHandleButtonData *data)
 			return;
 		}
 	}
-	else
+	else {
 		ui_but_value_set(but, data->value);
+	}
 
-	ui_but_update(but);
+	ui_but_update_edited(but);
 	ui_apply_but_func(C, but);
 
 	data->retval = but->retval;
@@ -833,7 +962,7 @@ static void ui_apply_but_NUM(bContext *C, uiBut *but, uiHandleButtonData *data)
 static void ui_apply_but_VEC(bContext *C, uiBut *but, uiHandleButtonData *data)
 {
 	ui_but_v3_set(but, data->vec);
-	ui_but_update(but);
+	ui_but_update_edited(but);
 	ui_apply_but_func(C, but);
 
 	data->retval = but->retval;
@@ -894,7 +1023,7 @@ static uiButMultiState *ui_multibut_lookup(uiHandleButtonData *data, const uiBut
 	return NULL;
 }
 
-static void ui_multibut_restore(uiHandleButtonData *data, uiBlock *block)
+static void ui_multibut_restore(bContext *C, uiHandleButtonData *data, uiBlock *block)
 {
 	uiBut *but;
 
@@ -903,6 +1032,16 @@ static void ui_multibut_restore(uiHandleButtonData *data, uiBlock *block)
 			uiButMultiState *mbut_state = ui_multibut_lookup(data, but);
 			if (mbut_state) {
 				ui_but_value_set(but, mbut_state->origvalue);
+
+#ifdef USE_ALLSELECT
+				if (mbut_state->select_others.elems_len > 0) {
+					ui_selectcontext_apply(
+					        C, but, &mbut_state->select_others,
+					        mbut_state->origvalue, mbut_state->origvalue);
+				}
+#else
+				UNUSED_VARS(C);
+#endif
 			}
 		}
 	}
@@ -910,7 +1049,26 @@ static void ui_multibut_restore(uiHandleButtonData *data, uiBlock *block)
 
 static void ui_multibut_free(uiHandleButtonData *data, uiBlock *block)
 {
+#ifdef USE_ALLSELECT
+	if (data->multi_data.mbuts) {
+		LinkNode *list = data->multi_data.mbuts;
+		while (list) {
+			LinkNode *next = list->next;
+			uiButMultiState *mbut_state = list->link;
+
+			if (mbut_state->select_others.elems) {
+				MEM_freeN(mbut_state->select_others.elems);
+			}
+
+			MEM_freeN(list->link);
+			MEM_freeN(list);
+			list = next;
+		}
+	}
+#else
 	BLI_linklist_freeN(data->multi_data.mbuts);
+#endif
+
 	data->multi_data.mbuts = NULL;
 
 	if (data->multi_data.bs_mbuts) {
@@ -919,7 +1077,9 @@ static void ui_multibut_free(uiHandleButtonData *data, uiBlock *block)
 	}
 }
 
-static bool ui_multibut_states_tag(uiBut *but_active, uiHandleButtonData *data, const wmEvent *event)
+static bool ui_multibut_states_tag(
+        uiBut *but_active,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	uiBut *but;
 	float seg[2][2];
@@ -979,6 +1139,7 @@ static void ui_multibut_states_create(uiBut *but_active, uiHandleButtonData *dat
 	uiBut *but;
 
 	BLI_assert(data->multi_data.init == BUTTON_MULTI_INIT_SETUP);
+	BLI_assert(data->multi_data.has_mbuts);
 
 	data->multi_data.bs_mbuts = UI_butstore_create(but_active->block);
 
@@ -1016,6 +1177,24 @@ static void ui_multibut_states_apply(bContext *C, uiHandleButtonData *data, uiBl
 				void *active_back;
 
 				ui_but_execute_begin(C, ar, but, &active_back);
+
+#ifdef USE_ALLSELECT
+				if (data->select_others.is_enabled) {
+					/* init once! */
+					if (mbut_state->select_others.elems_len == 0) {
+						ui_selectcontext_begin(C, but, &mbut_state->select_others);
+					}
+					if (mbut_state->select_others.elems_len == 0) {
+						mbut_state->select_others.elems_len = -1;
+					}
+				}
+
+				/* needed so we apply the right deltas */
+				but->active->origvalue = mbut_state->origvalue;
+				but->active->select_others = mbut_state->select_others;
+				but->active->select_others.do_free = false;
+#endif
+
 				BLI_assert(active_back == NULL);
 				/* no need to check 'data->state' here */
 				if (data->str) {
@@ -1064,8 +1243,9 @@ typedef struct uiDragToggleHandle {
 	int  xy_last[2];
 } uiDragToggleHandle;
 
-static bool ui_drag_toggle_set_xy_xy(bContext *C, ARegion *ar, const bool is_set, const eButType but_type_start,
-                                     const int xy_src[2], const int xy_dst[2])
+static bool ui_drag_toggle_set_xy_xy(
+        bContext *C, ARegion *ar, const bool is_set, const eButType but_type_start,
+        const int xy_src[2], const int xy_dst[2])
 {
 	/* popups such as layers won't re-evaluate on redraw */
 	const bool do_check = (ar->regiontype == RGN_TYPE_TEMPORARY);
@@ -1095,7 +1275,7 @@ static bool ui_drag_toggle_set_xy_xy(bContext *C, ARegion *ar, const bool is_set
 						if (is_set_but != is_set) {
 							UI_but_execute(C, but);
 							if (do_check) {
-								ui_but_update(but);
+								ui_but_update_edited(but);
 							}
 							changed = true;
 						}
@@ -1105,6 +1285,10 @@ static bool ui_drag_toggle_set_xy_xy(bContext *C, ARegion *ar, const bool is_set
 				}
 			}
 		}
+	}
+	if (changed) {
+		/* apply now, not on release (or if handlers are cancelled for whatever reason) */
+		ui_apply_but_funcs_after(C);
 	}
 
 	return changed;
@@ -1225,6 +1409,267 @@ static bool ui_but_is_drag_toggle(const uiBut *but)
 #endif  /* USE_DRAG_TOGGLE */
 
 
+#ifdef USE_ALLSELECT
+
+static bool ui_selectcontext_begin(
+        bContext *C, uiBut *but, uiSelectContextStore *selctx_data)
+{
+	PointerRNA ptr, lptr, idptr;
+	PropertyRNA *prop, *lprop;
+	bool success = false;
+	int index;
+
+	char *path = NULL;
+	ListBase lb = {NULL};
+
+	ptr = but->rnapoin;
+	prop = but->rnaprop;
+	index = but->rnaindex;
+
+	/* for now don't support whole colors */
+	if (index == -1)
+		return false;
+
+	/* if there is a valid property that is editable... */
+	if (ptr.data && prop) {
+		CollectionPointerLink *link;
+		bool use_path_from_id;
+		int i;
+
+		/* some facts we want to know */
+		const bool is_array = RNA_property_array_check(prop);
+		const int rna_type = RNA_property_type(prop);
+
+		if (!UI_context_copy_to_selected_list(C, &ptr, prop, &lb, &use_path_from_id, &path)) {
+			goto finally;
+		}
+
+		selctx_data->elems_len = BLI_listbase_count(&lb);
+		if (selctx_data->elems_len == 0) {
+			goto finally;
+		}
+
+		selctx_data->elems = MEM_mallocN(sizeof(uiSelectContextElem) * selctx_data->elems_len, __func__);
+
+		for (i = 0, link = lb.first; i < selctx_data->elems_len; i++, link = link->next) {
+			uiSelectContextElem *other = &selctx_data->elems[i];
+			/* TODO,. de-duplicate copy_to_selected_button */
+			if (link->ptr.data != ptr.data) {
+				if (use_path_from_id) {
+					/* Path relative to ID. */
+					lprop = NULL;
+					RNA_id_pointer_create(link->ptr.id.data, &idptr);
+					RNA_path_resolve_property(&idptr, path, &lptr, &lprop);
+				}
+				else if (path) {
+					/* Path relative to elements from list. */
+					lprop = NULL;
+					RNA_path_resolve_property(&link->ptr, path, &lptr, &lprop);
+				}
+				else {
+					lptr = link->ptr;
+					lprop = prop;
+				}
+
+				/* lptr might not be the same as link->ptr! */
+				if ((lptr.data != ptr.data) &&
+				    (lprop == prop) &&
+				    RNA_property_editable(&lptr, lprop))
+				{
+					other->ptr = lptr;
+					if (is_array) {
+						if (rna_type == PROP_FLOAT) {
+							other->val_f = RNA_property_float_get_index(&lptr, lprop, index);
+						}
+						else if (rna_type == PROP_INT) {
+							other->val_i = RNA_property_int_get_index(&lptr, lprop, index);
+						}
+						/* ignored for now */
+#if 0
+						else if (rna_type == PROP_BOOLEAN) {
+							other->val_b = RNA_property_boolean_get_index(&lptr, lprop, index);
+						}
+#endif
+					}
+					else {
+						if (rna_type == PROP_FLOAT) {
+							other->val_f = RNA_property_float_get(&lptr, lprop);
+						}
+						else if (rna_type == PROP_INT) {
+							other->val_i = RNA_property_int_get(&lptr, lprop);
+						}
+						/* ignored for now */
+#if 0
+						else if (rna_type == PROP_BOOLEAN) {
+							other->val_b = RNA_property_boolean_get(&lptr, lprop);
+						}
+						else if (rna_type == PROP_ENUM) {
+							other->val_i = RNA_property_enum_get(&lptr, lprop);
+						}
+#endif
+					}
+
+					continue;
+				}
+			}
+
+			selctx_data->elems_len -= 1;
+			i -= 1;
+		}
+	}
+
+	success = (selctx_data->elems_len != 0);
+
+finally:
+	if (selctx_data->elems_len == 0) {
+		MEM_SAFE_FREE(selctx_data->elems);
+	}
+
+	MEM_SAFE_FREE(path);
+	BLI_freelistN(&lb);
+
+	/* caller can clear */
+	selctx_data->do_free = true;
+
+	if (success) {
+		but->flag |= UI_BUT_IS_SELECT_CONTEXT;
+	}
+
+	return success;
+}
+
+static void ui_selectcontext_end(
+        uiBut *but, uiSelectContextStore *selctx_data)
+{
+	if (selctx_data->do_free) {
+		if (selctx_data->elems) {
+			MEM_freeN(selctx_data->elems);
+		}
+	}
+
+	but->flag &= ~UI_BUT_IS_SELECT_CONTEXT;
+}
+
+static void ui_selectcontext_apply(
+        bContext *C, uiBut *but, uiSelectContextStore *selctx_data,
+        const double value, const double value_orig)
+{
+	if (selctx_data->elems) {
+		PropertyRNA *prop = but->rnaprop;
+		PropertyRNA *lprop = but->rnaprop;
+		int index = but->rnaindex;
+		int i;
+		const bool use_delta = (selctx_data->is_copy == false);
+
+		union {
+			bool  b;
+			int   i;
+			float f;
+		} delta, min, max;
+
+		const bool is_array = RNA_property_array_check(prop);
+		const int rna_type = RNA_property_type(prop);
+
+		if (rna_type == PROP_FLOAT) {
+			delta.f = use_delta ? (value - value_orig) : value;
+			RNA_property_float_range(&but->rnapoin, prop, &min.f, &max.f);
+		}
+		else if (rna_type == PROP_INT) {
+			delta.i = use_delta ? ((int)value - (int)value_orig) : (int)value;
+			RNA_property_int_range(&but->rnapoin, prop, &min.i, &max.i);
+		}
+		else if (rna_type == PROP_ENUM) {
+			delta.i = RNA_property_enum_get(&but->rnapoin, prop);  /* not a delta infact */
+		}
+		else if (rna_type == PROP_BOOLEAN) {
+			if (is_array) {
+				delta.b = RNA_property_boolean_get_index(&but->rnapoin, prop, index);  /* not a delta infact */
+			}
+			else {
+				delta.b = RNA_property_boolean_get(&but->rnapoin, prop);  /* not a delta infact */
+			}
+		}
+
+#ifdef USE_ALLSELECT_LAYER_HACK
+		/* make up for not having 'handle_layer_buttons' */
+		{
+			PropertySubType subtype = RNA_property_subtype(prop);
+
+			if ((rna_type == PROP_BOOLEAN) &&
+			    ELEM(subtype, PROP_LAYER, PROP_LAYER_MEMBER) &&
+			    is_array &&
+			    /* could check for 'handle_layer_buttons' */
+			    but->func)
+			{
+				wmWindow *win = CTX_wm_window(C);
+				if (!win->eventstate->shift) {
+					const int len = RNA_property_array_length(&but->rnapoin, prop);
+					int *tmparray = MEM_callocN(sizeof(int) * len, __func__);
+
+					tmparray[index] = true;
+
+					for (i = 0; i < selctx_data->elems_len; i++) {
+						uiSelectContextElem *other = &selctx_data->elems[i];
+						PointerRNA lptr = other->ptr;
+						RNA_property_boolean_set_array(&lptr, lprop, tmparray);
+						RNA_property_update(C, &lptr, lprop);
+					}
+
+					MEM_freeN(tmparray);
+
+					return;
+				}
+			}
+		}
+#endif
+
+		for (i = 0; i < selctx_data->elems_len; i++) {
+			uiSelectContextElem *other = &selctx_data->elems[i];
+			PointerRNA lptr = other->ptr;
+
+			if (rna_type == PROP_FLOAT) {
+				float other_value = use_delta ? (other->val_f + delta.f) : delta.f;
+				CLAMP(other_value, min.f, max.f);
+				if (is_array) {
+					RNA_property_float_set_index(&lptr, lprop, index, other_value);
+				}
+				else {
+					RNA_property_float_set(&lptr, lprop, other_value);
+				}
+			}
+			else if (rna_type == PROP_INT) {
+				int other_value = use_delta ? (other->val_i + delta.i) : delta.i;
+				CLAMP(other_value, min.i, max.i);
+				if (is_array) {
+					RNA_property_int_set_index(&lptr, lprop, index, other_value);
+				}
+				else {
+					RNA_property_int_set(&lptr, lprop, other_value);
+				}
+			}
+			else if (rna_type == PROP_BOOLEAN) {
+				const bool other_value = delta.b;
+				if (is_array) {
+					RNA_property_boolean_set_index(&lptr, lprop, index, other_value);
+				}
+				else {
+					RNA_property_boolean_set(&lptr, lprop, delta.b);
+				}
+			}
+			else if (rna_type == PROP_ENUM) {
+				const int other_value = delta.i;
+				BLI_assert(!is_array);
+				RNA_property_enum_set(&lptr, lprop, other_value);
+			}
+
+			RNA_property_update(C, &lptr, prop);
+		}
+	}
+}
+
+#endif  /* USE_ALLSELECT */
+
+
 static bool ui_but_contains_point_px_icon(uiBut *but, ARegion *ar, const wmEvent *event)
 {
 	rcti rect;
@@ -1249,7 +1694,9 @@ static bool ui_but_contains_point_px_icon(uiBut *but, ARegion *ar, const wmEvent
 	return BLI_rcti_isect_pt(&rect, x, y);
 }
 
-static bool ui_but_drag_init(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static bool ui_but_drag_init(
+        bContext *C, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	/* prevent other WM gestures to start while we try to drag */
 	WM_gestures_remove(C);
@@ -1278,10 +1725,11 @@ static bool ui_but_drag_init(bContext *C, uiBut *but, uiHandleButtonData *data, 
 			ar_prev = CTX_wm_region(C);
 			CTX_wm_region_set(C, data->region);
 
-			WM_event_add_ui_handler(C, &data->window->modalhandlers,
-			                        ui_handler_region_drag_toggle,
-			                        ui_handler_region_drag_toggle_remove,
-			                        drag_info, false);
+			WM_event_add_ui_handler(
+			        C, &data->window->modalhandlers,
+			        ui_handler_region_drag_toggle,
+			        ui_handler_region_drag_toggle_remove,
+			        drag_info, WM_HANDLER_BLOCKING);
 
 			CTX_wm_region_set(C, ar_prev);
 		}
@@ -1320,11 +1768,16 @@ static bool ui_but_drag_init(bContext *C, uiBut *but, uiHandleButtonData *data, 
 			}
 		}
 		else {
-			wmDrag *drag;
+			wmDrag *drag = WM_event_start_drag(
+			        C, but->icon, but->dragtype, but->dragpoin,
+			        ui_but_value_get(but), WM_DRAG_NOP);
 
-			drag = WM_event_start_drag(C, but->icon, but->dragtype, but->dragpoin, ui_but_value_get(but), WM_DRAG_NOP);
-			if (but->imb)
-				WM_event_drag_image(drag, but->imb, but->imb_scale, BLI_rctf_size_x(&but->rect), BLI_rctf_size_y(&but->rect));
+			if (but->imb) {
+				WM_event_drag_image(
+				        drag, but->imb, but->imb_scale,
+				        BLI_rctf_size_x(&but->rect),
+				        BLI_rctf_size_y(&but->rect));
+			}
 		}
 		return true;
 	}
@@ -1452,11 +1905,15 @@ static void ui_but_smart_controller_add(bContext *C, uiBut *from, uiBut *to)
 	/* (3) add a new controller */
 	if (WM_operator_name_call(C, "LOGIC_OT_controller_add", WM_OP_EXEC_DEFAULT, &props_ptr) & OPERATOR_FINISHED) {
 		cont = (bController *)ob->controllers.last;
-		cont->type = CONT_LOGIC_AND; /* Quick fix to make sure we always have an AND controller. It might be nicer to make sure the operator gives us the right one though... */
+		/* Quick fix to make sure we always have an AND controller.
+		 * It might be nicer to make sure the operator gives us the right one though... */
+		cont->type = CONT_LOGIC_AND;
 
 		/* (4) link the sensor->controller->actuator */
 		tmp_but = MEM_callocN(sizeof(uiBut), "uiBut");
-		UI_but_link_set(tmp_but, (void **)&cont, (void ***)&(cont->links), &(cont->totlinks), from->link->tocode, (int)to->hardmin);
+		UI_but_link_set(
+		        tmp_but, (void **)&cont, (void ***)&(cont->links),
+		        &cont->totlinks, from->link->tocode, (int)to->hardmin);
 		tmp_but->hardmin = from->link->tocode;
 		tmp_but->poin = (char *)cont;
 
@@ -1596,9 +2053,8 @@ static void ui_apply_but(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 		data->str = data->origstr;
 		data->origstr = NULL;
 		data->value = data->origvalue;
-		data->origvalue = 0.0;
 		copy_v3_v3(data->vec, data->origvec);
-		data->origvec[0] = data->origvec[1] = data->origvec[2] = 0.0f;
+		/* postpone clearing origdata */
 	}
 	else {
 		/* we avoid applying interactive edits a second time
@@ -1609,6 +2065,27 @@ static void ui_apply_but(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 		else if (data->applied_interactive) {
 			return;
 		}
+
+#ifdef USE_ALLSELECT
+#  ifdef USE_DRAG_MULTINUM
+		if (but->flag & UI_BUT_DRAG_MULTI) {
+			/* pass */
+		}
+		else
+#  endif
+		if (data->select_others.elems_len == 0) {
+			wmWindow *win = CTX_wm_window(C);
+			/* may have been enabled before activating */
+			if (data->select_others.is_enabled || IS_ALLSELECT_EVENT(win->eventstate)) {
+				ui_selectcontext_begin(C, but, &data->select_others);
+				data->select_others.is_enabled = true;
+			}
+		}
+		if (data->select_others.elems_len == 0) {
+			/* dont check again */
+			data->select_others.elems_len = -1;
+		}
+#endif
 	}
 
 	/* ensures we are writing actual values */
@@ -1629,7 +2106,6 @@ static void ui_apply_but(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 			ui_apply_but_BUT(C, but, data);
 			break;
 		case UI_BTYPE_TEXT:
-		case UI_BTYPE_SEARCH_MENU_UNLINK:
 		case UI_BTYPE_SEARCH_MENU:
 			ui_apply_but_TEX(C, but, data);
 			break;
@@ -1705,7 +2181,7 @@ static void ui_apply_but(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 	if (data->multi_data.has_mbuts) {
 		if (data->multi_data.init == BUTTON_MULTI_INIT_ENABLE) {
 			if (data->cancel) {
-				ui_multibut_restore(data, block);
+				ui_multibut_restore(C, data, block);
 			}
 			else {
 				ui_multibut_states_apply(C, data, block);
@@ -1713,6 +2189,15 @@ static void ui_apply_but(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 		}
 	}
 #endif
+
+#ifdef USE_ALLSELECT
+	ui_selectcontext_apply(C, but, &data->select_others, data->value, data->origvalue);
+#endif
+
+	if (data->cancel) {
+		data->origvalue = 0.0;
+		zero_v3(data->origvec);
+	}
 
 	but->editstr = editstr;
 	but->editval = editval;
@@ -1732,13 +2217,14 @@ static void ui_but_drop(bContext *C, const wmEvent *event, uiBut *but, uiHandleB
 	for (wmd = drags->first; wmd; wmd = wmd->next) {
 		if (wmd->type == WM_DRAG_ID) {
 			/* align these types with UI_but_active_drop_name */
-			if (ELEM(but->type, UI_BTYPE_TEXT, UI_BTYPE_SEARCH_MENU, UI_BTYPE_SEARCH_MENU_UNLINK)) {
+			if (ELEM(but->type, UI_BTYPE_TEXT, UI_BTYPE_SEARCH_MENU)) {
 				ID *id = (ID *)wmd->poin;
 				
 				button_activate_state(C, but, BUTTON_STATE_TEXT_EDITING);
-				BLI_strncpy(data->str, id->name + 2, data->maxlen);
 
-				if (ELEM(but->type, UI_BTYPE_SEARCH_MENU, UI_BTYPE_SEARCH_MENU_UNLINK)) {
+				ui_textedit_string_set(but, data, id->name + 2);
+
+				if (ELEM(but->type, UI_BTYPE_SEARCH_MENU)) {
 					but->changed = true;
 					ui_searchbox_update(C, data->searchbox, but, true);
 				}
@@ -1753,15 +2239,14 @@ static void ui_but_drop(bContext *C, const wmEvent *event, uiBut *but, uiHandleB
 /* ******************* copy and paste ********************  */
 
 /* c = copy, v = paste */
-static void ui_but_copy_paste(bContext *C, uiBut *but, uiHandleButtonData *data, char mode)
+static void ui_but_copy_paste(bContext *C, uiBut *but, uiHandleButtonData *data, const char mode, const bool copy_array)
 {
 	int buf_paste_len = 0;
 	const char *buf_paste = "";
 	bool buf_paste_alloc = false;
+	bool show_report = false;  /* use to display errors parsing paste input */
 
-	if (mode == 'v' && but->lock  == true) {
-		return;
-	}
+	BLI_assert((but->flag & UI_BUT_DISABLED) == 0); /* caller should check */
 
 	if (mode == 'c') {
 		/* disallow copying from any passwords */
@@ -1790,11 +2275,51 @@ static void ui_but_copy_paste(bContext *C, uiBut *but, uiHandleButtonData *data,
 		if (but->poin == NULL && but->rnapoin.data == NULL) {
 			/* pass */
 		}
+		else if (copy_array && but->rnapoin.data && but->rnaprop &&
+		         ELEM(RNA_property_subtype(but->rnaprop), PROP_COLOR, PROP_TRANSLATION, PROP_DIRECTION,
+		              PROP_VELOCITY, PROP_ACCELERATION, PROP_MATRIX, PROP_EULER, PROP_QUATERNION, PROP_AXISANGLE,
+		              PROP_XYZ, PROP_XYZ_LENGTH, PROP_COLOR_GAMMA, PROP_COORDS))
+		{
+			float values[4];
+			int array_length = RNA_property_array_length(&but->rnapoin, but->rnaprop);
+
+			if (mode == 'c') {
+				char buf_copy[UI_MAX_DRAW_STR];
+
+				if (array_length == 4) {
+					 values[3] = RNA_property_float_get_index(&but->rnapoin, but->rnaprop, 3);
+				}
+				else {
+					values[3] = 0.0f;
+				}
+				ui_but_v3_get(but, values);
+
+				BLI_snprintf(buf_copy, sizeof(buf_copy), "[%f, %f, %f, %f]", values[0], values[1], values[2], values[3]);
+				WM_clipboard_text_set(buf_copy, 0);
+			}
+			else {
+				if (sscanf(buf_paste, "[%f, %f, %f, %f]", &values[0], &values[1], &values[2], &values[3]) >= array_length) {
+					button_activate_state(C, but, BUTTON_STATE_NUM_EDITING);
+
+					ui_but_v3_set(but, values);
+					if (but->rnaprop && array_length == 4) {
+						RNA_property_float_set_index(&but->rnapoin, but->rnaprop, 3, values[3]);
+					}
+					data->value = values[but->rnaindex];
+
+					button_activate_state(C, but, BUTTON_STATE_EXIT);
+				}
+				else {
+					WM_report(RPT_ERROR, "Paste expected 4 numbers, formatted: '[n, n, n, n]'");
+					show_report = true;
+				}
+			}
+		}
 		else if (mode == 'c') {
 			/* Get many decimal places, then strip trailing zeros.
-			 * note: too high values start to give strange results (6 or so is ok) */
+			 * note: too high values start to give strange results */
 			char buf_copy[UI_MAX_DRAW_STR];
-			ui_but_string_get_ex(but, buf_copy, sizeof(buf_copy), 6);
+			ui_but_string_get_ex(but, buf_copy, sizeof(buf_copy), UI_PRECISION_FLOAT_MAX, false, NULL);
 			BLI_str_rstrip_float_zero(buf_copy, '\0');
 
 			WM_clipboard_text_set(buf_copy, 0);
@@ -1807,6 +2332,10 @@ static void ui_but_copy_paste(bContext *C, uiBut *but, uiHandleButtonData *data,
 				data->value = val;
 				ui_but_string_set(C, but, buf_paste);
 				button_activate_state(C, but, BUTTON_STATE_EXIT);
+			}
+			else {
+				/* evaluating will report errors */
+				show_report = true;
 			}
 		}
 	}
@@ -1833,6 +2362,10 @@ static void ui_but_copy_paste(bContext *C, uiBut *but, uiHandleButtonData *data,
 				button_activate_state(C, but, BUTTON_STATE_NUM_EDITING);
 				ui_but_v3_set(but, xyz);
 				button_activate_state(C, but, BUTTON_STATE_EXIT);
+			}
+			else {
+				WM_report(RPT_ERROR, "Paste expected 3 numbers, formatted: '[n, n, n]'");
+				show_report = true;
 			}
 		}
 	}
@@ -1875,11 +2408,15 @@ static void ui_but_copy_paste(bContext *C, uiBut *but, uiHandleButtonData *data,
 
 				button_activate_state(C, but, BUTTON_STATE_EXIT);
 			}
+			else {
+				WM_report(RPT_ERROR, "Paste expected 4 numbers, formatted: '[n, n, n, n]'");
+				show_report = true;
+			}
 		}
 	}
 
 	/* text/string and ID data */
-	else if (ELEM(but->type, UI_BTYPE_TEXT, UI_BTYPE_SEARCH_MENU, UI_BTYPE_SEARCH_MENU_UNLINK)) {
+	else if (ELEM(but->type, UI_BTYPE_TEXT, UI_BTYPE_SEARCH_MENU)) {
 		uiHandleButtonData *active_data = but->active;
 
 		if (but->poin == NULL && but->rnapoin.data == NULL) {
@@ -1894,12 +2431,9 @@ static void ui_but_copy_paste(bContext *C, uiBut *but, uiHandleButtonData *data,
 		else {
 			button_activate_state(C, but, BUTTON_STATE_TEXT_EDITING);
 
-			if (ui_but_is_utf8(but))
-				BLI_strncpy_utf8(active_data->str, buf_paste, active_data->maxlen);
-			else
-				BLI_strncpy(active_data->str, buf_paste, active_data->maxlen);
+			ui_textedit_string_set(but, active_data, buf_paste);
 
-			if (ELEM(but->type, UI_BTYPE_SEARCH_MENU, UI_BTYPE_SEARCH_MENU_UNLINK)) {
+			if (but->type == UI_BTYPE_SEARCH_MENU) {
 				/* else uiSearchboxData.active member is not updated [#26856] */
 				but->changed = true;
 				ui_searchbox_update(C, data->searchbox, but, true);
@@ -1972,17 +2506,23 @@ static void ui_but_copy_paste(bContext *C, uiBut *but, uiHandleButtonData *data,
 	if (buf_paste_alloc) {
 		MEM_freeN((void *)buf_paste);
 	}
+
+	if (show_report) {
+		WM_report_banner_show();
+	}
 }
 
-/* ************************ password text ******************************
+/**
+ * Password Text
+ * =============
  *
  * Functions to convert password strings that should not be displayed
- * to asterisk representation (e.g. mysecretpasswd -> *************)
+ * to asterisk representation (e.g. 'mysecretpasswd' -> '*************')
  *
  * It converts every UTF-8 character to an asterisk, and also remaps
  * the cursor position and selection start/end.
  *
- * Note: remaping is used, because password could contain UTF-8 characters.
+ * \note: remaping is used, because password could contain UTF-8 characters.
  *
  */
 
@@ -2043,8 +2583,45 @@ void ui_but_text_password_hide(char password_str[UI_MAX_PASSWORD_STR], uiBut *bu
 	}
 }
 
+static void ui_but_text_clear(bContext *C, uiBut *but, uiHandleButtonData *data)
+{
+	/* most likely NULL, but let's check, and give it temp zero string */
+	if (!data->str) {
+		data->str = MEM_callocN(1, "temp str");
+	}
+	data->str[0] = 0;
+
+	ui_apply_but_TEX(C, but, data);
+	button_activate_state(C, but, BUTTON_STATE_EXIT);
+}
+
 
 /* ************* in-button text selection/editing ************* */
+
+static void ui_textedit_string_ensure_max_length(uiBut *but, uiHandleButtonData *data, int maxlen)
+{
+	BLI_assert(data->is_str_dynamic);
+	BLI_assert(data->str == but->editstr);
+
+	if (maxlen > data->maxlen) {
+		data->str = but->editstr = MEM_reallocN(data->str, sizeof(char) * maxlen);
+		data->maxlen = maxlen;
+	}
+}
+
+static void ui_textedit_string_set(uiBut *but, uiHandleButtonData *data, const char *str)
+{
+	if (data->is_str_dynamic) {
+		ui_textedit_string_ensure_max_length(but, data, strlen(str) + 1);
+	}
+
+	if (ui_but_is_utf8(but)) {
+		BLI_strncpy_utf8(data->str, str, data->maxlen);
+	}
+	else {
+		BLI_strncpy(data->str, str, data->maxlen);
+	}
+}
 
 
 static bool ui_textedit_delete_selection(uiBut *but, uiHandleButtonData *data)
@@ -2075,7 +2652,9 @@ static void ui_textedit_set_cursor_pos(uiBut *but, uiHandleButtonData *data, con
 
 	float startx = but->rect.xmin;
 	float starty_dummy = 0.0f;
-	char *origstr, password_str[UI_MAX_PASSWORD_STR];
+	char password_str[UI_MAX_PASSWORD_STR];
+	/* treat 'str_last' as null terminator for str, no need to modify in-place */
+	const char *str = but->editstr, *str_last;
 
 	ui_block_to_window_fl(data->region, but->block, &startx, &starty_dummy);
 
@@ -2088,11 +2667,7 @@ static void ui_textedit_set_cursor_pos(uiBut *but, uiHandleButtonData *data, con
 	
 	ui_but_text_password_hide(password_str, but, false);
 
-	origstr = MEM_mallocN(sizeof(char) * data->maxlen, "ui_textedit origstr");
-
-	BLI_strncpy(origstr, but->editstr, data->maxlen);
-
-	if (ELEM(but->type, UI_BTYPE_TEXT, UI_BTYPE_SEARCH_MENU, UI_BTYPE_SEARCH_MENU_UNLINK)) {
+	if (ELEM(but->type, UI_BTYPE_TEXT, UI_BTYPE_SEARCH_MENU)) {
 		if (but->flag & UI_HAS_ICON) {
 			startx += UI_DPI_ICON_SIZE / aspect;
 		}
@@ -2104,12 +2679,12 @@ static void ui_textedit_set_cursor_pos(uiBut *but, uiHandleButtonData *data, con
 	if (x < startx) {
 		int i = but->ofs;
 
-		origstr[but->ofs] = '\0';
+		str_last = &str[but->ofs];
 		
 		while (i > 0) {
-			if (BLI_str_cursor_step_prev_utf8(origstr, but->ofs, &i)) {
+			if (BLI_str_cursor_step_prev_utf8(str, but->ofs, &i)) {
 				/* 0.25 == scale factor for less sensitivity */
-				if (BLF_width(fstyle->uifont_id, origstr + i, BLF_DRAW_STR_DUMMY_MAX) > (startx - x) * 0.25f) {
+				if (BLF_width(fstyle->uifont_id, str + i, (str_last - str) - i) > (startx - x) * 0.25f) {
 					break;
 				}
 			}
@@ -2128,10 +2703,12 @@ static void ui_textedit_set_cursor_pos(uiBut *but, uiHandleButtonData *data, con
 		float cdist, cdist_prev = 0.0f;
 		short pos_prev;
 		
-		but->pos = pos_prev = strlen(origstr) - but->ofs;
+		str_last = &str[strlen(str)];
+
+		but->pos = pos_prev = ((str_last - str) - but->ofs);
 
 		while (true) {
-			cdist = startx + BLF_width(fstyle->uifont_id, origstr + but->ofs, BLF_DRAW_STR_DUMMY_MAX);
+			cdist = startx + BLF_width(fstyle->uifont_id, str + but->ofs, (str_last - str) - but->ofs);
 
 			/* check if position is found */
 			if (cdist < x) {
@@ -2147,9 +2724,9 @@ static void ui_textedit_set_cursor_pos(uiBut *but, uiHandleButtonData *data, con
 
 			pos_i = but->pos;
 			if (but->pos <= 0) break;
-			if (BLI_str_cursor_step_prev_utf8(origstr, but->ofs, &pos_i)) {
+			if (BLI_str_cursor_step_prev_utf8(str, but->ofs, &pos_i)) {
 				but->pos = pos_i;
-				origstr[but->pos + but->ofs] = 0;
+				str_last = &str[but->pos + but->ofs];
 			}
 			else {
 				break; /* unlikely but possible */
@@ -2163,8 +2740,6 @@ static void ui_textedit_set_cursor_pos(uiBut *but, uiHandleButtonData *data, con
 		BLF_disable(fstyle->uifont_id, BLF_KERNING_DEFAULT);
 	
 	ui_but_text_password_hide(password_str, but, true);
-
-	MEM_freeN(origstr);
 
 	fstyle->points = fstyle_points_prev;
 }
@@ -2182,21 +2757,26 @@ static void ui_textedit_set_cursor_select(uiBut *but, uiHandleButtonData *data, 
 	ui_but_update(but);
 }
 
-/* this is used for both utf8 and ascii, its meant to be used for single keys,
- * notice the buffer is either copied or not, so its not suitable for pasting in
- * - campbell */
-static bool ui_textedit_type_buf(uiBut *but, uiHandleButtonData *data,
-                                 const char *utf8_buf, int utf8_buf_len)
+/**
+ * This is used for both utf8 and ascii
+ *
+ * For unicode buttons, \a buf is treated as unicode.
+ */
+static bool ui_textedit_insert_buf(
+        uiBut *but, uiHandleButtonData *data,
+        const char *buf, int buf_len)
 {
-	char *str;
-	int len;
+	int len = strlen(data->str);
+	int len_new = len - (but->selend - but->selsta) + 1;
 	bool changed = false;
 
-	str = data->str;
-	len = strlen(str);
+	if (data->is_str_dynamic) {
+		ui_textedit_string_ensure_max_length(but, data, len_new + buf_len);
+	}
 
-	if (len - (but->selend - but->selsta) + 1 <= data->maxlen) {
-		int step = utf8_buf_len;
+	if (len_new <= data->maxlen) {
+		char *str = data->str;
+		size_t step = buf_len;
 
 		/* type over the current selection */
 		if ((but->selend - but->selsta) > 0) {
@@ -2204,9 +2784,19 @@ static bool ui_textedit_type_buf(uiBut *but, uiHandleButtonData *data,
 			len = strlen(str);
 		}
 
-		if (len + step < data->maxlen) {
+		if ((len + step >= data->maxlen) && (data->maxlen - (len + 1) > 0)) {
+			if (ui_but_is_utf8(but)) {
+				/* shorten 'step' to a utf8 algined size that fits  */
+				BLI_strnlen_utf8_ex(buf, data->maxlen - (len + 1), &step);
+			}
+			else {
+				step = data->maxlen - (len + 1);
+			}
+		}
+
+		if (step && (len + step < data->maxlen)) {
 			memmove(&str[but->pos + step], &str[but->pos], (len + 1) - but->pos);
-			memcpy(&str[but->pos], utf8_buf, step * sizeof(char));
+			memcpy(&str[but->pos], buf, step * sizeof(char));
 			but->pos += step;
 			changed = true;
 		}
@@ -2215,7 +2805,7 @@ static bool ui_textedit_type_buf(uiBut *but, uiHandleButtonData *data,
 	return changed;
 }
 
-static bool ui_textedit_type_ascii(uiBut *but, uiHandleButtonData *data, char ascii)
+static bool ui_textedit_insert_ascii(uiBut *but, uiHandleButtonData *data, char ascii)
 {
 	char buf[2] = {ascii, '\0'};
 
@@ -2227,11 +2817,12 @@ static bool ui_textedit_type_ascii(uiBut *but, uiHandleButtonData *data, char as
 	}
 
 	/* in some cases we want to allow invalid utf8 chars */
-	return ui_textedit_type_buf(but, data, buf, 1);
+	return ui_textedit_insert_buf(but, data, buf, 1);
 }
 
-static void ui_textedit_move(uiBut *but, uiHandleButtonData *data, strCursorJumpDirection direction,
-                             const bool select, strCursorJumpType jump)
+static void ui_textedit_move(
+        uiBut *but, uiHandleButtonData *data, strCursorJumpDirection direction,
+        const bool select, strCursorJumpType jump)
 {
 	const char *str = data->str;
 	const int len = strlen(str);
@@ -2253,7 +2844,7 @@ static void ui_textedit_move(uiBut *but, uiHandleButtonData *data, strCursorJump
 				but->pos = but->selend = but->selsta;
 			}
 		}
-		data->selextend = 0;
+		data->selextend = EXTEND_NONE;
 	}
 	else {
 		int pos_i = but->pos;
@@ -2264,7 +2855,7 @@ static void ui_textedit_move(uiBut *but, uiHandleButtonData *data, strCursorJump
 			/* existing selection */
 			if (has_sel) {
 
-				if (data->selextend == 0) {
+				if (data->selextend == EXTEND_NONE) {
 					data->selextend = EXTEND_RIGHT;
 				}
 
@@ -2380,48 +2971,24 @@ enum {
 
 static bool ui_textedit_copypaste(uiBut *but, uiHandleButtonData *data, const int mode)
 {
-	char *str, *pbuf;
-	int x;
+	char *pbuf;
 	bool changed = false;
-	int str_len, buf_len;
-
-	str = data->str;
-	str_len = strlen(str);
+	int buf_len;
 	
 	/* paste */
 	if (mode == UI_TEXTEDIT_PASTE) {
-		/* TODO, ensure UTF8 ui_but_is_utf8() - campbell */
 		/* extract the first line from the clipboard */
 		pbuf = WM_clipboard_text_get_firstline(false, &buf_len);
 
 		if (pbuf) {
-			char buf[UI_MAX_DRAW_STR] = {0};
-			unsigned int y;
-
-			buf_len = BLI_strncpy_rlen(buf, pbuf, sizeof(buf));
-
-			/* paste over the current selection */
-			if ((but->selend - but->selsta) > 0) {
-				ui_textedit_delete_selection(but, data);
-				str_len = strlen(str);
+			if (ui_but_is_utf8(but)) {
+				buf_len -= BLI_utf8_invalid_strip(pbuf, (size_t)buf_len);
 			}
-			
-			for (y = 0; y < buf_len; y++) {
-				/* add contents of buffer */
-				if (str_len + 1 < data->maxlen) {
-					for (x = data->maxlen; x > but->pos; x--)
-						str[x] = str[x - 1];
-					str[but->pos] = buf[y];
-					but->pos++; 
-					str_len++;
-					str[str_len] = '\0';
-				}
-			}
+
+			ui_textedit_insert_buf(but, data, pbuf, buf_len);
 
 			changed = true;
-		}
 
-		if (pbuf) {
 			MEM_freeN(pbuf);
 		}
 	}
@@ -2431,7 +2998,7 @@ static bool ui_textedit_copypaste(uiBut *but, uiHandleButtonData *data, const in
 		int sellen = but->selend - but->selsta;
 		char *buf = MEM_mallocN(sizeof(char) * (sellen + 1), "ui_textedit_copypaste");
 
-		BLI_strncpy(buf, str + but->selsta, sellen + 1);
+		BLI_strncpy(buf, data->str + but->selsta, sellen + 1);
 		WM_clipboard_text_set(buf, 0);
 		MEM_freeN(buf);
 		
@@ -2477,8 +3044,7 @@ void ui_but_ime_reposition(uiBut *but, int x, int y, bool complete)
 	wm_window_IME_begin(but->active->window, x, y - 4, 0, 0, complete);
 }
 
-/* should be ui_but_ime_data_get */
-wmIMEData *ui_but_get_ime_data(uiBut *but)
+wmIMEData *ui_but_ime_data_get(uiBut *but)
 {
 	if (but->active && but->active->window) {
 		return but->active->window->ime_data;
@@ -2494,6 +3060,7 @@ static void ui_textedit_begin(bContext *C, uiBut *but, uiHandleButtonData *data)
 	wmWindow *win = CTX_wm_window(C);
 	int len;
 	const bool is_num_but = ELEM(but->type, UI_BTYPE_NUM, UI_BTYPE_NUM_SLIDER);
+	bool no_zero_strip = false;
 
 	if (data->str) {
 		MEM_freeN(data->str);
@@ -2512,16 +3079,35 @@ static void ui_textedit_begin(bContext *C, uiBut *but, uiHandleButtonData *data)
 	}
 #endif
 
+#ifdef USE_ALLSELECT
+	if (is_num_but) {
+		if (IS_ALLSELECT_EVENT(win->eventstate)) {
+			data->select_others.is_enabled = true;
+			data->select_others.is_copy = true;
+
+		}
+	}
+#endif
+
 	/* retrieve string */
 	data->maxlen = ui_but_string_get_max_length(but);
-	data->str = MEM_callocN(sizeof(char) * data->maxlen + 1, "textedit str");
-	ui_but_string_get(but, data->str, data->maxlen);
+	if (data->maxlen != 0) {
+		data->str = MEM_callocN(sizeof(char) * data->maxlen, "textedit str");
+		/* We do not want to truncate precision to default here, it's nice to show value,
+		 * not to edit it - way too much precision is lost then. */
+		ui_but_string_get_ex(but, data->str, data->maxlen, UI_PRECISION_FLOAT_MAX, true, &no_zero_strip);
+	}
+	else {
+		data->is_str_dynamic = true;
+		data->str = ui_but_string_get_dynamic(but, &data->maxlen);
+	}
 
-	if (ui_but_is_float(but) && !ui_but_is_unit(but)) {
+	if (ui_but_is_float(but) && !ui_but_is_unit(but) && !ui_but_anim_expression_get(but, NULL, 0) && !no_zero_strip) {
 		BLI_str_rstrip_float_zero(data->str, '\0');
 	}
 
 	if (is_num_but) {
+		BLI_assert(data->is_str_dynamic == false);
 		ui_but_convert_to_unit_alt_name(but, data->str, data->maxlen);
 	}
 
@@ -2529,7 +3115,7 @@ static void ui_textedit_begin(bContext *C, uiBut *but, uiHandleButtonData *data)
 	len = strlen(data->str);
 
 	data->origstr = BLI_strdupn(data->str, len);
-	data->selextend = 0;
+	data->selextend = EXTEND_NONE;
 	data->selstartx = 0.0f;
 
 	/* set cursor pos to the end of the text */
@@ -2539,8 +3125,8 @@ static void ui_textedit_begin(bContext *C, uiBut *but, uiHandleButtonData *data)
 	but->selend = len;
 
 	/* optional searchbox */
-	if (ELEM(but->type, UI_BTYPE_SEARCH_MENU, UI_BTYPE_SEARCH_MENU_UNLINK)) {
-		data->searchbox = ui_searchbox_create(C, data->region, but);
+	if (but->type ==  UI_BTYPE_SEARCH_MENU) {
+		data->searchbox = but->search_create_func(C, data->region, but);
 		ui_searchbox_update(C, data->searchbox, but, true); /* true = reset */
 	}
 
@@ -2552,7 +3138,7 @@ static void ui_textedit_begin(bContext *C, uiBut *but, uiHandleButtonData *data)
 	WM_cursor_modal_set(win, BC_TEXTEDITCURSOR);
 
 #ifdef WITH_INPUT_IME
-	if (is_num_but == false) {
+	if (is_num_but == false && BLT_lang_is_ime_supported()) {
 		ui_textedit_ime_begin(win, but);
 	}
 #endif
@@ -2658,7 +3244,9 @@ static void ui_textedit_prev_but(uiBlock *block, uiBut *actbut, uiHandleButtonDa
 }
 
 
-static void ui_do_but_textedit(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static void ui_do_but_textedit(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int retval = WM_UI_HANDLER_CONTINUE;
 	bool changed = false, inbox = false, update = false;
@@ -2711,7 +3299,8 @@ static void ui_do_but_textedit(bContext *C, uiBlock *block, uiBut *but, uiHandle
 			if (data->searchbox)
 				inbox = ui_searchbox_inside(data->searchbox, event->x, event->y);
 
-			/* for double click: we do a press again for when you first click on button (selects all text, no cursor pos) */
+			/* for double click: we do a press again for when you first click on button
+			 * (selects all text, no cursor pos) */
 			if (event->val == KM_PRESS || event->val == KM_DBL_CLICK) {
 				float mx, my;
 
@@ -2789,7 +3378,10 @@ static void ui_do_but_textedit(bContext *C, uiBlock *block, uiBut *but, uiHandle
 					ui_searchbox_event(C, data->searchbox, but, event);
 					break;
 				}
-				/* fall-through */
+				if (event->type == WHEELDOWNMOUSE) {
+					break;
+				}
+				ATTR_FALLTHROUGH;
 			case ENDKEY:
 				ui_textedit_move(but, data, STRCUR_DIR_NEXT,
 				                 event->shift != 0, STRCUR_JUMP_ALL);
@@ -2804,7 +3396,10 @@ static void ui_do_but_textedit(bContext *C, uiBlock *block, uiBut *but, uiHandle
 					ui_searchbox_event(C, data->searchbox, but, event);
 					break;
 				}
-				/* fall-through */
+				if (event->type == WHEELUPMOUSE) {
+					break;
+				}
+				ATTR_FALLTHROUGH;
 			case HOMEKEY:
 				ui_textedit_move(but, data, STRCUR_DIR_PREV,
 				                 event->shift != 0, STRCUR_JUMP_ALL);
@@ -2854,8 +3449,6 @@ static void ui_do_but_textedit(bContext *C, uiBlock *block, uiBut *but, uiHandle
 
 					if (autocomplete == AUTOCOMPLETE_FULL_MATCH)
 						button_activate_state(C, but, BUTTON_STATE_EXIT);
-
-					update = true;  /* do live update for tab key */
 				}
 				/* the hotkey here is not well defined, was G.qual so we check all */
 				else if (IS_EVENT_MOD(event, shift, ctrl, alt, oskey)) {
@@ -2875,7 +3468,7 @@ static void ui_do_but_textedit(bContext *C, uiBlock *block, uiBut *but, uiHandle
 #ifdef WITH_INPUT_IME
 		    &&
 		    !is_ime_composing &&
-		    !WM_event_is_ime_switch(event)
+		    (!WM_event_is_ime_switch(event) || !BLT_lang_is_ime_supported())
 #endif
 		    )
 		{
@@ -2899,10 +3492,10 @@ static void ui_do_but_textedit(bContext *C, uiBlock *block, uiBut *but, uiHandle
 				}
 
 				// strcpy(utf8_buf, "12345");
-				changed = ui_textedit_type_buf(but, data, event->utf8_buf, utf8_buf_len);
+				changed = ui_textedit_insert_buf(but, data, event->utf8_buf, utf8_buf_len);
 			}
 			else {
-				changed = ui_textedit_type_ascii(but, data, ascii);
+				changed = ui_textedit_insert_ascii(but, data, ascii);
 			}
 
 			retval = WM_UI_HANDLER_BREAK;
@@ -2922,7 +3515,7 @@ static void ui_do_but_textedit(bContext *C, uiBlock *block, uiBut *but, uiHandle
 			ui_textedit_delete_selection(but, data);
 		}
 		if (event->type == WM_IME_COMPOSITE_EVENT && ime_data->result_len) {
-			ui_textedit_type_buf(
+			ui_textedit_insert_buf(
 			        but, data,
 			        ime_data->str_result,
 			        ime_data->result_len);
@@ -2934,12 +3527,12 @@ static void ui_do_but_textedit(bContext *C, uiBlock *block, uiBut *but, uiHandle
 #endif
 
 	if (changed) {
-		/* only update when typing for TAB key */
+		/* only do live update when but flag request it (UI_BUT_TEXTEDIT_UPDATE). */
 		if (update && data->interactive) {
 			ui_apply_but(C, block, but, data, true);
 		}
 		else {
-			ui_but_update(but);
+			ui_but_update_edited(but);
 		}
 		but->changed = true;
 		
@@ -2951,7 +3544,9 @@ static void ui_do_but_textedit(bContext *C, uiBlock *block, uiBut *but, uiHandle
 		ED_region_tag_redraw(data->region);
 }
 
-static void ui_do_but_textedit_select(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static void ui_do_but_textedit_select(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my, retval = WM_UI_HANDLER_CONTINUE;
 
@@ -3092,6 +3687,15 @@ static void ui_block_open_begin(bContext *C, uiBut *but, uiHandleButtonData *dat
 			data->menu->popup = but->block->handle->popup;
 	}
 
+#ifdef USE_ALLSELECT
+	{
+		wmWindow *win = CTX_wm_window(C);
+		if (IS_ALLSELECT_EVENT(win->eventstate)) {
+			data->select_others.is_enabled = true;
+		}
+	}
+#endif
+
 	/* this makes adjacent blocks auto open from now on */
 	//if (but->block->auto_open == 0) but->block->auto_open = 1;
 }
@@ -3121,9 +3725,13 @@ int ui_but_menu_direction(uiBut *but)
 	return 0;
 }
 
-/* Hack for uiList UI_BTYPE_LISTROW buttons to "give" events to overlaying UI_BTYPE_TEXT buttons (cltr-clic rename feature & co). */
-static uiBut *ui_but_list_row_text_activate(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event,
-                                            uiButtonActivateType activate_type)
+/**
+ * Hack for #uiList #UI_BTYPE_LISTROW buttons to "give" events to overlaying #UI_BTYPE_TEXT buttons
+ * (Ctrl-Click rename feature & co).
+ */
+static uiBut *ui_but_list_row_text_activate(
+        bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event,
+        uiButtonActivateType activate_type)
 {
 	ARegion *ar = CTX_wm_region(C);
 	uiBut *labelbut = ui_but_find_mouse_over_ex(ar, event->x, event->y, true);
@@ -3143,7 +3751,9 @@ static uiBut *ui_but_list_row_text_activate(bContext *C, uiBut *but, uiHandleBut
 
 /* ***************** events for different button types *************** */
 
-static int ui_do_but_BUT(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_BUT(
+        bContext *C, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	if (data->state == BUTTON_STATE_HIGHLIGHT) {
 		if (event->type == LEFTMOUSE && event->val == KM_PRESS) {
@@ -3174,7 +3784,9 @@ static int ui_do_but_BUT(bContext *C, uiBut *but, uiHandleButtonData *data, cons
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static int ui_do_but_HOTKEYEVT(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_HOTKEYEVT(
+        bContext *C, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	if (data->state == BUTTON_STATE_HIGHLIGHT) {
 		if (ELEM(event->type, LEFTMOUSE, PADENTER, RETKEY) && event->val == KM_PRESS) {
@@ -3215,7 +3827,7 @@ static int ui_do_but_HOTKEYEVT(bContext *C, uiBut *but, uiHandleButtonData *data
 		if (event->val == KM_PRESS) {
 			if (ISHOTKEY(event->type)) {
 				
-				if (WM_key_event_string(event->type)[0])
+				if (WM_key_event_string(event->type, false)[0])
 					ui_but_value_set(but, event->type);
 				else
 					data->cancel = true;
@@ -3237,7 +3849,9 @@ static int ui_do_but_HOTKEYEVT(bContext *C, uiBut *but, uiHandleButtonData *data
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static int ui_do_but_KEYEVT(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_KEYEVT(
+        bContext *C, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	if (data->state == BUTTON_STATE_HIGHLIGHT) {
 		if (ELEM(event->type, LEFTMOUSE, PADENTER, RETKEY) && event->val == KM_PRESS) {
@@ -3251,7 +3865,7 @@ static int ui_do_but_KEYEVT(bContext *C, uiBut *but, uiHandleButtonData *data, c
 		}
 
 		if (event->val == KM_PRESS) {
-			if (WM_key_event_string(event->type)[0])
+			if (WM_key_event_string(event->type, false)[0])
 				ui_but_value_set(but, event->type);
 			else
 				data->cancel = true;
@@ -3263,7 +3877,24 @@ static int ui_do_but_KEYEVT(bContext *C, uiBut *but, uiHandleButtonData *data, c
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static int ui_do_but_TEX(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static bool ui_but_is_mouse_over_icon_extra(const ARegion *region, uiBut *but, const int mouse_xy[2])
+{
+	int x = mouse_xy[0], y = mouse_xy[1];
+	rcti icon_rect;
+
+	BLI_assert(ui_but_icon_extra_get(but) != UI_BUT_ICONEXTRA_NONE);
+
+	ui_window_to_block(region, but->block, &x, &y);
+
+	BLI_rcti_rctf_copy(&icon_rect, &but->rect);
+	icon_rect.xmin = icon_rect.xmax - (BLI_rcti_size_y(&icon_rect));
+
+	return BLI_rcti_isect_pt(&icon_rect, x, y);
+}
+
+static int ui_do_but_TEX(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	if (data->state == BUTTON_STATE_HIGHLIGHT) {
 		if (ELEM(event->type, LEFTMOUSE, EVT_BUT_OPEN, PADENTER, RETKEY) && event->val == KM_PRESS) {
@@ -3274,7 +3905,14 @@ static int ui_do_but_TEX(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 				/* pass */
 			}
 			else {
-				button_activate_state(C, but, BUTTON_STATE_TEXT_EDITING);
+				const bool has_icon_extra = ui_but_icon_extra_get(but) == UI_BUT_ICONEXTRA_CLEAR;
+
+				if (has_icon_extra && ui_but_is_mouse_over_icon_extra(data->region, but, &event->x)) {
+					ui_but_text_clear(C, but, data);
+				}
+				else {
+					button_activate_state(C, but, BUTTON_STATE_TEXT_EDITING);
+				}
 				return WM_UI_HANDLER_BREAK;
 			}
 		}
@@ -3291,37 +3929,40 @@ static int ui_do_but_TEX(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static int ui_do_but_SEARCH_UNLINK(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_SEARCH_UNLINK(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
+	const uiButExtraIconType extra_icon_type = ui_but_icon_extra_get(but);
+	const bool has_icon_extra = (extra_icon_type != UI_BUT_ICONEXTRA_NONE);
+
 	/* unlink icon is on right */
-	if (ELEM(event->type, LEFTMOUSE, EVT_BUT_OPEN, PADENTER, RETKEY) && event->val == KM_PRESS &&
-	    ui_but_is_search_unlink_visible(but))
+	if ((ELEM(event->type, LEFTMOUSE, EVT_BUT_OPEN, PADENTER, RETKEY)) &&
+	    (has_icon_extra == true) &&
+	    (ui_but_is_mouse_over_icon_extra(data->region, but, &event->x) == true))
 	{
-		ARegion *ar = data->region;
-		rcti rect;
-		int x = event->x, y = event->y;
-		
-		ui_window_to_block(ar, but->block, &x, &y);
-		
-		BLI_rcti_rctf_copy(&rect, &but->rect);
-		
-		rect.xmin = rect.xmax - (BLI_rcti_size_y(&rect));
-		if (BLI_rcti_isect_pt(&rect, x, y)) {
-			/* most likely NULL, but let's check, and give it temp zero string */
-			if (data->str == NULL)
-				data->str = MEM_callocN(1, "temp str");
-			data->str[0] = 0;
-
-			ui_apply_but_TEX(C, but, data);
-			button_activate_state(C, but, BUTTON_STATE_EXIT);
-
-			return WM_UI_HANDLER_BREAK;
+		/* doing this on KM_PRESS calls eyedropper after clicking unlink icon */
+		if (event->val == KM_RELEASE) {
+			/* unlink */
+			if (extra_icon_type == UI_BUT_ICONEXTRA_CLEAR) {
+				ui_but_text_clear(C, but, data);
+			}
+			/* eyedropper */
+			else if (extra_icon_type == UI_BUT_ICONEXTRA_EYEDROPPER) {
+				WM_operator_name_call(C, "UI_OT_eyedropper_id", WM_OP_INVOKE_DEFAULT, NULL);
+			}
+			else {
+				BLI_assert(0);
+			}
 		}
+		return WM_UI_HANDLER_BREAK;
 	}
 	return ui_do_but_TEX(C, block, but, data, event);
 }
 
-static int ui_do_but_TOG(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_TOG(
+        bContext *C, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 #ifdef USE_DRAG_TOGGLE
 	if (data->state == BUTTON_STATE_HIGHLIGHT) {
@@ -3352,7 +3993,7 @@ static int ui_do_but_TOG(bContext *C, uiBut *but, uiHandleButtonData *data, cons
 			button_activate_state(C, but, BUTTON_STATE_EXIT);
 			return WM_UI_HANDLER_BREAK;
 		}
-		else if (ELEM(event->type, WHEELDOWNMOUSE, WHEELUPMOUSE) && event->alt) {
+		else if (ELEM(event->type, WHEELDOWNMOUSE, WHEELUPMOUSE) && event->ctrl) {
 			/* Support alt+wheel on expanded enum rows */
 			if (but->type == UI_BTYPE_ROW) {
 				const int direction = (event->type == WHEELDOWNMOUSE) ? -1 : 1;
@@ -3388,7 +4029,9 @@ static int ui_do_but_TOG(bContext *C, uiBut *but, uiHandleButtonData *data, cons
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static int ui_do_but_EXIT(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_EXIT(
+        bContext *C, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	
 	if (data->state == BUTTON_STATE_HIGHLIGHT) {
@@ -3448,8 +4091,9 @@ static int ui_do_but_EXIT(bContext *C, uiBut *but, uiHandleButtonData *data, con
 }
 
 /* var names match ui_numedit_but_NUM */
-static float ui_numedit_apply_snapf(uiBut *but, float tempf, float softmin, float softmax, float softrange,
-                                    const enum eSnapType snap)
+static float ui_numedit_apply_snapf(
+        uiBut *but, float tempf, float softmin, float softmax, float softrange,
+        const enum eSnapType snap)
 {
 	if (tempf == softmin || tempf == softmax || snap == SNAP_OFF) {
 		/* pass */
@@ -3477,15 +4121,29 @@ static float ui_numedit_apply_snapf(uiBut *but, float tempf, float softmin, floa
 			softrange /= fac;
 		}
 
+		/* workaround, too high snapping values */
+		/* snapping by 10's for float buttons is quite annoying (location, scale...),
+		 * but allow for rotations */
+		if (softrange >= 21.0f) {
+			UnitSettings *unit = but->block->unit;
+			int unit_type = UI_but_unit_type_get(but);
+			if ((unit_type == PROP_UNIT_ROTATION) && (unit->system_rotation != USER_UNIT_ROT_RADIANS)) {
+				/* pass (degrees)*/
+			}
+			else {
+				softrange = 20.0f;
+			}
+		}
+
 		if (snap == SNAP_ON) {
-			if      (softrange < 2.10f) tempf = 0.1f  * floorf(10.0f * tempf);
-			else if (softrange < 21.0f) tempf = floorf(tempf);
-			else                        tempf = 10.0f * floorf(tempf / 10.0f);
+			if      (softrange < 2.10f) tempf = roundf(tempf * 10.0f) * 0.1f;
+			else if (softrange < 21.0f) tempf = roundf(tempf);
+			else                        tempf = roundf(tempf * 0.1f) * 10.0f;
 		}
 		else if (snap == SNAP_ON_SMALL) {
-			if      (softrange < 2.10f) tempf = 0.01f * floorf(100.0f * tempf);
-			else if (softrange < 21.0f) tempf = 0.1f  * floorf(10.0f * tempf);
-			else                        tempf = floor(tempf);
+			if      (softrange < 2.10f) tempf = roundf(tempf * 100.0f) * 0.01f;
+			else if (softrange < 21.0f) tempf = roundf(tempf * 10.0f)  * 0.1f;
+			else                        tempf = roundf(tempf);
 		}
 		else {
 			BLI_assert(0);
@@ -3498,8 +4156,9 @@ static float ui_numedit_apply_snapf(uiBut *but, float tempf, float softmin, floa
 	return tempf;
 }
 
-static float ui_numedit_apply_snap(int temp, float softmin, float softmax,
-                                   const enum eSnapType snap)
+static float ui_numedit_apply_snap(
+        int temp, float softmin, float softmax,
+        const enum eSnapType snap)
 {
 	if (temp == softmin || temp == softmax)
 		return temp;
@@ -3518,31 +4177,21 @@ static float ui_numedit_apply_snap(int temp, float softmin, float softmax,
 	return temp;
 }
 
-static bool ui_numedit_but_NUM(uiBut *but, uiHandleButtonData *data,
-                               int mx,
-                               const enum eSnapType snap, float fac)
+static bool ui_numedit_but_NUM(
+        uiBut *but, uiHandleButtonData *data,
+        int mx, const bool is_motion,
+        const enum eSnapType snap, float fac)
 {
 	float deler, tempf, softmin, softmax, softrange;
 	int lvalue, temp;
 	bool changed = false;
 	const bool is_float = ui_but_is_float(but);
-	
-	if (mx == data->draglastx)
-		return changed;
-	
-	/* drag-lock - prevent unwanted scroll adjustments */
-	/* change value (now 3) to adjust threshold in pixels */
-	if (data->draglock) {
-		if (abs(mx - data->dragstartx) <= 3)
-			return changed;
-#ifdef USE_DRAG_MULTINUM
-		if (ELEM(data->multi_data.init, BUTTON_MULTI_INIT_UNSET, BUTTON_MULTI_INIT_SETUP)) {
-			return changed;
-		}
-#endif
 
-		data->draglock = false;
-		data->dragstartx = mx;  /* ignore mouse movement within drag-lock */
+	/* prevent unwanted drag adjustments, test motion so modifier keys refresh. */
+	if ((is_motion || data->draglock) &&
+	    (ui_but_dragedit_update_mval(data, mx) == false))
+	{
+		return changed;
 	}
 
 	softmin = but->softmin;
@@ -3607,9 +4256,23 @@ static bool ui_numedit_but_NUM(uiBut *but, uiHandleButtonData *data,
 		data->draglastx = mx;
 	}
 	else {
+		float non_linear_range_limit;
+		float non_linear_pixel_map;
+		float non_linear_scale;
+
 		/* Use a non-linear mapping of the mouse drag especially for large floats (normal behavior) */
 		deler = 500;
-		if (!is_float) {
+		if (is_float) {
+			/* not needed for smaller float buttons */
+			non_linear_range_limit = 11.0f;
+			non_linear_pixel_map = 500.0f;
+		}
+		else {
+			/* only scale large int buttons */
+			non_linear_range_limit = 129.0f;
+			/* larger for ints, we dont need to fine tune them */
+			non_linear_pixel_map = 250.0f;
+
 			/* prevent large ranges from getting too out of control */
 			if      (softrange > 600) deler = powf(softrange, 0.75f);
 			else if (softrange <  25) deler = 50.0;
@@ -3617,18 +4280,19 @@ static bool ui_numedit_but_NUM(uiBut *but, uiHandleButtonData *data,
 		}
 		deler /= fac;
 
-		if ((is_float == true) && (softrange > 11)) {
-			/* non linear change in mouse input- good for high precicsion */
-			data->dragf += (((float)(mx - data->draglastx)) / deler) * ((float)abs(mx - data->dragstartx) / 500.0f);
-		}
-		else if ((is_float == false) && (softrange > 129)) { /* only scale large int buttons */
-			/* non linear change in mouse input- good for high precicsionm ints need less fine tuning */
-			data->dragf += (((float)(mx - data->draglastx)) / deler) * ((float)abs(mx - data->dragstartx) / 250.0f);
+		if (softrange > non_linear_range_limit) {
+			non_linear_scale = (float)abs(mx - data->dragstartx) / non_linear_pixel_map;
 		}
 		else {
-			/*no scaling */
-			data->dragf += ((float)(mx - data->draglastx)) / deler;
+			non_linear_scale = 1.0f;
 		}
+
+		if (is_float == false) {
+			/* at minimum, moving cursor 2 pixels should change an int button. */
+			CLAMP_MIN(non_linear_scale, 0.5f * U.pixelsize);
+		}
+
+		data->dragf += (((float)(mx - data->draglastx)) / deler) * non_linear_scale;
 	
 		CLAMP(data->dragf, 0.0f, 1.0f);
 		data->draglastx = mx;
@@ -3636,7 +4300,7 @@ static bool ui_numedit_but_NUM(uiBut *but, uiHandleButtonData *data,
 
 
 		if (!is_float) {
-			temp = floorf(tempf + 0.5f);
+			temp = iroundf(tempf);
 
 			temp = ui_numedit_apply_snap(temp, softmin, softmax, snap);
 
@@ -3667,7 +4331,9 @@ static bool ui_numedit_but_NUM(uiBut *but, uiHandleButtonData *data,
 	return changed;
 }
 
-static int ui_do_but_NUM(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_NUM(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my; /* mouse location scaled to fit the UI */
 	int screen_mx, screen_my; /* mouse location kept at screen pixel coords */
@@ -3689,11 +4355,11 @@ static int ui_do_but_NUM(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 		/* XXX hardcoded keymap check.... */
 		if (type == MOUSEPAN && event->alt)
 			retval = WM_UI_HANDLER_BREAK; /* allow accumulating values, otherwise scrolling gets preference */
-		else if (type == WHEELDOWNMOUSE && event->alt) {
+		else if (type == WHEELDOWNMOUSE && event->ctrl) {
 			mx = but->rect.xmin;
 			click = 1;
 		}
-		else if (type == WHEELUPMOUSE && event->alt) {
+		else if (type == WHEELUPMOUSE && event->ctrl) {
 			mx = but->rect.xmax;
 			click = 1;
 		}
@@ -3749,6 +4415,7 @@ static int ui_do_but_NUM(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 			}
 		}
 		else if ((event->type == MOUSEMOVE) || ui_event_is_snap(event)) {
+			const bool is_motion = (event->type == MOUSEMOVE);
 			const enum eSnapType snap = ui_event_to_snap(event);
 			float fac;
 
@@ -3759,10 +4426,10 @@ static int ui_do_but_NUM(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 
 			fac = 1.0f;
 			if (event->shift) fac /= 10.0f;
-			if (event->alt)   fac /= 20.0f;
 
-			if (ui_numedit_but_NUM(but, data, (ui_but_is_cursor_warp(but) ? screen_mx : mx), snap, fac))
+			if (ui_numedit_but_NUM(but, data, (ui_but_is_cursor_warp(but) ? screen_mx : mx), is_motion, snap, fac)) {
 				ui_numedit_apply(C, block, but, data);
+			}
 #ifdef USE_DRAG_MULTINUM
 			else if (data->multi_data.has_mbuts) {
 				if (data->multi_data.init == BUTTON_MULTI_INIT_ENABLE) {
@@ -3825,7 +4492,7 @@ static int ui_do_but_NUM(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 			if (mx < (but->rect.xmin + handlewidth)) {
 				button_activate_state(C, but, BUTTON_STATE_NUM_EDITING);
 
-				tempf = (float)data->value - 0.01f * but->a1;
+				tempf = (float)data->value - (UI_PRECISION_FLOAT_SCALE * but->a1);
 				if (tempf < softmin) tempf = softmin;
 				data->value = tempf;
 
@@ -3834,7 +4501,7 @@ static int ui_do_but_NUM(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 			else if (mx > but->rect.xmax - handlewidth) {
 				button_activate_state(C, but, BUTTON_STATE_NUM_EDITING);
 
-				tempf = (float)data->value + 0.01f * but->a1;
+				tempf = (float)data->value + (UI_PRECISION_FLOAT_SCALE * but->a1);
 				if (tempf > softmax) tempf = softmax;
 				data->value = tempf;
 
@@ -3854,9 +4521,10 @@ static int ui_do_but_NUM(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 	return retval;
 }
 
-static bool ui_numedit_but_SLI(uiBut *but, uiHandleButtonData *data,
-                               int mx, const bool is_horizontal,
-                               const bool snap, const bool shift)
+static bool ui_numedit_but_SLI(
+        uiBut *but, uiHandleButtonData *data,
+        int mx, const bool is_horizontal, const bool is_motion,
+        const bool snap, const bool shift)
 {
 	float deler, f, tempf, softmin, softmax, softrange;
 	int temp, lvalue;
@@ -3864,6 +4532,14 @@ static bool ui_numedit_but_SLI(uiBut *but, uiHandleButtonData *data,
 	float mx_fl, my_fl;
 	/* note, 'offs' is really from the widget drawing rounded corners see 'widget_numslider' */
 	float offs;
+
+	/* prevent unwanted drag adjustments, test motion so modifier keys refresh. */
+	if ((but->type != UI_BTYPE_SCROLL) &&
+	    (is_motion || data->draglock) &&
+	    (ui_but_dragedit_update_mval(data, mx) == false))
+	{
+		return changed;
+	}
 
 	softmin = but->softmin;
 	softmax = but->softmax;
@@ -3909,7 +4585,7 @@ static bool ui_numedit_but_SLI(uiBut *but, uiHandleButtonData *data,
 
 
 	tempf = softmin + f * softrange;
-	temp = floorf(tempf + 0.5f);
+	temp = iroundf(tempf);
 
 	if (snap) {
 		if (tempf == softmin || tempf == softmax) {
@@ -3919,14 +4595,14 @@ static bool ui_numedit_but_SLI(uiBut *but, uiHandleButtonData *data,
 
 			if (shift) {
 				if      (tempf == softmin || tempf == softmax) {}
-				else if (softmax - softmin < 2.10f) tempf = 0.01f * floorf(100.0f * tempf);
-				else if (softmax - softmin < 21.0f) tempf = 0.1f  * floorf(10.0f * tempf);
-				else                                tempf = floorf(tempf);
+				else if (softrange < 2.10f) tempf = roundf(tempf * 100.0f) * 0.01f;
+				else if (softrange < 21.0f) tempf = roundf(tempf * 10.0f)  * 0.1f;
+				else                        tempf = roundf(tempf);
 			}
 			else {
-				if      (softmax - softmin < 2.10f) tempf = 0.1f * floorf(10.0f * tempf);
-				else if (softmax - softmin < 21.0f) tempf = floorf(tempf);
-				else                                tempf = 10.0f * floorf(tempf / 10.0f);
+				if      (softrange < 2.10f) tempf = roundf(tempf * 10.0f) * 0.1f;
+				else if (softrange < 21.0f) tempf = roundf(tempf);
+				else                        tempf = roundf(tempf * 0.1f) * 10.0f;
 			}
 		}
 		else {
@@ -3936,7 +4612,7 @@ static bool ui_numedit_but_SLI(uiBut *but, uiHandleButtonData *data,
 	}
 
 	if (!ui_but_is_float(but)) {
-		lvalue = floor(data->value + 0.5);
+		lvalue = round(data->value);
 
 		CLAMP(temp, softmin, softmax);
 
@@ -3959,7 +4635,9 @@ static bool ui_numedit_but_SLI(uiBut *but, uiHandleButtonData *data,
 	return changed;
 }
 
-static int ui_do_but_SLI(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_SLI(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my, click = 0;
 	int retval = WM_UI_HANDLER_CONTINUE;
@@ -3978,11 +4656,11 @@ static int ui_do_but_SLI(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 		/* XXX hardcoded keymap check.... */
 		if (type == MOUSEPAN && event->alt)
 			retval = WM_UI_HANDLER_BREAK; /* allow accumulating values, otherwise scrolling gets preference */
-		else if (type == WHEELDOWNMOUSE && event->alt) {
+		else if (type == WHEELDOWNMOUSE && event->ctrl) {
 			mx = but->rect.xmin;
 			click = 2;
 		}
-		else if (type == WHEELUPMOUSE && event->alt) {
+		else if (type == WHEELUPMOUSE && event->ctrl) {
 			mx = but->rect.xmax;
 			click = 2;
 		}
@@ -3991,6 +4669,7 @@ static int ui_do_but_SLI(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 				button_activate_state(C, but, BUTTON_STATE_TEXT_EDITING);
 				retval = WM_UI_HANDLER_BREAK;
 			}
+#ifndef USE_ALLSELECT
 			/* alt-click on sides to get "arrows" like in UI_BTYPE_NUM buttons, and match wheel usage above */
 			else if (event->type == LEFTMOUSE && event->alt) {
 				int halfpos = BLI_rctf_cent_x(&but->rect);
@@ -4000,6 +4679,7 @@ static int ui_do_but_SLI(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 				else
 					mx = but->rect.xmax;
 			}
+#endif
 			else if (event->type == LEFTMOUSE) {
 				data->dragstartx = mx;
 				data->draglastx = mx;
@@ -4042,16 +4722,22 @@ static int ui_do_but_SLI(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 				}
 			}
 			else {
+#ifdef USE_CONT_MOUSE_CORRECT
+				/* reset! */
+				copy_v2_fl(data->ungrab_mval, FLT_MAX);
+#endif
 				click = 1;
 			}
 		}
 		else if ((event->type == MOUSEMOVE) || ui_event_is_snap(event)) {
+			const bool is_motion = (event->type == MOUSEMOVE);
 #ifdef USE_DRAG_MULTINUM
 			data->multi_data.drag_dir[0] += abs(data->draglastx - mx);
 			data->multi_data.drag_dir[1] += abs(data->draglasty - my);
 #endif
-			if (ui_numedit_but_SLI(but, data, mx, true, event->ctrl != 0, event->shift != 0))
+			if (ui_numedit_but_SLI(but, data, mx, true, is_motion, event->ctrl != 0, event->shift != 0)) {
 				ui_numedit_apply(C, block, but, data);
+			}
 
 #ifdef USE_DRAG_MULTINUM
 			else if (data->multi_data.has_mbuts) {
@@ -4134,7 +4820,9 @@ static int ui_do_but_SLI(bContext *C, uiBlock *block, uiBut *but, uiHandleButton
 	return retval;
 }
 
-static int ui_do_but_SCROLL(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_SCROLL(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my /*, click = 0 */;
 	int retval = WM_UI_HANDLER_CONTINUE;
@@ -4177,8 +4865,10 @@ static int ui_do_but_SCROLL(bContext *C, uiBlock *block, uiBut *but, uiHandleBut
 			button_activate_state(C, but, BUTTON_STATE_EXIT);
 		}
 		else if (event->type == MOUSEMOVE) {
-			if (ui_numedit_but_SLI(but, data, (horizontal) ? mx : my, horizontal, false, false))
+			const bool is_motion = (event->type == MOUSEMOVE);
+			if (ui_numedit_but_SLI(but, data, (horizontal) ? mx : my, horizontal, is_motion, false, false)) {
 				ui_numedit_apply(C, block, but, data);
+			}
 		}
 
 		retval = WM_UI_HANDLER_BREAK;
@@ -4187,7 +4877,9 @@ static int ui_do_but_SCROLL(bContext *C, uiBlock *block, uiBut *but, uiHandleBut
 	return retval;
 }
 
-static int ui_do_but_GRIP(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_GRIP(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my;
 	int retval = WM_UI_HANDLER_CONTINUE;
@@ -4238,7 +4930,9 @@ static int ui_do_but_GRIP(bContext *C, uiBlock *block, uiBut *but, uiHandleButto
 	return retval;
 }
 
-static int ui_do_but_LISTROW(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_LISTROW(
+        bContext *C, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	if (data->state == BUTTON_STATE_HIGHLIGHT) {
 		/* hack to pass on ctrl+click and double click to overlapping text
@@ -4258,7 +4952,9 @@ static int ui_do_but_LISTROW(bContext *C, uiBut *but, uiHandleButtonData *data, 
 	return ui_do_but_EXIT(C, but, data, event);
 }
 
-static int ui_do_but_BLOCK(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_BLOCK(
+        bContext *C, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	
 	if (data->state == BUTTON_STATE_HIGHLIGHT) {
@@ -4286,7 +4982,7 @@ static int ui_do_but_BLOCK(bContext *C, uiBut *but, uiHandleButtonData *data, co
 			return WM_UI_HANDLER_BREAK;
 		}
 		else if (but->type == UI_BTYPE_MENU) {
-			if (ELEM(event->type, WHEELDOWNMOUSE, WHEELUPMOUSE) && event->alt) {
+			if (ELEM(event->type, WHEELDOWNMOUSE, WHEELUPMOUSE) && event->ctrl) {
 				const int direction = (event->type == WHEELDOWNMOUSE) ? -1 : 1;
 
 				data->value = ui_but_menu_step(but, direction);
@@ -4342,9 +5038,10 @@ static int ui_do_but_BLOCK(bContext *C, uiBut *but, uiHandleButtonData *data, co
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static bool ui_numedit_but_UNITVEC(uiBut *but, uiHandleButtonData *data,
-                                  int mx, int my,
-                                  const enum eSnapType snap)
+static bool ui_numedit_but_UNITVEC(
+        uiBut *but, uiHandleButtonData *data,
+        int mx, int my,
+        const enum eSnapType snap)
 {
 	float dx, dy, rad, radsq, mrad, *fp;
 	int mdx, mdy;
@@ -4410,7 +5107,7 @@ static bool ui_numedit_but_UNITVEC(uiBut *but, uiHandleButtonData *data,
 		 * do this in "angle" space - this gives increments of same size */
 		for (i = 0; i < 3; i++) {
 			angle = asinf(fp[i]);
-			angle_snap = floorf(0.5f + (angle / snap_steps_angle)) * snap_steps_angle;
+			angle_snap = roundf((angle / snap_steps_angle)) * snap_steps_angle;
 			fp[i] = sinf(angle_snap);
 		}
 		normalize_v3(fp);
@@ -4432,7 +5129,9 @@ static void ui_palette_set_active(uiBut *but)
 	}
 }
 
-static int ui_do_but_COLOR(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_COLOR(
+        bContext *C, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	if (data->state == BUTTON_STATE_HIGHLIGHT) {
 		/* first handle click on icondrag type button */
@@ -4460,7 +5159,7 @@ static int ui_do_but_COLOR(bContext *C, uiBut *but, uiHandleButtonData *data, co
 			button_activate_state(C, but, BUTTON_STATE_MENU_OPEN);
 			return WM_UI_HANDLER_BREAK;
 		}
-		else if (ELEM(event->type, MOUSEPAN, WHEELDOWNMOUSE, WHEELUPMOUSE) && event->alt) {
+		else if (ELEM(event->type, MOUSEPAN, WHEELDOWNMOUSE, WHEELUPMOUSE) && event->ctrl) {
 			ColorPicker *cpicker = but->custom_data;
 			float hsv_static[3] = {0.0f};
 			float *hsv = cpicker ? cpicker->color_data : hsv_static;
@@ -4565,7 +5264,9 @@ static int ui_do_but_COLOR(bContext *C, uiBut *but, uiHandleButtonData *data, co
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static int ui_do_but_UNITVEC(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_UNITVEC(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my;
 
@@ -4644,9 +5345,10 @@ static void ui_color_picker_to_rgb_HSVCUBE_v(uiBut *but, const float hsv[3], flo
 		hsv_to_rgb_v(hsv, rgb);
 }
 
-static bool ui_numedit_but_HSVCUBE(uiBut *but, uiHandleButtonData *data,
-                                   int mx, int my,
-                                   const enum eSnapType snap, const bool shift)
+static bool ui_numedit_but_HSVCUBE(
+        uiBut *but, uiHandleButtonData *data,
+        int mx, int my,
+        const enum eSnapType snap, const bool shift)
 {
 	ColorPicker *cpicker = but->custom_data;
 	float *hsv = cpicker->color_data;
@@ -4705,8 +5407,8 @@ static bool ui_numedit_but_HSVCUBE(uiBut *but, uiHandleButtonData *data,
 
 	switch ((int)but->a1) {
 		case UI_GRAD_SV:
-			hsv[2] = x;
-			hsv[1] = y;
+			hsv[1] = x;
+			hsv[2] = y;
 			break;
 		case UI_GRAD_HV:
 			hsv[0] = x;
@@ -4729,11 +5431,16 @@ static bool ui_numedit_but_HSVCUBE(uiBut *but, uiHandleButtonData *data,
 			hsv[2] = y;
 			break;
 		case UI_GRAD_V_ALT:
+		{
 			/* vertical 'value' strip */
-
+			float min = but->softmin, max = but->softmax;
+			if (use_display_colorspace) {
+				ui_block_cm_to_display_space_range(but->block, &min, &max);
+			}
 			/* exception only for value strip - use the range set in but->min/max */
-			hsv[2] = y * (but->softmax - but->softmin) + but->softmin;
+			hsv[2] = y * (max - min) + min;
 			break;
+		}
 		default:
 			BLI_assert(0);
 			break;
@@ -4763,9 +5470,11 @@ static bool ui_numedit_but_HSVCUBE(uiBut *but, uiHandleButtonData *data,
 	return changed;
 }
 
-static void ui_ndofedit_but_HSVCUBE(uiBut *but, uiHandleButtonData *data,
-                                    const wmNDOFMotionData *ndof,
-                                    const enum eSnapType snap, const bool shift)
+#ifdef WITH_INPUT_NDOF
+static void ui_ndofedit_but_HSVCUBE(
+        uiBut *but, uiHandleButtonData *data,
+        const wmNDOFMotionData *ndof,
+        const enum eSnapType snap, const bool shift)
 {
 	ColorPicker *cpicker = but->custom_data;
 	float *hsv = cpicker->color_data;
@@ -4783,8 +5492,8 @@ static void ui_ndofedit_but_HSVCUBE(uiBut *but, uiHandleButtonData *data,
 
 	switch ((int)but->a1) {
 		case UI_GRAD_SV:
-			hsv[2] += ndof->rvec[2] * sensitivity;
-			hsv[1] += ndof->rvec[0] * sensitivity;
+			hsv[1] += ndof->rvec[2] * sensitivity;
+			hsv[2] += ndof->rvec[0] * sensitivity;
 			break;
 		case UI_GRAD_HV:
 			hsv[0] += ndof->rvec[2] * sensitivity;
@@ -4834,8 +5543,11 @@ static void ui_ndofedit_but_HSVCUBE(uiBut *but, uiHandleButtonData *data,
 	copy_v3_v3(data->vec, rgb);
 	ui_but_v3_set(but, data->vec);
 }
+#endif /* WITH_INPUT_NDOF */
 
-static int ui_do_but_HSVCUBE(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_HSVCUBE(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my;
 
@@ -4859,6 +5571,7 @@ static int ui_do_but_HSVCUBE(bContext *C, uiBlock *block, uiBut *but, uiHandleBu
 			
 			return WM_UI_HANDLER_BREAK;
 		}
+#ifdef WITH_INPUT_NDOF
 		else if (event->type == NDOF_MOTION) {
 			const wmNDOFMotionData *ndof = event->customdata;
 			const enum eSnapType snap = ui_event_to_snap(event);
@@ -4870,6 +5583,7 @@ static int ui_do_but_HSVCUBE(bContext *C, uiBlock *block, uiBut *but, uiHandleBu
 			
 			return WM_UI_HANDLER_BREAK;
 		}
+#endif /* WITH_INPUT_NDOF */
 		/* XXX hardcoded keymap check.... */
 		else if (event->type == BACKSPACEKEY && event->val == KM_PRESS) {
 			if (ELEM(but->a1, UI_GRAD_V_ALT, UI_GRAD_L_ALT)) {
@@ -4928,9 +5642,10 @@ static int ui_do_but_HSVCUBE(bContext *C, uiBlock *block, uiBut *but, uiHandleBu
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static bool ui_numedit_but_HSVCIRCLE(uiBut *but, uiHandleButtonData *data,
-                                     float mx, float my,
-                                     const enum eSnapType snap, const bool shift)
+static bool ui_numedit_but_HSVCIRCLE(
+        uiBut *but, uiHandleButtonData *data,
+        float mx, float my,
+        const enum eSnapType snap, const bool shift)
 {
 	rcti rect;
 	bool changed = true;
@@ -5010,8 +5725,7 @@ static bool ui_numedit_but_HSVCIRCLE(uiBut *but, uiHandleButtonData *data,
 	ui_color_picker_to_rgb_v(hsv, rgb);
 
 	if ((but->flag & UI_BUT_VEC_SIZE_LOCK) && (rgb[0] || rgb[1] || rgb[2])) {
-		normalize_v3(rgb);
-		mul_v3_fl(rgb, but->a2);
+		normalize_v3_length(rgb, but->a2);
 	}
 
 	if (use_display_colorspace)
@@ -5025,9 +5739,11 @@ static bool ui_numedit_but_HSVCIRCLE(uiBut *but, uiHandleButtonData *data,
 	return changed;
 }
 
-static void ui_ndofedit_but_HSVCIRCLE(uiBut *but, uiHandleButtonData *data,
-                                      const wmNDOFMotionData *ndof,
-                                      const enum eSnapType snap, const bool shift)
+#ifdef WITH_INPUT_NDOF
+static void ui_ndofedit_but_HSVCIRCLE(
+        uiBut *but, uiHandleButtonData *data,
+        const wmNDOFMotionData *ndof,
+        const enum eSnapType snap, const bool shift)
 {
 	ColorPicker *cpicker = but->custom_data;
 	float *hsv = cpicker->color_data;
@@ -5086,8 +5802,7 @@ static void ui_ndofedit_but_HSVCIRCLE(uiBut *but, uiHandleButtonData *data,
 	ui_color_picker_to_rgb_v(hsv, data->vec);
 	
 	if ((but->flag & UI_BUT_VEC_SIZE_LOCK) && (data->vec[0] || data->vec[1] || data->vec[2])) {
-		normalize_v3(data->vec);
-		mul_v3_fl(data->vec, but->a2);
+		normalize_v3_length(data->vec, but->a2);
 	}
 
 	if (use_display_colorspace)
@@ -5095,9 +5810,11 @@ static void ui_ndofedit_but_HSVCIRCLE(uiBut *but, uiHandleButtonData *data,
 	
 	ui_but_v3_set(but, data->vec);
 }
+#endif /* WITH_INPUT_NDOF */
 
-
-static int ui_do_but_HSVCIRCLE(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_HSVCIRCLE(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	ColorPicker *cpicker = but->custom_data;
 	float *hsv = cpicker->color_data;
@@ -5121,6 +5838,7 @@ static int ui_do_but_HSVCIRCLE(bContext *C, uiBlock *block, uiBut *but, uiHandle
 			
 			return WM_UI_HANDLER_BREAK;
 		}
+#ifdef WITH_INPUT_NDOF
 		else if (event->type == NDOF_MOTION) {
 			const enum eSnapType snap = ui_event_to_snap(event);
 			const wmNDOFMotionData *ndof = event->customdata;
@@ -5132,6 +5850,7 @@ static int ui_do_but_HSVCIRCLE(bContext *C, uiBlock *block, uiBut *but, uiHandle
 			
 			return WM_UI_HANDLER_BREAK;
 		}
+#endif /* WITH_INPUT_NDOF */
 		/* XXX hardcoded keymap check.... */
 		else if (event->type == BACKSPACEKEY && event->val == KM_PRESS) {
 			int len;
@@ -5225,11 +5944,15 @@ static bool ui_numedit_but_COLORBAND(uiBut *but, uiHandleButtonData *data, int m
 	return changed;
 }
 
-static int ui_do_but_COLORBAND(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_COLORBAND(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	ColorBand *coba;
 	CBData *cbd;
-	int mx, my, a, xco, mindist = 12;
+	/* ignore zoom-level for mindist */
+	int mindist = (50 * UI_DPI_FAC) * block->aspect;
+	int mx, my, a, xco;
 
 	mx = event->x;
 	my = event->y;
@@ -5286,7 +6009,8 @@ static int ui_do_but_COLORBAND(bContext *C, uiBlock *block, uiBut *but, uiHandle
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static bool ui_numedit_but_CURVE(uiBlock *block, uiBut *but, uiHandleButtonData *data,
+static bool ui_numedit_but_CURVE(
+        uiBlock *block, uiBut *but, uiHandleButtonData *data,
                                  int evtx, int evty,
                                  bool snap, const bool shift)
 {
@@ -5336,8 +6060,8 @@ static bool ui_numedit_but_CURVE(uiBlock *block, uiBut *but, uiHandleButtonData 
 				cmp[a].x += fx;
 				cmp[a].y += fy;
 				if (snap) {
-					cmp[a].x = 0.125f * floorf(0.5f + 8.0f * cmp[a].x);
-					cmp[a].y = 0.125f * floorf(0.5f + 8.0f * cmp[a].y);
+					cmp[a].x = 0.125f * roundf(8.0f * cmp[a].x);
+					cmp[a].y = 0.125f * roundf(8.0f * cmp[a].y);
 				}
 				if (cmp[a].x != origx || cmp[a].y != origy)
 					moved_point = true;
@@ -5398,7 +6122,9 @@ static bool ui_numedit_but_CURVE(uiBlock *block, uiBut *but, uiHandleButtonData 
 	return changed;
 }
 
-static int ui_do_but_CURVE(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_CURVE(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my, a;
 	bool changed = false;
@@ -5413,20 +6139,15 @@ static int ui_do_but_CURVE(bContext *C, uiBlock *block, uiBut *but, uiHandleButt
 			CurveMapping *cumap = (CurveMapping *)but->poin;
 			CurveMap *cuma = cumap->cm + cumap->cur;
 			CurveMapPoint *cmp;
-			float fx, fy, zoomx, zoomy, offsx, offsy;
-			float dist, mindist = 200.0f; // 14 pixels radius
+			const float m_xy[2] = {mx, my};
+			float dist_min_sq = SQUARE(14.0f);  /* 14 pixels radius */
 			int sel = -1;
 
-			zoomx = BLI_rctf_size_x(&but->rect) / BLI_rctf_size_x(&cumap->curr);
-			zoomy = BLI_rctf_size_y(&but->rect) / BLI_rctf_size_y(&cumap->curr);
-			offsx = cumap->curr.xmin;
-			offsy = cumap->curr.ymin;
-
 			if (event->ctrl) {
-				fx = ((float)mx - but->rect.xmin) / zoomx + offsx;
-				fy = ((float)my - but->rect.ymin) / zoomy + offsy;
+				float f_xy[2];
+				BLI_rctf_transform_pt_v(&cumap->curr, &but->rect, f_xy, m_xy);
 				
-				curvemap_insert(cuma, fx, fy);
+				curvemap_insert(cuma, f_xy[0], f_xy[1]);
 				curvemapping_changed(cumap, false);
 				changed = true;
 			}
@@ -5434,33 +6155,37 @@ static int ui_do_but_CURVE(bContext *C, uiBlock *block, uiBut *but, uiHandleButt
 			/* check for selecting of a point */
 			cmp = cuma->curve;   /* ctrl adds point, new malloc */
 			for (a = 0; a < cuma->totpoint; a++) {
-				fx = but->rect.xmin + zoomx * (cmp[a].x - offsx);
-				fy = but->rect.ymin + zoomy * (cmp[a].y - offsy);
-				dist = (fx - mx) * (fx - mx) + (fy - my) * (fy - my);
-				if (dist < mindist) {
+				float f_xy[2];
+				BLI_rctf_transform_pt_v(&but->rect, &cumap->curr, f_xy, &cmp[a].x);
+				const float dist_sq = len_squared_v2v2(m_xy, f_xy);
+				if (dist_sq < dist_min_sq) {
 					sel = a;
-					mindist = dist;
+					dist_min_sq = dist_sq;
 				}
 			}
 
 			if (sel == -1) {
 				int i;
+				float f_xy[2], f_xy_prev[2];
 
 				/* if the click didn't select anything, check if it's clicked on the 
 				 * curve itself, and if so, add a point */
-				fx = ((float)mx - but->rect.xmin) / zoomx + offsx;
-				fy = ((float)my - but->rect.ymin) / zoomy + offsy;
-				
 				cmp = cuma->table;
 
-				/* loop through the curve segment table and find what's near the mouse.
-				 * 0.05 is kinda arbitrary, but seems to be what works nicely. */
-				for (i = 0; i <= CM_TABLE; i++) {
-					if ((fabsf(fx - cmp[i].x) < 0.05f) &&
-					    (fabsf(fy - cmp[i].y) < 0.05f))
-					{
-					
-						curvemap_insert(cuma, fx, fy);
+				BLI_rctf_transform_pt_v(&but->rect, &cumap->curr, f_xy, &cmp[0].x);
+
+				/* with 160px height 8px should translate to the old 0.05 coefficient at no zoom */
+				dist_min_sq = SQUARE(8.0f);
+
+				/* loop through the curve segment table and find what's near the mouse. */
+				for (i = 1; i <= CM_TABLE; i++) {
+					copy_v2_v2(f_xy_prev, f_xy);
+					BLI_rctf_transform_pt_v(&but->rect, &cumap->curr, f_xy, &cmp[i].x);
+
+					if (dist_squared_to_line_segment_v2(m_xy, f_xy_prev, f_xy) < dist_min_sq) {
+						BLI_rctf_transform_pt_v(&cumap->curr, &but->rect, f_xy, m_xy);
+
+						curvemap_insert(cuma, f_xy[0], f_xy[1]);
 						curvemapping_changed(cumap, false);
 
 						changed = true;
@@ -5469,10 +6194,11 @@ static int ui_do_but_CURVE(bContext *C, uiBlock *block, uiBut *but, uiHandleButt
 						cmp = cuma->curve;
 						
 						/* find newly added point and make it 'sel' */
-						for (a = 0; a < cuma->totpoint; a++)
-							if (cmp[a].x == fx)
+						for (a = 0; a < cuma->totpoint; a++) {
+							if (cmp[a].x == f_xy[0]) {
 								sel = a;
-							
+							}
+						}
 						break;
 					}
 				}
@@ -5566,7 +6292,9 @@ static bool ui_numedit_but_HISTOGRAM(uiBut *but, uiHandleButtonData *data, int m
 	return changed;
 }
 
-static int ui_do_but_HISTOGRAM(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_HISTOGRAM(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my;
 	
@@ -5639,7 +6367,9 @@ static bool ui_numedit_but_WAVEFORM(uiBut *but, uiHandleButtonData *data, int mx
 	return changed;
 }
 
-static int ui_do_but_WAVEFORM(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_WAVEFORM(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my;
 
@@ -5693,7 +6423,9 @@ static int ui_do_but_WAVEFORM(bContext *C, uiBlock *block, uiBut *but, uiHandleB
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static int ui_do_but_LINK(bContext *C, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_LINK(
+        bContext *C, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {	
 	VECCOPY2D(but->linkto, event->mval);
 
@@ -5720,9 +6452,10 @@ static int ui_do_but_LINK(bContext *C, uiBut *but, uiHandleButtonData *data, con
 	return WM_UI_HANDLER_CONTINUE;
 }
 
-static bool ui_numedit_but_TRACKPREVIEW(bContext *C, uiBut *but, uiHandleButtonData *data,
-                                        int mx, int my,
-                                        const bool shift)
+static bool ui_numedit_but_TRACKPREVIEW(
+        bContext *C, uiBut *but, uiHandleButtonData *data,
+        int mx, int my,
+        const bool shift)
 {
 	MovieClipScopes *scopes = (MovieClipScopes *)but->poin;
 	bool changed = true;
@@ -5755,7 +6488,9 @@ static bool ui_numedit_but_TRACKPREVIEW(bContext *C, uiBut *but, uiHandleButtonD
 	return changed;
 }
 
-static int ui_do_but_TRACKPREVIEW(bContext *C, uiBlock *block, uiBut *but, uiHandleButtonData *data, const wmEvent *event)
+static int ui_do_but_TRACKPREVIEW(
+        bContext *C, uiBlock *block, uiBut *but,
+        uiHandleButtonData *data, const wmEvent *event)
 {
 	int mx, my;
 
@@ -5812,7 +6547,7 @@ static void but_shortcut_name_func(bContext *C, void *arg1, int UNUSED(event))
 		
 		/* complex code to change name of button */
 		if (WM_key_event_operator_string(C, but->optype->idname, but->opcontext, prop, true,
-		                                 shortcut_str, sizeof(shortcut_str)))
+		                                 sizeof(shortcut_str), shortcut_str))
 		{
 			ui_but_add_shortcut(but, shortcut_str, true);
 		}
@@ -5834,10 +6569,10 @@ static uiBlock *menu_change_shortcut(bContext *C, ARegion *ar, void *arg)
 	uiLayout *layout;
 	uiStyle *style = UI_style_get_dpi();
 	IDProperty *prop = (but->opptr) ? but->opptr->data : NULL;
-	int kmi_id = WM_key_event_operator_id(C, but->optype->idname, but->opcontext, prop, true, &km);
 
-	kmi = WM_keymap_item_find_id(km, kmi_id);
-	
+	kmi = WM_key_event_operator(C, but->optype->idname, but->opcontext, prop, true, &km);
+	BLI_assert(kmi != NULL);
+
 	RNA_pointer_create(&wm->id, &RNA_KeyMapItem, kmi, &ptr);
 	
 	block = UI_block_begin(C, ar, "_popup", UI_EMBOSS);
@@ -5931,7 +6666,6 @@ static void menu_add_shortcut_cancel(struct bContext *C, void *arg1)
 static void popup_change_shortcut_func(bContext *C, void *arg1, void *UNUSED(arg2))
 {
 	uiBut *but = (uiBut *)arg1;
-	button_timers_tooltip_remove(C, but);
 	UI_popup_block_invoke(C, menu_change_shortcut, but);
 }
 
@@ -5941,9 +6675,10 @@ static void remove_shortcut_func(bContext *C, void *arg1, void *UNUSED(arg2))
 	wmKeyMap *km;
 	wmKeyMapItem *kmi;
 	IDProperty *prop = (but->opptr) ? but->opptr->data : NULL;
-	int kmi_id = WM_key_event_operator_id(C, but->optype->idname, but->opcontext, prop, true, &km);
-	
-	kmi = WM_keymap_item_find_id(km, kmi_id);
+
+	kmi = WM_key_event_operator(C, but->optype->idname, but->opcontext, prop, true, &km);
+	BLI_assert(kmi != NULL);
+
 	WM_keymap_remove_item(km, kmi);
 	
 	but_shortcut_name_func(C, but, 0);
@@ -5952,8 +6687,7 @@ static void remove_shortcut_func(bContext *C, void *arg1, void *UNUSED(arg2))
 static void popup_add_shortcut_func(bContext *C, void *arg1, void *UNUSED(arg2))
 {
 	uiBut *but = (uiBut *)arg1;
-	button_timers_tooltip_remove(C, but);
-	UI_popup_block_ex(C, menu_add_shortcut, NULL, menu_add_shortcut_cancel, but);
+	UI_popup_block_ex(C, menu_add_shortcut, NULL, menu_add_shortcut_cancel, but, NULL);
 }
 
 /**
@@ -5962,15 +6696,22 @@ static void popup_add_shortcut_func(bContext *C, void *arg1, void *UNUSED(arg2))
 void ui_panel_menu(bContext *C, ARegion *ar, Panel *pa)
 {
 	bScreen *sc = CTX_wm_screen(C);
+	const bool has_panel_category = UI_panel_category_is_visible(ar);
+	const bool any_item_visible = has_panel_category;
 	PointerRNA ptr;
 	uiPopupMenu *pup;
 	uiLayout *layout;
+
+	if (!any_item_visible) {
+		return;
+	}
 
 	RNA_pointer_create(&sc->id, &RNA_Panel, pa, &ptr);
 
 	pup = UI_popup_menu_begin(C, IFACE_("Panel"), ICON_NONE);
 	layout = UI_popup_menu_layout(pup);
-	if (UI_panel_category_is_visible(ar)) {
+
+	if (has_panel_category) {
 		char tmpstr[80];
 		BLI_snprintf(tmpstr, sizeof(tmpstr), "%s" UI_SEP_CHAR_S "%s", IFACE_("Pin"), IFACE_("Shift+Left Mouse"));
 		uiItemR(layout, &ptr, "use_pin", 0, tmpstr, ICON_NONE);
@@ -5981,15 +6722,45 @@ void ui_panel_menu(bContext *C, ARegion *ar, Panel *pa)
 			uiBut *but = block->buttons.last;
 			but->flag |= UI_BUT_HAS_SEP_CHAR;
 		}
-
 	}
 	UI_popup_menu_end(C, pup);
+}
+
+static void ui_but_menu_add_path_operators(uiLayout *layout, PointerRNA *ptr, PropertyRNA *prop)
+{
+	const PropertySubType subtype = RNA_property_subtype(prop);
+	wmOperatorType *ot = WM_operatortype_find("WM_OT_path_open", true);
+	char filepath[FILE_MAX];
+	char dir[FILE_MAXDIR];
+	char file[FILE_MAXFILE];
+	PointerRNA props_ptr;
+
+	BLI_assert(ELEM(subtype, PROP_FILEPATH, PROP_DIRPATH));
+	UNUSED_VARS_NDEBUG(subtype);
+
+	RNA_property_string_get(ptr, prop, filepath);
+	BLI_split_dirfile(filepath, dir, file, sizeof(dir), sizeof(file));
+
+	if (file[0]) {
+		BLI_assert(subtype == PROP_FILEPATH);
+
+		props_ptr = uiItemFullO_ptr(
+		                layout, ot, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Open File Externally"),
+		                ICON_NONE, NULL, WM_OP_INVOKE_DEFAULT, UI_ITEM_O_RETURN_PROPS);
+		RNA_string_set(&props_ptr, "filepath", filepath);
+	}
+
+	props_ptr = uiItemFullO_ptr(
+	                layout, ot, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Open Location Externally"),
+	                ICON_NONE, NULL, WM_OP_INVOKE_DEFAULT, UI_ITEM_O_RETURN_PROPS);
+	RNA_string_set(&props_ptr, "filepath", dir);
 }
 
 static bool ui_but_menu(bContext *C, uiBut *but)
 {
 	uiPopupMenu *pup;
 	uiLayout *layout;
+	MenuType *mt = WM_menutype_find("WM_MT_button_context", true);
 	bool is_array, is_array_component;
 	uiStringInfo label = {BUT_GET_LABEL, NULL};
 
@@ -6001,8 +6772,6 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 		return false;
 	}
 	
-	button_timers_tooltip_remove(C, but);
-
 	/* highly unlikely getting the label ever fails */
 	UI_but_string_info_get(C, but, &label, NULL);
 
@@ -6016,10 +6785,18 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 	if (but->rnapoin.data && but->rnaprop) {
 		PointerRNA *ptr = &but->rnapoin;
 		PropertyRNA *prop = but->rnaprop;
+		const PropertyType type = RNA_property_type(prop);
+		const PropertySubType subtype = RNA_property_subtype(prop);
 		bool is_anim = RNA_property_animateable(ptr, prop);
 		bool is_editable = RNA_property_editable(ptr, prop);
 		/*bool is_idprop = RNA_property_is_idprop(prop);*/ /* XXX does not work as expected, not strictly needed */
 		bool is_set = RNA_property_is_set(ptr, prop);
+
+		/* set the prop and pointer data for python access to the hovered ui element; TODO, index could be supported as well*/
+		PointerRNA temp_ptr;
+		RNA_pointer_create(NULL, &RNA_Property, but->rnaprop, &temp_ptr);
+		uiLayoutSetContextPointer(layout,"button_prop", &temp_ptr);
+		uiLayoutSetContextPointer(layout,"button_pointer", ptr);
 
 		/* second slower test, saved people finding keyframe items in menus when its not possible */
 		if (is_anim)
@@ -6033,19 +6810,19 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 		if (but->flag & UI_BUT_ANIMATED_KEY) {
 			/* replace/delete keyfraemes */
 			if (is_array_component) {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Replace Keyframes"),
-				               ICON_NONE, "ANIM_OT_keyframe_insert_button", "all", 1);
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Replace Single Keyframe"),
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Replace Keyframes"),
+				               ICON_KEY_HLT, "ANIM_OT_keyframe_insert_button", "all", 1);
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Replace Single Keyframe"),
 				               ICON_NONE, "ANIM_OT_keyframe_insert_button", "all", 0);
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Keyframes"),
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Keyframes"),
 				               ICON_NONE, "ANIM_OT_keyframe_delete_button", "all", 1);
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Single Keyframe"),
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Single Keyframe"),
 				               ICON_NONE, "ANIM_OT_keyframe_delete_button", "all", 0);
 			}
 			else {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Replace Keyframe"),
-				               ICON_NONE, "ANIM_OT_keyframe_insert_button", "all", 1);
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Keyframe"),
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Replace Keyframe"),
+				               ICON_KEY_HLT, "ANIM_OT_keyframe_insert_button", "all", 1);
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Keyframe"),
 				               ICON_NONE, "ANIM_OT_keyframe_delete_button", "all", 1);
 			}
 			
@@ -6059,27 +6836,27 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 		}
 		else if (is_anim) {
 			if (is_array_component) {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Insert Keyframes"),
-				               ICON_NONE, "ANIM_OT_keyframe_insert_button", "all", 1);
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Insert Single Keyframe"),
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Insert Keyframes"),
+				               ICON_KEY_HLT, "ANIM_OT_keyframe_insert_button", "all", 1);
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Insert Single Keyframe"),
 				               ICON_NONE, "ANIM_OT_keyframe_insert_button", "all", 0);
 			}
 			else {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Insert Keyframe"),
-				               ICON_NONE, "ANIM_OT_keyframe_insert_button", "all", 1);
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Insert Keyframe"),
+				               ICON_KEY_HLT, "ANIM_OT_keyframe_insert_button", "all", 1);
 			}
 		}
 		
-		if (but->flag & UI_BUT_ANIMATED) {
+		if ((but->flag & UI_BUT_ANIMATED) && (but->rnapoin.type != &RNA_NlaStrip)) {
 			if (is_array_component) {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Clear Keyframes"),
-				               ICON_NONE, "ANIM_OT_keyframe_clear_button", "all", 1);
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Clear Single Keyframes"),
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Clear Keyframes"),
+				               ICON_KEY_DEHLT, "ANIM_OT_keyframe_clear_button", "all", 1);
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Clear Single Keyframes"),
 				               ICON_NONE, "ANIM_OT_keyframe_clear_button", "all", 0);
 			}
 			else {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Clear Keyframes"),
-				               ICON_NONE, "ANIM_OT_keyframe_clear_button", "all", 1);
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Clear Keyframes"),
+				               ICON_KEY_DEHLT, "ANIM_OT_keyframe_clear_button", "all", 1);
 			}
 		}
 
@@ -6088,20 +6865,20 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 			uiItemS(layout);
 
 			if (is_array_component) {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Drivers"),
-				               ICON_NONE, "ANIM_OT_driver_button_remove", "all", 1);
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Single Driver"),
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Drivers"),
+				               ICON_X, "ANIM_OT_driver_button_remove", "all", 1);
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Single Driver"),
 				               ICON_NONE, "ANIM_OT_driver_button_remove", "all", 0);
 			}
 			else {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Driver"),
-				               ICON_NONE, "ANIM_OT_driver_button_remove", "all", 1);
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Delete Driver"),
+				               ICON_X, "ANIM_OT_driver_button_remove", "all", 1);
 			}
 
-			uiItemO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Copy Driver"),
+			uiItemO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Copy Driver"),
 			        ICON_NONE, "ANIM_OT_copy_driver_button");
 			if (ANIM_driver_can_paste()) {
-				uiItemO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Paste Driver"),
+				uiItemO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Paste Driver"),
 				        ICON_NONE, "ANIM_OT_paste_driver_button");
 			}
 		}
@@ -6112,18 +6889,18 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 			uiItemS(layout);
 
 			if (is_array_component) {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Add Drivers"),
-				               ICON_NONE, "ANIM_OT_driver_button_add", "all", 1);
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Add Single Driver"),
-				               ICON_NONE, "ANIM_OT_driver_button_add", "all", 0);
+				uiItemMenuEnumO(layout, C, "ANIM_OT_driver_button_add", "mapping_type", 
+				                CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Add Drivers"), 
+				                ICON_DRIVER);
 			}
 			else {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Add Driver"),
-				               ICON_NONE, "ANIM_OT_driver_button_add", "all", 1);
+				uiItemMenuEnumO(layout, C, "ANIM_OT_driver_button_add", "mapping_type", 
+				                CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Add Driver"), 
+				                ICON_DRIVER);
 			}
 
 			if (ANIM_driver_can_paste()) {
-				uiItemO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Paste Driver"),
+				uiItemO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Paste Driver"),
 				        ICON_NONE, "ANIM_OT_paste_driver_button");
 			}
 		}
@@ -6134,17 +6911,17 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 			uiItemS(layout);
 
 			if (is_array_component) {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Add All to Keying Set"),
-				               ICON_NONE, "ANIM_OT_keyingset_button_add", "all", 1);
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Add Single to Keying Set"),
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Add All to Keying Set"),
+				               ICON_KEYINGSET, "ANIM_OT_keyingset_button_add", "all", 1);
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Add Single to Keying Set"),
 				               ICON_NONE, "ANIM_OT_keyingset_button_add", "all", 0);
-				uiItemO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Remove from Keying Set"),
+				uiItemO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Remove from Keying Set"),
 				        ICON_NONE, "ANIM_OT_keyingset_button_remove");
 			}
 			else {
-				uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Add to Keying Set"),
-				               ICON_NONE, "ANIM_OT_keyingset_button_add", "all", 1);
-				uiItemO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Remove from Keying Set"),
+				uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Add to Keying Set"),
+				               ICON_KEYINGSET, "ANIM_OT_keyingset_button_add", "all", 1);
+				uiItemO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Remove from Keying Set"),
 				        ICON_NONE, "ANIM_OT_keyingset_button_remove");
 			}
 		}
@@ -6157,26 +6934,40 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 		 * Paste Property Value */
 		
 		if (is_array_component) {
-			uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Reset All to Default Values"),
-			               ICON_NONE, "UI_OT_reset_default_button", "all", 1);
-			uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Reset Single to Default Value"),
+			uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Reset All to Default Values"),
+			               ICON_LOOP_BACK, "UI_OT_reset_default_button", "all", 1);
+			uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Reset Single to Default Value"),
 			               ICON_NONE, "UI_OT_reset_default_button", "all", 0);
 		}
 		else {
-			uiItemBooleanO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Reset to Default Value"),
-			        ICON_NONE, "UI_OT_reset_default_button", "all", 1);
+			uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Reset to Default Value"),
+			        ICON_LOOP_BACK, "UI_OT_reset_default_button", "all", 1);
 		}
 		if (is_editable /*&& is_idprop*/ && is_set) {
-			uiItemO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Unset"),
+			uiItemO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Unset"),
 			        ICON_NONE, "UI_OT_unset_property_button");
 		}
 		
-		uiItemO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Copy Data Path"),
+		if (is_array_component) {
+			uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Copy All To Selected"),
+			               ICON_NONE, "UI_OT_copy_to_selected_button", "all", true);
+			uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Copy Single To Selected"),
+			               ICON_NONE, "UI_OT_copy_to_selected_button", "all", false);
+		}
+		else {
+			uiItemBooleanO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Copy To Selected"),
+		                   ICON_NONE, "UI_OT_copy_to_selected_button", "all", true);
+		}
+
+		uiItemO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Copy Data Path"),
 		        ICON_NONE, "UI_OT_copy_data_path_button");
-		uiItemO(layout, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Copy To Selected"),
-		        ICON_NONE, "UI_OT_copy_to_selected_button");
 
 		uiItemS(layout);
+
+		if (type == PROP_STRING && ELEM(subtype, PROP_FILEPATH, PROP_DIRPATH)) {
+			ui_but_menu_add_path_operators(layout, ptr, prop);
+			uiItemS(layout);
+		}
 	}
 
 	/* Operator buttons */
@@ -6186,38 +6977,52 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 		IDProperty *prop = (but->opptr) ? but->opptr->data : NULL;
 		int w = uiLayoutGetWidth(layout);
 		wmKeyMap *km;
-		wmKeyMapItem *kmi = NULL;
-		int kmi_id = WM_key_event_operator_id(C, but->optype->idname, but->opcontext, prop, true, &km);
+		/* We want to know if this op has a shortcut, be it hotkey or not. */
+		wmKeyMapItem *kmi = WM_key_event_operator(C, but->optype->idname, but->opcontext, prop, false, &km);
 
-		if (kmi_id)
-			kmi = WM_keymap_item_find_id(km, kmi_id);
+		/* We do have a shortcut, but only keyboard ones are editbale that way... */
+		if (kmi) {
+			if (ISKEYBOARD(kmi->type)) {
+#if 0			/* would rather use a block but, but gets weirdly positioned... */
+				uiDefBlockBut(block, menu_change_shortcut, but, "Change Shortcut",
+				              0, 0, uiLayoutGetWidth(layout), UI_UNIT_Y, "");
+#endif
 
-		/* keyboard shortcuts */
-		if ((kmi) && ISKEYBOARD(kmi->type)) {
+				but2 = uiDefIconTextBut(block, UI_BTYPE_BUT, 0, ICON_HAND,
+				                        CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Change Shortcut"),
+				                        0, 0, w, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
+				UI_but_func_set(but2, popup_change_shortcut_func, but, NULL);
 
-			/* would rather use a block but, but gets weirdly positioned... */
-			//uiDefBlockBut(block, menu_change_shortcut, but, "Change Shortcut", 0, 0, uiLayoutGetWidth(layout), UI_UNIT_Y, "");
-			
-			but2 = uiDefIconTextBut(block, UI_BTYPE_BUT, 0, 0, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Change Shortcut"),
-			                        0, 0, w, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
-			UI_but_func_set(but2, popup_change_shortcut_func, but, NULL);
-
-			but2 = uiDefIconTextBut(block, UI_BTYPE_BUT, 0, 0, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Remove Shortcut"),
-			                        0, 0, w, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
-			UI_but_func_set(but2, remove_shortcut_func, but, NULL);
+				but2 = uiDefIconTextBut(block, UI_BTYPE_BUT, 0, ICON_NONE,
+				                        CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Remove Shortcut"),
+				                        0, 0, w, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
+				UI_but_func_set(but2, remove_shortcut_func, but, NULL);
+			}
+			else {
+				but2 = uiDefIconTextBut(block, UI_BTYPE_BUT, 0, ICON_HAND, IFACE_("Non-Keyboard Shortcut"),
+				                        0, 0, w, UI_UNIT_Y, NULL, 0, 0, 0, 0,
+				                        TIP_("Only keyboard shortcuts can be edited that way, "
+				                             "please use User Preferences otherwise"));
+				UI_but_flag_enable(but2, UI_BUT_DISABLED);
+			}
 		}
 		/* only show 'add' if there's a suitable key map for it to go in */
 		else if (WM_keymap_guess_opname(C, but->optype->idname)) {
-			but2 = uiDefIconTextBut(block, UI_BTYPE_BUT, 0, 0, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Add Shortcut"),
+			but2 = uiDefIconTextBut(block, UI_BTYPE_BUT, 0, ICON_HAND,
+			                        CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Add Shortcut"),
 			                        0, 0, w, UI_UNIT_Y, NULL, 0, 0, 0, 0, "");
 			UI_but_func_set(but2, popup_add_shortcut_func, but, NULL);
 		}
-		
+
+		/* Set the operator pointer for python access */
+		if (but->opptr)
+			uiLayoutSetContextPointer(layout,"button_operator", but->opptr);
+
 		uiItemS(layout);
 	}
 
 	/* Show header tools for header buttons. */
-	{
+	if (ui_block_is_menu(but->block) == false) {
 		ARegion *ar = CTX_wm_region(C);
 		if (ar && (ar->regiontype == RGN_TYPE_HEADER)) {
 			uiItemMenuF(layout, IFACE_("Header"), ICON_NONE, ED_screens_header_tools_menu_create, NULL);
@@ -6229,53 +7034,28 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 		char buf[512];
 		PointerRNA ptr_props;
 
-		if (but->rnapoin.data && but->rnaprop) {
-			BLI_snprintf(buf, sizeof(buf), "%s.%s",
-			             RNA_struct_identifier(but->rnapoin.type), RNA_property_identifier(but->rnaprop));
+		if (UI_but_online_manual_id(but, buf, sizeof(buf))) {
+			uiItemO(layout, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Online Manual"),
+			        ICON_URL, "WM_OT_doc_view_manual_ui_context");
 
-			WM_operator_properties_create(&ptr_props, "WM_OT_doc_view_manual");
+			ptr_props = uiItemFullO(layout, "WM_OT_doc_view",
+			                            CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Online Python Reference"),
+			                            ICON_NONE, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 			RNA_string_set(&ptr_props, "doc_id", buf);
-			uiItemFullO(layout, "WM_OT_doc_view_manual", CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Online Manual"),
-			            ICON_NONE, ptr_props.data, WM_OP_EXEC_DEFAULT, 0);
-
-			WM_operator_properties_create(&ptr_props, "WM_OT_doc_view");
-			RNA_string_set(&ptr_props, "doc_id", buf);
-			uiItemFullO(layout, "WM_OT_doc_view", CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Online Python Reference"),
-			            ICON_NONE, ptr_props.data, WM_OP_EXEC_DEFAULT, 0);
 
 			/* XXX inactive option, not for public! */
 #if 0
-			WM_operator_properties_create(&ptr_props, "WM_OT_doc_edit");
+			ptr_props = uiItemFullO(layout, "WM_OT_doc_edit",
+			                            "Submit Description", ICON_NONE, NULL, WM_OP_INVOKE_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 			RNA_string_set(&ptr_props, "doc_id", buf);
 			RNA_string_set(&ptr_props, "doc_new", RNA_property_description(but->rnaprop));
-
-			uiItemFullO(layout, "WM_OT_doc_edit", "Submit Description", ICON_NONE, ptr_props.data, WM_OP_INVOKE_DEFAULT, 0);
 #endif
 		}
-		else if (but->optype) {
-			WM_operator_py_idname(buf, but->optype->idname);
+	}
 
-
-			WM_operator_properties_create(&ptr_props, "WM_OT_doc_view_manual");
-			RNA_string_set(&ptr_props, "doc_id", buf);
-			uiItemFullO(layout, "WM_OT_doc_view_manual", CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Online Manual"),
-			            ICON_NONE, ptr_props.data, WM_OP_EXEC_DEFAULT, 0);
-
-			WM_operator_properties_create(&ptr_props, "WM_OT_doc_view");
-			RNA_string_set(&ptr_props, "doc_id", buf);
-			uiItemFullO(layout, "WM_OT_doc_view", CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Online Python Reference"),
-			            ICON_NONE, ptr_props.data, WM_OP_EXEC_DEFAULT, 0);
-
-			/* XXX inactive option, not for public! */
-#if 0
-			WM_operator_properties_create(&ptr_props, "WM_OT_doc_edit");
-			RNA_string_set(&ptr_props, "doc_id", buf);
-			RNA_string_set(&ptr_props, "doc_new", but->optype->description);
-
-			uiItemFullO(layout, "WM_OT_doc_edit", CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Submit Description"),
-			            ICON_NONE, ptr_props.data, WM_OP_INVOKE_DEFAULT, 0);
-#endif
-		}
+	if (but->optype) {
+		uiItemO(layout, NULL,
+		        ICON_NONE, "UI_OT_copy_python_command_button");
 	}
 
 	/* perhaps we should move this into (G.debug & G_DEBUG) - campbell */
@@ -6283,6 +7063,14 @@ static bool ui_but_menu(bContext *C, uiBut *but)
 		uiItemFullO(layout, "UI_OT_editsource", NULL, ICON_NONE, NULL, WM_OP_INVOKE_DEFAULT, 0);
 	}
 	uiItemFullO(layout, "UI_OT_edittranslation_init", NULL, ICON_NONE, NULL, WM_OP_INVOKE_DEFAULT, 0);
+
+	mt = WM_menutype_find("WM_MT_button_context", true);
+	if (mt) {
+		Menu menu = {NULL};
+		menu.layout = uiLayoutColumn(layout, false);
+		menu.type = mt;
+		mt->draw(C, &menu);
+	}
 
 	UI_popup_menu_end(C, pup);
 
@@ -6300,10 +7088,16 @@ static int ui_do_button(bContext *C, uiBlock *block, uiBut *but, const wmEvent *
 	if (but->flag & UI_BUT_DISABLED)
 		return WM_UI_HANDLER_CONTINUE;
 
+	/* if but->pointype is set, but->poin should be too */
+	BLI_assert(!but->pointype || but->poin);
+
+	/* Only hard-coded stuff here, button interactions with configurable
+	 * keymaps are handled using operators (see #ED_keymap_ui). */
+
 	if ((data->state == BUTTON_STATE_HIGHLIGHT) || (event->type == EVT_DROP)) {
 		/* handle copy-paste */
 		if (ELEM(event->type, CKEY, VKEY) && event->val == KM_PRESS &&
-		    IS_EVENT_MOD(event, ctrl, oskey))
+		    IS_EVENT_MOD(event, ctrl, oskey) && !event->shift)
 		{
 			/* Specific handling for listrows, we try to find their overlapping tex button. */
 			if (but->type == UI_BTYPE_LISTROW) {
@@ -6313,94 +7107,12 @@ static int ui_do_button(bContext *C, uiBlock *block, uiBut *but, const wmEvent *
 					data = but->active;
 				}
 			}
-
-			ui_but_copy_paste(C, but, data, (event->type == CKEY) ? 'c' : 'v');
+			ui_but_copy_paste(C, but, data, (event->type == CKEY) ? 'c' : 'v', event->alt);
 			return WM_UI_HANDLER_BREAK;
 		}
 		/* handle drop */
 		else if (event->type == EVT_DROP) {
 			ui_but_drop(C, event, but, data);
-		}
-		/* handle eyedropper */
-		else if ((event->type == EKEY) && (event->val == KM_PRESS)) {
-			if (IS_EVENT_MOD(event, shift, ctrl, alt, oskey)) {
-				/* pass */
-			}
-			else {
-				if (but->type == UI_BTYPE_COLOR) {
-					WM_operator_name_call(C, "UI_OT_eyedropper_color", WM_OP_INVOKE_DEFAULT, NULL);
-					return WM_UI_HANDLER_BREAK;
-				}
-				else if (but->type == UI_BTYPE_SEARCH_MENU_UNLINK) {
-					if (but->rnaprop && RNA_property_type(but->rnaprop) == PROP_POINTER) {
-						StructRNA *type = RNA_property_pointer_type(&but->rnapoin, but->rnaprop);
-						const short idcode = RNA_type_to_ID_code(type);
-						if ((idcode == ID_OB) || OB_DATA_SUPPORT_ID(idcode)) {
-							WM_operator_name_call(C, "UI_OT_eyedropper_id", WM_OP_INVOKE_DEFAULT, NULL);
-							return WM_UI_HANDLER_BREAK;
-						}
-					}
-				}
-				else if (but->type == UI_BTYPE_NUM) {
-					if (but->rnaprop &&
-					    (RNA_property_type(but->rnaprop) == PROP_FLOAT) &&
-					    (RNA_property_subtype(but->rnaprop) & PROP_UNIT_LENGTH) &&
-					    (RNA_property_array_check(but->rnaprop) == false))
-					{
-						WM_operator_name_call(C, "UI_OT_eyedropper_depth", WM_OP_INVOKE_DEFAULT, NULL);
-						return WM_UI_HANDLER_BREAK;
-					}
-				}
-			}
-		}
-		/* handle keyframing */
-		else if ((event->type == IKEY) &&
-		         !IS_EVENT_MOD(event, ctrl, oskey) &&
-		         (event->val == KM_PRESS))
-		{
-			if (event->alt) {
-				if (event->shift) {
-					ui_but_anim_clear_keyframe(C);
-				}
-				else {
-					ui_but_anim_delete_keyframe(C);
-				}
-			}
-			else {
-				ui_but_anim_insert_keyframe(C);
-			}
-			
-			ED_region_tag_redraw(data->region);
-			
-			return WM_UI_HANDLER_BREAK;
-		}
-		/* handle drivers */
-		else if ((event->type == DKEY) &&
-		         !IS_EVENT_MOD(event, shift, ctrl, oskey) &&
-		         (event->val == KM_PRESS))
-		{
-			if (event->alt)
-				ui_but_anim_remove_driver(C);
-			else
-				ui_but_anim_add_driver(C);
-				
-			ED_region_tag_redraw(data->region);
-			
-			return WM_UI_HANDLER_BREAK;
-		}
-		/* handle keyingsets */
-		else if ((event->type == KKEY) &&
-		         !IS_EVENT_MOD(event, shift, ctrl, oskey) &&
-		         (event->val == KM_PRESS))
-		{
-			if (event->alt)
-				ui_but_anim_remove_keyingset(C);
-			else
-				ui_but_anim_add_keyingset(C);
-				
-			ED_region_tag_redraw(data->region);
-			
-			return WM_UI_HANDLER_BREAK;
 		}
 		/* handle menu */
 		else if ((event->type == RIGHTMOUSE) &&
@@ -6411,24 +7123,6 @@ static int ui_do_button(bContext *C, uiBlock *block, uiBut *but, const wmEvent *
 			if (ui_but_menu(C, but)) {
 				return WM_UI_HANDLER_BREAK;
 			}
-		}
-	}
-
-	/* verify if we can edit this button */
-	if (ELEM(event->type, LEFTMOUSE, RETKEY)) {
-		/* this should become disabled button .. */
-		if (but->lock == true) {
-			if (but->lockstr) {
-				WM_report(C, RPT_INFO, but->lockstr);
-				button_activate_state(C, but, BUTTON_STATE_EXIT);
-				return WM_UI_HANDLER_BREAK;
-			}
-		}
-		else if (but->pointype && but->poin == NULL) {
-			/* there's a pointer needed */
-			BKE_reportf(NULL, RPT_WARNING, "DoButton pointer error: %s", but->str);
-			button_activate_state(C, but, BUTTON_STATE_EXIT);
-			return WM_UI_HANDLER_BREAK;
 		}
 	}
 
@@ -6488,10 +7182,15 @@ static int ui_do_button(bContext *C, uiBlock *block, uiBut *but, const wmEvent *
 			break;
 		case UI_BTYPE_TEXT:
 		case UI_BTYPE_SEARCH_MENU:
+			if ((but->type == UI_BTYPE_SEARCH_MENU) &&
+			    (but->flag & UI_BUT_VALUE_CLEAR))
+			{
+				retval = ui_do_but_SEARCH_UNLINK(C, block, but, data, event);
+				if (retval & WM_UI_HANDLER_BREAK) {
+					break;
+				}
+			}
 			retval = ui_do_but_TEX(C, block, but, data, event);
-			break;
-		case UI_BTYPE_SEARCH_MENU_UNLINK:
-			retval = ui_do_but_SEARCH_UNLINK(C, block, but, data, event);
 			break;
 		case UI_BTYPE_MENU:
 		case UI_BTYPE_BLOCK:
@@ -6592,8 +7291,13 @@ static int ui_do_button(bContext *C, uiBlock *block, uiBut *but, const wmEvent *
 					     /* just to be sure, check we're dragging more hoz then virt */
 					     abs(event->prevx - event->x) > abs(event->prevy - event->y)))
 					{
-						ui_multibut_states_create(but, data);
-						data->multi_data.init = BUTTON_MULTI_INIT_ENABLE;
+						if (data->multi_data.has_mbuts) {
+							ui_multibut_states_create(but, data);
+							data->multi_data.init = BUTTON_MULTI_INIT_ENABLE;
+						}
+						else {
+							data->multi_data.init = BUTTON_MULTI_INIT_DISABLE;
+						}
 					}
 				}
 
@@ -6731,7 +7435,7 @@ bool UI_but_active_drop_name(bContext *C)
 	uiBut *but = ui_but_find_active_in_region(ar);
 
 	if (but) {
-		if (ELEM(but->type, UI_BTYPE_TEXT, UI_BTYPE_SEARCH_MENU, UI_BTYPE_SEARCH_MENU_UNLINK))
+		if (ELEM(but->type, UI_BTYPE_TEXT, UI_BTYPE_SEARCH_MENU))
 			return 1;
 	}
 	
@@ -6767,11 +7471,14 @@ static void ui_blocks_set_tooltips(ARegion *ar, const bool enable)
 
 static bool ui_region_contains_point_px(ARegion *ar, int x, int y)
 {
-	uiBlock *block;
-	
+	rcti winrct;
+
+	/* scale down area rect to exclude shadow */
+	ui_region_winrct_get_no_margin(ar, &winrct);
+
 	/* check if the mouse is in the region */
-	if (!BLI_rcti_isect_pt(&ar->winrct, x, y)) {
-		for (block = ar->uiblocks.first; block; block = block->next)
+	if (!BLI_rcti_isect_pt(&winrct, x, y)) {
+		for (uiBlock *block = ar->uiblocks.first; block; block = block->next)
 			block->auto_open = false;
 		
 		return false;
@@ -6825,7 +7532,8 @@ static bool ui_but_contains_point_px(ARegion *ar, uiBut *but, int x, int y)
 
 /**
  * Can we mouse over the button or is it hidden/disabled/layout.
- * Note: ctrl is kind of a hack currently, so that non-embossed UI_BTYPE_TEXT button behaves as a label when ctrl is not pressed.
+ * \note ctrl is kind of a hack currently,
+ * so that non-embossed UI_BTYPE_TEXT button behaves as a label when ctrl is not pressed.
  */
 static bool ui_but_is_interactive(const uiBut *but, const bool labeledit)
 {
@@ -6844,13 +7552,6 @@ static bool ui_but_is_interactive(const uiBut *but, const bool labeledit)
 		return false;
 
 	return true;
-}
-
-bool ui_but_is_search_unlink_visible(const uiBut *but)
-{
-	BLI_assert(but->type == UI_BTYPE_SEARCH_MENU_UNLINK);
-	return ((but->editstr == NULL) &&
-	        (but->drawstr[0] != '\0'));
 }
 
 /* x and y are only used in case event is NULL... */
@@ -6897,13 +7598,13 @@ static uiBut *ui_but_find_mouse_over_ex(ARegion *ar, const int x, const int y, c
 	return butover;
 }
 
-static uiBut *ui_but_find_mouse_over(ARegion *ar, const wmEvent *event)
+uiBut *ui_but_find_mouse_over(ARegion *ar, const wmEvent *event)
 {
 	return ui_but_find_mouse_over_ex(ar, event->x, event->y, event->ctrl != 0);
 }
 
 
-static uiBut *ui_list_find_mouse_over(ARegion *ar, int x, int y)
+static uiBut *ui_list_find_mouse_over_ex(ARegion *ar, int x, int y)
 {
 	uiBlock *block;
 	uiBut *but;
@@ -6927,6 +7628,11 @@ static uiBut *ui_list_find_mouse_over(ARegion *ar, int x, int y)
 	return NULL;
 }
 
+static uiBut *ui_list_find_mouse_over(ARegion *ar, const wmEvent *event)
+{
+	return ui_list_find_mouse_over_ex(ar, event->x, event->y);
+}
+
 /* ****************** button state handling **************************/
 
 static bool button_modal_state(uiHandleButtonState state)
@@ -6940,7 +7646,22 @@ static bool button_modal_state(uiHandleButtonState state)
 	            BUTTON_STATE_MENU_OPEN);
 }
 
-static void button_timers_tooltip_remove(bContext *C, uiBut *but)
+/**
+ * Recreate tooltip (use to update dynamic tips)
+ */
+void UI_but_tooltip_refresh(bContext *C, uiBut *but)
+{
+	uiHandleButtonData *data;
+
+	data = but->active;
+	if (data && data->tooltip) {
+		ui_tooltip_free(C, data->tooltip);
+		data->tooltip = ui_tooltip_create(C, data->region, but);
+	}
+}
+
+/* removes tooltip timer from active but (meaning tooltip is disabled until it's reenabled again) */
+void UI_but_tooltip_timer_remove(bContext *C, uiBut *but)
 {
 	uiHandleButtonData *data;
 
@@ -6975,7 +7696,7 @@ static void button_tooltip_timer_reset(bContext *C, uiBut *but)
 		data->tooltiptimer = NULL;
 	}
 
-	if ((U.flag & USER_TOOLTIPS) || (but->flag & UI_BUT_TIP_FORCE)) {
+	if ((U.flag & USER_TOOLTIPS) || (data->tooltip_force)) {
 		if (!but->block->tooltipdisabled) {
 			if (!wm->drags.first) {
 				data->tooltiptimer = WM_event_add_timer(data->wm, data->window, TIMER, BUTTON_TOOLTIP_DELAY);
@@ -7006,7 +7727,9 @@ static void button_activate_state(bContext *C, uiBut *but, uiHandleButtonState s
 				if (but->block->auto_open == true) {  /* test for toolbox */
 					time = 1;
 				}
-				else if ((but->block->flag & UI_BLOCK_LOOP && but->type != UI_BTYPE_BLOCK) || but->block->auto_open == true) {
+				else if ((but->block->flag & UI_BLOCK_LOOP && but->type != UI_BTYPE_BLOCK) ||
+				         (but->block->auto_open == true))
+				{
 					time = 5 * U.menuthreshold2;
 				}
 				else if (U.uiflag & USER_MENUOPENAUTO) {
@@ -7024,7 +7747,7 @@ static void button_activate_state(bContext *C, uiBut *but, uiHandleButtonState s
 	}
 	else {
 		but->flag |= UI_SELECT;
-		button_timers_tooltip_remove(C, but);
+		UI_but_tooltip_timer_remove(C, but);
 	}
 	
 	/* text editing */
@@ -7044,13 +7767,20 @@ static void button_activate_state(bContext *C, uiBut *but, uiHandleButtonState s
 	else if (data->state == BUTTON_STATE_NUM_EDITING) {
 		ui_numedit_end(but, data);
 
-		if (but->flag & UI_BUT_DRIVEN)
-			WM_report(C, RPT_INFO, "Can't edit driven number value, see graph editor for the driver setup.");
+		if (but->flag & UI_BUT_DRIVEN) {
+			/* Only warn when editing stepping/dragging the value.
+			 * No warnings should show for editing driver expressions though!
+			 */
+			if (state != BUTTON_STATE_TEXT_EDITING) {
+				WM_report(RPT_INFO, "Can't edit driven number value, see graph editor for the driver setup.");
+			}
+		}
 
 		if (ui_but_is_cursor_warp(but)) {
 
 #ifdef USE_CONT_MOUSE_CORRECT
-			if (data->ungrab_mval[0] != FLT_MAX) {
+			/* stereo3d has issues with changing cursor location so rather avoid */
+			if (data->ungrab_mval[0] != FLT_MAX && !WM_stereo3d_enabled(data->window, false)) {
 				int mouse_ungrab_xy[2];
 				ui_block_to_window_fl(data->region, but->block, &data->ungrab_mval[0], &data->ungrab_mval[1]);
 				mouse_ungrab_xy[0] = data->ungrab_mval[0];
@@ -7086,7 +7816,7 @@ static void button_activate_state(bContext *C, uiBut *but, uiHandleButtonState s
 	if (!(but->block->handle && but->block->handle->popup)) {
 		if (button_modal_state(state)) {
 			if (!button_modal_state(data->state))
-				WM_event_add_ui_handler(C, &data->window->modalhandlers, ui_handler_region_menu, NULL, data, false);
+				WM_event_add_ui_handler(C, &data->window->modalhandlers, ui_handler_region_menu, NULL, data, 0);
 		}
 		else {
 			if (button_modal_state(data->state)) {
@@ -7131,11 +7861,13 @@ static void button_activate_init(bContext *C, ARegion *ar, uiBut *but, uiButtonA
 	copy_v2_fl(data->ungrab_mval, FLT_MAX);
 #endif
 
-	if (ELEM(but->type, UI_BTYPE_CURVE, UI_BTYPE_SEARCH_MENU, UI_BTYPE_SEARCH_MENU_UNLINK)) {
+	if (ELEM(but->type, UI_BTYPE_CURVE, UI_BTYPE_SEARCH_MENU)) {
 		/* XXX curve is temp */
 	}
 	else {
-		data->interactive = true;
+		if ((but->flag & UI_BUT_UPDATE_DELAY) == 0) {
+			data->interactive = true;
+		}
 	}
 	
 	data->state = BUTTON_STATE_INIT;
@@ -7191,8 +7923,9 @@ static void button_activate_init(bContext *C, ARegion *ar, uiBut *but, uiButtonA
 	}
 }
 
-static void button_activate_exit(bContext *C, uiBut *but, uiHandleButtonData *data,
-                                 const bool mousemove, const bool onfree)
+static void button_activate_exit(
+        bContext *C, uiBut *but, uiHandleButtonData *data,
+        const bool mousemove, const bool onfree)
 {
 	uiBlock *block = but->block;
 	uiBut *bt;
@@ -7243,6 +7976,19 @@ static void button_activate_exit(bContext *C, uiBut *but, uiHandleButtonData *da
 		ui_apply_but_undo(but);
 		ui_apply_but_autokey(C, but);
 
+#ifdef USE_ALLSELECT
+		{
+			/* only RNA from this button is used */
+			uiBut but_temp = *but;
+			uiSelectContextStore  *selctx_data = &data->select_others;
+			for (int i = 0; i < selctx_data->elems_len; i++) {
+				uiSelectContextElem *other = &selctx_data->elems[i];
+				but_temp.rnapoin = other->ptr;
+				ui_apply_but_autokey(C, &but_temp);
+			}
+		}
+#endif
+
 		/* popup menu memory */
 		if (block->flag & UI_BLOCK_POPUP_MEMORY)
 			ui_popup_menu_memory_set(block, but);
@@ -7263,6 +8009,10 @@ static void button_activate_exit(bContext *C, uiBut *but, uiHandleButtonData *da
 		MEM_freeN(data->str);
 	if (data->origstr)
 		MEM_freeN(data->origstr);
+
+#ifdef USE_ALLSELECT
+	ui_selectcontext_end(but, &data->select_others);
+#endif
 
 	/* redraw (data is but->active!) */
 	ED_region_tag_redraw(data->region);
@@ -7356,22 +8106,30 @@ uiBut *UI_context_active_but_get(const struct bContext *C)
 	return ui_context_button_active(C, NULL);
 }
 
-/* helper function for insert keyframe, reset to default, etc operators */
-void UI_context_active_but_prop_get(const bContext *C, struct PointerRNA *ptr, struct PropertyRNA **prop, int *index)
+/**
+ * Version of #UI_context_active_but_get that also returns RNA property info.
+ * Helper function for insert keyframe, reset to default, etc operators.
+ *
+ * \return active button, NULL if none found or if it doesn't contain valid RNA data.
+ */
+uiBut *UI_context_active_but_prop_get(
+        const bContext *C,
+        struct PointerRNA *r_ptr, struct PropertyRNA **r_prop, int *r_index)
 {
 	uiBut *activebut = ui_context_rna_button_active(C);
 
-	memset(ptr, 0, sizeof(*ptr));
-
 	if (activebut && activebut->rnapoin.data) {
-		*ptr = activebut->rnapoin;
-		*prop = activebut->rnaprop;
-		*index = activebut->rnaindex;
+		*r_ptr = activebut->rnapoin;
+		*r_prop = activebut->rnaprop;
+		*r_index = activebut->rnaindex;
 	}
 	else {
-		*prop = NULL;
-		*index = 0;
+		memset(r_ptr, 0, sizeof(*r_ptr));
+		*r_prop = NULL;
+		*r_index = 0;
 	}
+
+	return activebut;
 }
 
 void UI_context_active_but_prop_handle(bContext *C)
@@ -7470,7 +8228,7 @@ void UI_context_update_anim_flag(const bContext *C)
 
 /************** handle activating a button *************/
 
-static uiBut *uit_but_find_open_event(ARegion *ar, const wmEvent *event)
+static uiBut *ui_but_find_open_event(ARegion *ar, const wmEvent *event)
 {
 	uiBlock *block;
 	uiBut *but;
@@ -7490,18 +8248,16 @@ static int ui_handle_button_over(bContext *C, const wmEvent *event, ARegion *ar)
 	if (event->type == MOUSEMOVE) {
 		but = ui_but_find_mouse_over(ar, event);
 		if (but) {
-			if (event->alt) {
-				/* display tooltips if holding alt on mouseover when tooltips are off in prefs */
-				but->flag |= UI_BUT_TIP_FORCE;
-			}
-			else {
-				but->flag &= ~UI_BUT_TIP_FORCE;
-			}
 			button_activate_init(C, ar, but, BUTTON_ACTIVATE_OVER);
+
+			if (event->alt && but->active) {
+				/* display tooltips if holding alt on mouseover when tooltips are off in prefs */
+				but->active->tooltip_force = true;
+			}
 		}
 	}
 	else if (event->type == EVT_BUT_OPEN) {
-		but = uit_but_find_open_event(ar, event);
+		but = ui_but_find_open_event(ar, event);
 		if (but) {
 			button_activate_init(C, ar, but, BUTTON_ACTIVATE_OVER);
 			ui_do_button(C, but->block, but, event);
@@ -7605,7 +8361,8 @@ static int ui_handle_button_event(bContext *C, const wmEvent *event, uiBut *but)
 				uiBut *but_other = ui_but_find_mouse_over(ar, event);
 				bool exit = false;
 
-				if ((!ui_block_is_menu(block) || ui_block_is_pie_menu(but->block)) &&
+				/* always deactivate button for pie menus, else moving to blank space will leave activated */
+				if ((!ui_block_is_menu(block) || ui_block_is_pie_menu(block)) &&
 				    !ui_but_contains_point_px(ar, but, event->x, event->y))
 				{
 					exit = true;
@@ -7648,13 +8405,13 @@ static int ui_handle_button_event(bContext *C, const wmEvent *event, uiBut *but)
 				retval = WM_UI_HANDLER_CONTINUE;
 				break;
 			}
-				/* XXX hardcoded keymap check... but anyway, while view changes, tooltips should be removed */
+			/* XXX hardcoded keymap check... but anyway, while view changes, tooltips should be removed */
 			case WHEELUPMOUSE:
 			case WHEELDOWNMOUSE:
 			case MIDDLEMOUSE:
 			case MOUSEPAN:
-				button_timers_tooltip_remove(C, but);
-				/* fall-through */
+				UI_but_tooltip_timer_remove(C, but);
+				ATTR_FALLTHROUGH;
 			default:
 				/* handle button type specific events */
 				retval = ui_do_button(C, block, but, event);
@@ -7670,7 +8427,6 @@ static int ui_handle_button_event(bContext *C, const wmEvent *event, uiBut *but)
 
 			case MOUSEMOVE:
 				if (ELEM(but->type, UI_BTYPE_LINK, UI_BTYPE_INLINK)) {
-					ARegion *ar = data->region;
 					but->flag |= UI_SELECT;
 					ui_do_button(C, block, but, event);
 					ED_region_tag_redraw(ar);
@@ -7778,21 +8534,16 @@ static int ui_handle_button_event(bContext *C, const wmEvent *event, uiBut *but)
 	return retval;
 }
 
-static int ui_handle_list_event(bContext *C, const wmEvent *event, ARegion *ar)
+static int ui_handle_list_event(bContext *C, const wmEvent *event, ARegion *ar, uiBut *listbox)
 {
-	uiBut *but;
 	uiList *ui_list;
 	uiListDyn *dyn_data;
 	int retval = WM_UI_HANDLER_CONTINUE;
 	int type = event->type, val = event->val;
+	bool redraw = false;
 	int mx, my;
 
-	but = ui_list_find_mouse_over(ar, event->x, event->y);
-	if (!but) {
-		return retval;
-	}
-
-	ui_list = but->custom_data;
+	ui_list = listbox->custom_data;
 	if (!ui_list || !ui_list->dyn_data) {
 		return retval;
 	}
@@ -7800,7 +8551,7 @@ static int ui_handle_list_event(bContext *C, const wmEvent *event, ARegion *ar)
 
 	mx = event->x;
 	my = event->y;
-	ui_window_to_block(ar, but->block, &mx, &my);
+	ui_window_to_block(ar, listbox->block, &mx, &my);
 
 	/* convert pan to scrollwheel */
 	if (type == MOUSEPAN) {
@@ -7813,10 +8564,10 @@ static int ui_handle_list_event(bContext *C, const wmEvent *event, ARegion *ar)
 	}
 
 	if (val == KM_PRESS) {
-		if (ELEM(type, UPARROWKEY, DOWNARROWKEY) ||
-		    ((ELEM(type, WHEELUPMOUSE, WHEELDOWNMOUSE) && event->alt)))
+		if ((ELEM(type, UPARROWKEY, DOWNARROWKEY) && !IS_EVENT_MOD(event, shift, ctrl, alt, oskey)) ||
+		    ((ELEM(type, WHEELUPMOUSE, WHEELDOWNMOUSE) && event->ctrl && !IS_EVENT_MOD(event, shift, alt, oskey))))
 		{
-			const int value_orig = RNA_property_int_get(&but->rnapoin, but->rnaprop);
+			const int value_orig = RNA_property_int_get(&listbox->rnapoin, listbox->rnaprop);
 			int value, min, max, inc;
 
 			/* activate up/down the list */
@@ -7869,17 +8620,17 @@ static int ui_handle_list_event(bContext *C, const wmEvent *event, ARegion *ar)
 
 			CLAMP(value, 0, dyn_data->items_len - 1);
 
-			RNA_property_int_range(&but->rnapoin, but->rnaprop, &min, &max);
+			RNA_property_int_range(&listbox->rnapoin, listbox->rnaprop, &min, &max);
 			CLAMP(value, min, max);
 
 			if (value != value_orig) {
-				RNA_property_int_set(&but->rnapoin, but->rnaprop, value);
-				RNA_property_update(C, &but->rnapoin, but->rnaprop);
+				RNA_property_int_set(&listbox->rnapoin, listbox->rnaprop, value);
+				RNA_property_update(C, &listbox->rnapoin, listbox->rnaprop);
 
-				ui_apply_but_undo(but);
+				ui_apply_but_undo(listbox);
 
 				ui_list->flag |= UILST_SCROLL_TO_ACTIVE_ITEM;
-				ED_region_tag_redraw(ar);
+				redraw = true;
 			}
 			retval = WM_UI_HANDLER_BREAK;
 		}
@@ -7891,8 +8642,8 @@ static int ui_handle_list_event(bContext *C, const wmEvent *event, ARegion *ar)
 			ui_list->list_grip += (type == WHEELUPMOUSE) ? -1 : 1;
 
 			ui_list->flag |= UILST_SCROLL_TO_ACTIVE_ITEM;
-			ED_region_tag_redraw(ar);
 
+			redraw = true;
 			retval = WM_UI_HANDLER_BREAK;
 		}
 		else if (ELEM(type, WHEELUPMOUSE, WHEELDOWNMOUSE)) {
@@ -7900,10 +8651,19 @@ static int ui_handle_list_event(bContext *C, const wmEvent *event, ARegion *ar)
 				/* list template will clamp */
 				ui_list->list_scroll += (type == WHEELUPMOUSE) ? -1 : 1;
 
-				ED_region_tag_redraw(ar);
-
+				redraw = true;
 				retval = WM_UI_HANDLER_BREAK;
 			}
+		}
+	}
+
+	if (redraw) {
+		if (listbox->block->flag & UI_BLOCK_POPUP) {
+			/* popups need special refreshing */
+			ED_region_tag_refresh_ui(ar);
+		}
+		else {
+			ED_region_tag_redraw(ar);
 		}
 	}
 
@@ -7964,13 +8724,14 @@ static void ui_handle_button_return_submenu(bContext *C, const wmEvent *event, u
 
 /* ************************* menu handling *******************************/
 
-/* function used to prevent loosing the open menu when using nested pulldowns,
+/**
+ * Function used to prevent loosing the open menu when using nested pulldowns,
  * when moving mouse towards the pulldown menu over other buttons that could
  * steal the highlight from the current button, only checks:
  *
  * - while mouse moves in triangular area defined old mouse position and
- *   left/right side of new menu
- * - only for 1 second
+ *   left/right side of new menu.
+ * - only for 1 second.
  */
 
 static void ui_mouse_motion_towards_init_ex(uiPopupBlockHandle *menu, const int xy[2], const bool force)
@@ -7999,8 +8760,9 @@ static void ui_mouse_motion_towards_reinit(uiPopupBlockHandle *menu, const int x
 	ui_mouse_motion_towards_init_ex(menu, xy, true);
 }
 
-static bool ui_mouse_motion_towards_check(uiBlock *block, uiPopupBlockHandle *menu, const int xy[2],
-                                          const bool use_wiggle_room)
+static bool ui_mouse_motion_towards_check(
+        uiBlock *block, uiPopupBlockHandle *menu, const int xy[2],
+        const bool use_wiggle_room)
 {
 	float p1[2], p2[2], p3[2], p4[2];
 	float oldp[2] = {menu->towards_xy[0], menu->towards_xy[1]};
@@ -8061,8 +8823,7 @@ static bool ui_mouse_motion_towards_check(uiBlock *block, uiPopupBlockHandle *me
 		float delta[2];
 
 		sub_v2_v2v2(delta, oldp, cent);
-		normalize_v2(delta);
-		mul_v2_fl(delta, MENU_TOWARDS_WIGGLE_ROOM);
+		normalize_v2_length(delta, MENU_TOWARDS_WIGGLE_ROOM);
 		add_v2_v2(oldp, delta);
 	}
 
@@ -8188,8 +8949,9 @@ static int ui_menu_scroll(ARegion *ar, uiBlock *block, int my, uiBut *to_bt)
  *
  * Without this keyboard navigation from menu's wont work.
  */
-static bool ui_menu_pass_event_to_parent_if_nonactive(uiPopupBlockHandle *menu, const uiBut *but,
-                                                      const int level, const int retval)
+static bool ui_menu_pass_event_to_parent_if_nonactive(
+        uiPopupBlockHandle *menu, const uiBut *but,
+        const int level, const int retval)
 {
 	if ((level != 0) && (but == NULL)) {
 		menu->menuretval = UI_RETURN_OUT | UI_RETURN_OUT_PARENT;
@@ -8443,23 +9205,23 @@ static int ui_handle_menu_event(
 					break;
 
 				case ONEKEY:    case PAD1:
-					act = 1;
+					act = 1; ATTR_FALLTHROUGH;
 				case TWOKEY:    case PAD2:
-					if (act == 0) act = 2;
+					if (act == 0) act = 2; ATTR_FALLTHROUGH;
 				case THREEKEY:  case PAD3:
-					if (act == 0) act = 3;
+					if (act == 0) act = 3; ATTR_FALLTHROUGH;
 				case FOURKEY:   case PAD4:
-					if (act == 0) act = 4;
+					if (act == 0) act = 4; ATTR_FALLTHROUGH;
 				case FIVEKEY:   case PAD5:
-					if (act == 0) act = 5;
+					if (act == 0) act = 5; ATTR_FALLTHROUGH;
 				case SIXKEY:    case PAD6:
-					if (act == 0) act = 6;
+					if (act == 0) act = 6; ATTR_FALLTHROUGH;
 				case SEVENKEY:  case PAD7:
-					if (act == 0) act = 7;
+					if (act == 0) act = 7; ATTR_FALLTHROUGH;
 				case EIGHTKEY:  case PAD8:
-					if (act == 0) act = 8;
+					if (act == 0) act = 8; ATTR_FALLTHROUGH;
 				case NINEKEY:   case PAD9:
-					if (act == 0) act = 9;
+					if (act == 0) act = 9; ATTR_FALLTHROUGH;
 				case ZEROKEY:   case PAD0:
 					if (act == 0) act = 10;
 
@@ -8559,7 +9321,7 @@ static int ui_handle_menu_event(
 									ui_handle_button_activate(C, ar, but, BUTTON_ACTIVATE);
 								}
 								else {
-									printf("%s: error, but->menu_key type: %d\n", __func__, but->type);
+									printf("%s: error, but->menu_key type: %u\n", __func__, but->type);
 								}
 
 								break;
@@ -8628,7 +9390,7 @@ static int ui_handle_menu_event(
 			{
 				if (!but || !ui_but_contains_point_px(ar, but, event->x, event->y)) {
 					if (but) {
-						button_timers_tooltip_remove(C, but);
+						UI_but_tooltip_timer_remove(C, but);
 					}
 
 					menu->is_grab = true;
@@ -8707,6 +9469,9 @@ static int ui_handle_menu_return_submenu(bContext *C, const wmEvent *event, uiPo
 	block = ar->uiblocks.first;
 
 	but = ui_but_find_active_in_region(ar);
+
+	BLI_assert(but);
+
 	data = but->active;
 	submenu = data->menu;
 
@@ -8843,6 +9608,9 @@ static int ui_pie_handler(bContext *C, const wmEvent *event, uiPopupBlockHandle 
 
 	is_click_style = (block->pie_data.flags & UI_PIE_CLICK_STYLE);
 
+	/* if there's an active modal button, don't check events or outside, except for search menu */
+	but = ui_but_find_active_in_region(ar);
+
 	if (menu->scrolltimer == NULL) {
 		menu->scrolltimer =
 		    WM_event_add_timer(CTX_wm_manager(C), CTX_wm_window(C), TIMER, PIE_MENU_INTERVAL);
@@ -8858,210 +9626,214 @@ static int ui_pie_handler(bContext *C, const wmEvent *event, uiPopupBlockHandle 
 
 	dist = ui_block_calc_pie_segment(block, event_xy);
 
-	if (event->type == TIMER) {
-		if (event->customdata == menu->scrolltimer) {
-			/* deactivate initial direction after a while */
-			if (duration > 0.01 * U.pie_initial_timeout) {
-				block->pie_data.flags &= ~UI_PIE_INITIAL_DIRECTION;
-			}
-
-			/* handle animation */
-			if (!(block->pie_data.flags & UI_PIE_ANIMATION_FINISHED)) {
-				uiBut *but;
-				double final_time = 0.01 * U.pie_animation_timeout;
-				float fac = duration / final_time;
-				float pie_radius = U.pie_menu_radius * UI_DPI_FAC;
-
-				if (fac > 1.0f) {
-					fac = 1.0f;
-					block->pie_data.flags |= UI_PIE_ANIMATION_FINISHED;
-				}
-
-				for (but = block->buttons.first; but; but = but->next) {
-					if (but->pie_dir != UI_RADIAL_NONE) {
-						float vec[2];
-						float center[2];
-			
-						ui_but_pie_dir(but->pie_dir, vec);
-
-						center[0] = (vec[0] > 0.01f) ? 0.5f : ((vec[0] < -0.01f) ? -0.5f : 0.0f);
-						center[1] = (vec[1] > 0.99f) ? 0.5f : ((vec[1] < -0.99f) ? -0.5f : 0.0f);
-
-						center[0] *= BLI_rctf_size_x(&but->rect);
-						center[1] *= BLI_rctf_size_y(&but->rect);
-						
-						mul_v2_fl(vec, pie_radius);
-						add_v2_v2(vec, center);
-						mul_v2_fl(vec, fac);
-						add_v2_v2(vec, block->pie_data.pie_center_spawned);
-						            
-						BLI_rctf_recenter(&but->rect, vec[0], vec[1]);
-					}
-				}
-				block->pie_data.alphafac = fac;
-
-				ED_region_tag_redraw(ar);
-			}
-		}
-
-		/* check pie velociy here if gesture has ended */
-		if (block->pie_data.flags & UI_PIE_GESTURE_END_WAIT) {
-			float len_sq = 10;
-
-			/* use a time threshold to ensure we leave time to the mouse to move */
-			if (duration - block->pie_data.duration_gesture > 0.02) {
-				len_sq = len_squared_v2v2(event_xy, block->pie_data.last_pos);
-				copy_v2_v2(block->pie_data.last_pos, event_xy);
-				block->pie_data.duration_gesture = duration;
-			}
-
-			if (len_sq < 1.0f) {
-				uiBut *but = ui_but_find_active_in_region(menu->region);
-
-				if (but) {
-					return ui_but_pie_menu_apply(C, menu, but, true);
-				}
-			}
-		}
-	}
-
-	if (event->type == block->pie_data.event && !is_click_style) {
-		if (event->val != KM_RELEASE) {
-			ui_handle_menu_button(C, event, menu);
-
-			if (len_squared_v2v2(event_xy, block->pie_data.pie_center_init) > PIE_CLICK_THRESHOLD_SQ) {
-				block->pie_data.flags |= UI_PIE_DRAG_STYLE;
-			}
-			/* why redraw here? It's simple, we are getting many double click events here.
-			 * Those operate like mouse move events almost */
-			ED_region_tag_redraw(ar);
-		}
-		else {
-			/* distance from initial point */
-			if (!(block->pie_data.flags & UI_PIE_DRAG_STYLE)) {
-				block->pie_data.flags |= UI_PIE_CLICK_STYLE;
-			}
-			else {
-				uiBut *but = ui_but_find_active_in_region(menu->region);
-
-				if (but && (U.pie_menu_confirm > 0) &&
-				    (dist >= U.pie_menu_threshold + U.pie_menu_confirm))
-				{
-					if (but)
-						return ui_but_pie_menu_apply(C, menu, but, true);
-				}
-
-				retval = ui_but_pie_menu_apply(C, menu, but, true);
-
-			}
-		}
+	if (but && button_modal_state(but->active->state)) {
+		retval = ui_handle_menu_button(C, event, menu);
 	}
 	else {
-		/* direction from numpad */
-		RadialDirection num_dir = UI_RADIAL_NONE;
-
-		switch (event->type) {
-			case MOUSEMOVE:
-				if (!is_click_style) {
-					float len_sq = len_squared_v2v2(event_xy, block->pie_data.pie_center_init);
-
-					/* here we use the initial position explicitly */
-					if (len_sq > PIE_CLICK_THRESHOLD_SQ) {
-						block->pie_data.flags |= UI_PIE_DRAG_STYLE;
-					}
-
-					/* here instead, we use the offset location to account for the initial direction timeout */
-					if ((U.pie_menu_confirm > 0) &&
-					    (dist >= U.pie_menu_threshold + U.pie_menu_confirm))
-					{
-						block->pie_data.flags |= UI_PIE_GESTURE_END_WAIT;
-						copy_v2_v2(block->pie_data.last_pos, event_xy);
-						block->pie_data.duration_gesture = duration;
-					}
+		if (event->type == TIMER) {
+			if (event->customdata == menu->scrolltimer) {
+				/* deactivate initial direction after a while */
+				if (duration > 0.01 * U.pie_initial_timeout) {
+					block->pie_data.flags &= ~UI_PIE_INITIAL_DIRECTION;
 				}
 
-				ui_handle_menu_button(C, event, menu);
-				
-				/* mouse move should always refresh the area for pie menus */
-				ED_region_tag_redraw(ar);
-				break;
+				/* handle animation */
+				if (!(block->pie_data.flags & UI_PIE_ANIMATION_FINISHED)) {
+					double final_time = 0.01 * U.pie_animation_timeout;
+					float fac = duration / final_time;
+					float pie_radius = U.pie_menu_radius * UI_DPI_FAC;
 
-			case LEFTMOUSE:
-				if (is_click_style) {
-					if (block->pie_data.flags & UI_PIE_INVALID_DIR) {
-						menu->menuretval = UI_RETURN_CANCEL;
+					if (fac > 1.0f) {
+						fac = 1.0f;
+						block->pie_data.flags |= UI_PIE_ANIMATION_FINISHED;
 					}
-					else {
-						retval = ui_handle_menu_button(C, event, menu);
-					}
-				}
-				break;
 
-			case ESCKEY:
-			case RIGHTMOUSE:
-				menu->menuretval = UI_RETURN_CANCEL;
-				break;
-
-			case AKEY:
-			case BKEY:
-			case CKEY:
-			case DKEY:
-			case EKEY:
-			case FKEY:
-			case GKEY:
-			case HKEY:
-			case IKEY:
-			case JKEY:
-			case KKEY:
-			case LKEY:
-			case MKEY:
-			case NKEY:
-			case OKEY:
-			case PKEY:
-			case QKEY:
-			case RKEY:
-			case SKEY:
-			case TKEY:
-			case UKEY:
-			case VKEY:
-			case WKEY:
-			case XKEY:
-			case YKEY:
-			case ZKEY:
-			{
-				if ((event->val  == KM_PRESS || event->val == KM_DBL_CLICK) &&
-				    !IS_EVENT_MOD(event, shift, ctrl, oskey))
-				{
 					for (but = block->buttons.first; but; but = but->next) {
-						if (but->menu_key == event->type) {
-							ui_but_pie_button_activate(C, but, menu);
+						if (but->pie_dir != UI_RADIAL_NONE) {
+							float vec[2];
+							float center[2];
+
+							ui_but_pie_dir(but->pie_dir, vec);
+
+							center[0] = (vec[0] > 0.01f) ? 0.5f : ((vec[0] < -0.01f) ? -0.5f : 0.0f);
+							center[1] = (vec[1] > 0.99f) ? 0.5f : ((vec[1] < -0.99f) ? -0.5f : 0.0f);
+
+							center[0] *= BLI_rctf_size_x(&but->rect);
+							center[1] *= BLI_rctf_size_y(&but->rect);
+
+							mul_v2_fl(vec, pie_radius);
+							add_v2_v2(vec, center);
+							mul_v2_fl(vec, fac);
+							add_v2_v2(vec, block->pie_data.pie_center_spawned);
+
+							BLI_rctf_recenter(&but->rect, vec[0], vec[1]);
 						}
 					}
+					block->pie_data.alphafac = fac;
+
+					ED_region_tag_redraw(ar);
 				}
-				break;
 			}
+
+			/* check pie velociy here if gesture has ended */
+			if (block->pie_data.flags & UI_PIE_GESTURE_END_WAIT) {
+				float len_sq = 10;
+
+				/* use a time threshold to ensure we leave time to the mouse to move */
+				if (duration - block->pie_data.duration_gesture > 0.02) {
+					len_sq = len_squared_v2v2(event_xy, block->pie_data.last_pos);
+					copy_v2_v2(block->pie_data.last_pos, event_xy);
+					block->pie_data.duration_gesture = duration;
+				}
+
+				if (len_sq < 1.0f) {
+					but = ui_but_find_active_in_region(menu->region);
+
+					if (but) {
+						return ui_but_pie_menu_apply(C, menu, but, true);
+					}
+				}
+			}
+		}
+
+		if (event->type == block->pie_data.event && !is_click_style) {
+			if (event->val != KM_RELEASE) {
+				ui_handle_menu_button(C, event, menu);
+
+				if (len_squared_v2v2(event_xy, block->pie_data.pie_center_init) > PIE_CLICK_THRESHOLD_SQ) {
+					block->pie_data.flags |= UI_PIE_DRAG_STYLE;
+				}
+				/* why redraw here? It's simple, we are getting many double click events here.
+				 * Those operate like mouse move events almost */
+				ED_region_tag_redraw(ar);
+			}
+			else {
+				/* distance from initial point */
+				if (!(block->pie_data.flags & UI_PIE_DRAG_STYLE)) {
+					block->pie_data.flags |= UI_PIE_CLICK_STYLE;
+				}
+				else {
+					but = ui_but_find_active_in_region(menu->region);
+
+					if (but && (U.pie_menu_confirm > 0) &&
+					    (dist >= U.pie_menu_threshold + U.pie_menu_confirm))
+					{
+						if (but)
+							return ui_but_pie_menu_apply(C, menu, but, true);
+					}
+
+					retval = ui_but_pie_menu_apply(C, menu, but, true);
+
+				}
+			}
+		}
+		else {
+			/* direction from numpad */
+			RadialDirection num_dir = UI_RADIAL_NONE;
+
+			switch (event->type) {
+				case MOUSEMOVE:
+					if (!is_click_style) {
+						float len_sq = len_squared_v2v2(event_xy, block->pie_data.pie_center_init);
+
+						/* here we use the initial position explicitly */
+						if (len_sq > PIE_CLICK_THRESHOLD_SQ) {
+							block->pie_data.flags |= UI_PIE_DRAG_STYLE;
+						}
+
+						/* here instead, we use the offset location to account for the initial direction timeout */
+						if ((U.pie_menu_confirm > 0) &&
+						    (dist >= U.pie_menu_threshold + U.pie_menu_confirm))
+						{
+							block->pie_data.flags |= UI_PIE_GESTURE_END_WAIT;
+							copy_v2_v2(block->pie_data.last_pos, event_xy);
+							block->pie_data.duration_gesture = duration;
+						}
+					}
+
+					ui_handle_menu_button(C, event, menu);
+
+					/* mouse move should always refresh the area for pie menus */
+					ED_region_tag_redraw(ar);
+					break;
+
+				case LEFTMOUSE:
+					if (is_click_style) {
+						if (block->pie_data.flags & UI_PIE_INVALID_DIR) {
+							menu->menuretval = UI_RETURN_CANCEL;
+						}
+						else {
+							retval = ui_handle_menu_button(C, event, menu);
+						}
+					}
+					break;
+
+				case ESCKEY:
+				case RIGHTMOUSE:
+					menu->menuretval = UI_RETURN_CANCEL;
+					break;
+
+				case AKEY:
+				case BKEY:
+				case CKEY:
+				case DKEY:
+				case EKEY:
+				case FKEY:
+				case GKEY:
+				case HKEY:
+				case IKEY:
+				case JKEY:
+				case KKEY:
+				case LKEY:
+				case MKEY:
+				case NKEY:
+				case OKEY:
+				case PKEY:
+				case QKEY:
+				case RKEY:
+				case SKEY:
+				case TKEY:
+				case UKEY:
+				case VKEY:
+				case WKEY:
+				case XKEY:
+				case YKEY:
+				case ZKEY:
+				{
+					if ((event->val  == KM_PRESS || event->val == KM_DBL_CLICK) &&
+					    !IS_EVENT_MOD(event, shift, ctrl, oskey))
+					{
+						for (but = block->buttons.first; but; but = but->next) {
+							if (but->menu_key == event->type) {
+								ui_but_pie_button_activate(C, but, menu);
+							}
+						}
+					}
+					break;
+				}
 
 #define CASE_NUM_TO_DIR(n, d) \
 			case (ZEROKEY + n): case (PAD0 + n): \
 				{ if (num_dir == UI_RADIAL_NONE) num_dir = d; } (void)0
 
-			CASE_NUM_TO_DIR(1, UI_RADIAL_SW);
-			CASE_NUM_TO_DIR(2, UI_RADIAL_S);
-			CASE_NUM_TO_DIR(3, UI_RADIAL_SE);
-			CASE_NUM_TO_DIR(4, UI_RADIAL_W);
-			CASE_NUM_TO_DIR(6, UI_RADIAL_E);
-			CASE_NUM_TO_DIR(7, UI_RADIAL_NW);
-			CASE_NUM_TO_DIR(8, UI_RADIAL_N);
-			CASE_NUM_TO_DIR(9, UI_RADIAL_NE);
-			{
-				but = ui_block_pie_dir_activate(block, event, num_dir);
-				retval = ui_but_pie_button_activate(C, but, menu);
-				break;
-			}
+				CASE_NUM_TO_DIR(1, UI_RADIAL_SW); ATTR_FALLTHROUGH;
+				CASE_NUM_TO_DIR(2, UI_RADIAL_S);  ATTR_FALLTHROUGH;
+				CASE_NUM_TO_DIR(3, UI_RADIAL_SE); ATTR_FALLTHROUGH;
+				CASE_NUM_TO_DIR(4, UI_RADIAL_W);  ATTR_FALLTHROUGH;
+				CASE_NUM_TO_DIR(6, UI_RADIAL_E);  ATTR_FALLTHROUGH;
+				CASE_NUM_TO_DIR(7, UI_RADIAL_NW); ATTR_FALLTHROUGH;
+				CASE_NUM_TO_DIR(8, UI_RADIAL_N);  ATTR_FALLTHROUGH;
+				CASE_NUM_TO_DIR(9, UI_RADIAL_NE);
+				{
+					but = ui_block_pie_dir_activate(block, event, num_dir);
+					retval = ui_but_pie_button_activate(C, but, menu);
+					break;
+				}
 #undef CASE_NUM_TO_DIR
-			default:
-				retval = ui_handle_menu_button(C, event, menu);
-				break;
+				default:
+					retval = ui_handle_menu_button(C, event, menu);
+					break;
+			}
 		}
 	}
 
@@ -9106,7 +9878,7 @@ static int ui_handle_menus_recursive(
 
 	/* now handle events for our own menu */
 	if (retval == WM_UI_HANDLER_CONTINUE || event->type == TIMER) {
-		const bool do_but_search = (but && ELEM(but->type, UI_BTYPE_SEARCH_MENU, UI_BTYPE_SEARCH_MENU_UNLINK));
+		const bool do_but_search = (but && (but->type == UI_BTYPE_SEARCH_MENU));
 		if (submenu && submenu->menuretval) {
 			const bool do_ret_out_parent = (submenu->menuretval & UI_RETURN_OUT_PARENT) != 0;
 			retval = ui_handle_menu_return_submenu(C, event, menu);
@@ -9135,11 +9907,28 @@ static int ui_handle_menus_recursive(
 		}
 		else {
 			uiBlock *block = menu->region->uiblocks.first;
+			uiBut *listbox = ui_list_find_mouse_over(menu->region, event);
 
-			if (block->flag & UI_BLOCK_RADIAL)
+			if (block->flag & UI_BLOCK_RADIAL) {
 				retval = ui_pie_handler(C, event, menu);
-			else if (event->type == LEFTMOUSE || event->val != KM_DBL_CLICK)
-				retval = ui_handle_menu_event(C, event, menu, level, is_parent_inside, is_parent_menu, is_floating);
+			}
+			else if (event->type == LEFTMOUSE || event->val != KM_DBL_CLICK) {
+				bool handled = false;
+
+				if (listbox) {
+					int retval_test = ui_handle_list_event(C, event, menu->region, listbox);
+					if (retval_test != WM_UI_HANDLER_CONTINUE) {
+						retval = retval_test;
+						handled = true;
+					}
+				}
+
+				if (handled == false) {
+					retval = ui_handle_menu_event(
+					        C, event, menu, level,
+					        is_parent_inside, is_parent_menu, is_floating);
+				}
+			}
 		}
 	}
 
@@ -9150,12 +9939,23 @@ static int ui_handle_menus_recursive(
 	return retval;
 }
 
+/**
+ * Allow setting menu return value from externals. E.g. WM might need to do this for exiting files correctly.
+ */
+void UI_popup_menu_retval_set(const uiBlock *block, const int retval, const bool enable)
+{
+	uiPopupBlockHandle *menu = block->handle;
+	if (menu) {
+		menu->menuretval = enable ? (menu->menuretval | retval) : (menu->menuretval & retval);
+	}
+}
+
 /* *************** UI event handlers **************** */
 
 static int ui_region_handler(bContext *C, const wmEvent *event, void *UNUSED(userdata))
 {
 	ARegion *ar;
-	uiBut *but;
+	uiBut *but, *listbox;
 	int retval;
 
 	/* here we handle buttons at the region level, non-modal */
@@ -9168,11 +9968,20 @@ static int ui_region_handler(bContext *C, const wmEvent *event, void *UNUSED(use
 
 	/* either handle events for already activated button or try to activate */
 	but = ui_but_find_active_in_region(ar);
+	listbox = ui_list_find_mouse_over(ar, event);
 
-	retval = ui_handler_panel_region(C, event, ar);
+	retval = ui_handler_panel_region(C, event, ar, listbox ? listbox : but);
 
-	if (retval == WM_UI_HANDLER_CONTINUE)
-		retval = ui_handle_list_event(C, event, ar);
+	if (retval == WM_UI_HANDLER_CONTINUE && listbox) {
+		retval = ui_handle_list_event(C, event, ar, listbox);
+
+		/* interactions with the listbox should disable tips */
+		if (retval == WM_UI_HANDLER_BREAK) {
+			if (but) {
+				UI_but_tooltip_timer_remove(C, but);
+			}
+		}
+	}
 
 	if (retval == WM_UI_HANDLER_CONTINUE) {
 		if (but)
@@ -9233,12 +10042,11 @@ static int ui_handler_region_menu(bContext *C, const wmEvent *event, void *UNUSE
 
 		/* look for a popup menu containing the mouse */
 		for (ar_temp = screen->regionbase.first; ar_temp; ar_temp = ar_temp->next) {
-			rcti rect = ar_temp->winrct;
+			rcti winrct;
 
-			/* resize region rect to ignore shadow */
-			BLI_rcti_resize(&rect, (BLI_rcti_size_x(&ar_temp->winrct) - UI_ThemeMenuShadowWidth() * 2),
-			                (BLI_rcti_size_y(&ar_temp->winrct) - UI_ThemeMenuShadowWidth() * 2));
-			if (BLI_rcti_isect_pt_v(&rect, &event->x)) {
+			ui_region_winrct_get_no_margin(ar_temp, &winrct);
+
+			if (BLI_rcti_isect_pt_v(&winrct, &event->x)) {
 				BLI_assert(ar_temp->type->regionid == RGN_TYPE_TEMPORARY);
 
 				is_inside_menu = true;
@@ -9308,10 +10116,14 @@ static int ui_popup_handler(bContext *C, const wmEvent *event, void *userdata)
 	menu_region = CTX_wm_menu(C);
 	CTX_wm_menu_set(C, menu->region);
 
-	if (event->type == EVT_DROP) {
-		/* if we're handling drop event we'll want it to be handled by popup callee as well,
-		 * so it'll be possible to perform such operations as opening .blend files by dropping
-		 * them into blender even if there's opened popup like splash screen (sergey)
+	if (event->type == EVT_DROP || event->val == KM_DBL_CLICK) {
+		/* EVT_DROP:
+		 *   If we're handling drop event we'll want it to be handled by popup callee as well,
+		 *   so it'll be possible to perform such operations as opening .blend files by dropping
+		 *   them into blender, even if there's opened popup like splash screen (sergey).
+		 * KM_DBL_CLICK:
+		 *   Continue in case of double click so wm_handlers_do calls handler again with KM_PRESS
+		 *   event. This is needed to ensure correct button handling for fast clicking (T47532).
 		 */
 
 		retval = WM_UI_HANDLER_CONTINUE;
@@ -9380,6 +10192,14 @@ static void ui_popup_handler_remove(bContext *C, void *userdata)
 {
 	uiPopupBlockHandle *menu = userdata;
 
+	/* More correct would be to expect UI_RETURN_CANCEL here, but not wanting to
+	 * cancel when removing handlers because of file exit is a rare exception.
+	 * So instead of setting cancel flag for all menus before removing handlers,
+	 * just explicitly flag menu with UI_RETURN_OK to avoid cancelling it. */
+	if ((menu->menuretval & UI_RETURN_OK) == 0 && menu->cancel_func) {
+		menu->cancel_func(C, menu->popup_arg);
+	}
+
 	/* free menu block if window is closed for some reason */
 	ui_popup_block_free(C, menu);
 
@@ -9390,16 +10210,35 @@ static void ui_popup_handler_remove(bContext *C, void *userdata)
 void UI_region_handlers_add(ListBase *handlers)
 {
 	WM_event_remove_ui_handler(handlers, ui_region_handler, ui_region_handler_remove, NULL, false);
-	WM_event_add_ui_handler(NULL, handlers, ui_region_handler, ui_region_handler_remove, NULL, false);
+	WM_event_add_ui_handler(NULL, handlers, ui_region_handler, ui_region_handler_remove, NULL, 0);
 }
 
-void UI_popup_handlers_add(bContext *C, ListBase *handlers, uiPopupBlockHandle *popup, const bool accept_dbl_click)
+void UI_popup_handlers_add(bContext *C, ListBase *handlers, uiPopupBlockHandle *popup, const char flag)
 {
-	WM_event_add_ui_handler(C, handlers, ui_popup_handler, ui_popup_handler_remove, popup, accept_dbl_click);
+	WM_event_add_ui_handler(C, handlers, ui_popup_handler, ui_popup_handler_remove, popup, flag);
 }
 
 void UI_popup_handlers_remove(ListBase *handlers, uiPopupBlockHandle *popup)
 {
+	wmEventHandler *handler;
+
+	for (handler = handlers->first; handler; handler = handler->next) {
+		if (handler->ui_handle == ui_popup_handler &&
+		    handler->ui_remove == ui_popup_handler_remove &&
+		    handler->ui_userdata == popup)
+		{
+			/* tag refresh parent popup */
+			if (handler->next && 
+				handler->next->ui_handle == ui_popup_handler && 
+				handler->next->ui_remove == ui_popup_handler_remove) 
+			{
+				uiPopupBlockHandle *parent_popup = handler->next->ui_userdata;
+				ED_region_tag_refresh_ui(parent_popup->region);
+			}
+			break;
+		}
+	}
+
 	WM_event_remove_ui_handler(handlers, ui_popup_handler, ui_popup_handler_remove, popup, false);
 }
 
@@ -9408,8 +10247,9 @@ void UI_popup_handlers_remove_all(bContext *C, ListBase *handlers)
 	WM_event_free_ui_handler_all(C, handlers, ui_popup_handler, ui_popup_handler_remove);
 }
 
-bool UI_textbutton_activate_rna(const bContext *C, ARegion *ar,
-                                const void *rna_poin_data, const char *rna_prop_id)
+bool UI_textbutton_activate_rna(
+        const bContext *C, ARegion *ar,
+        const void *rna_poin_data, const char *rna_prop_id)
 {
 	uiBlock *block;
 	uiBut *but = NULL;

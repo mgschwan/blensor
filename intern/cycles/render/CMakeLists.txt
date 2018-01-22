@@ -1,12 +1,6 @@
 
 set(INC
-	.
-	../device
-	../kernel
-	../kernel/svm
-	../kernel/osl
-	../bvh
-	../util
+	..
 	../../glew-mx
 )
 
@@ -18,9 +12,9 @@ set(SRC
 	attribute.cpp
 	background.cpp
 	bake.cpp
-	blackbody.cpp
 	buffers.cpp
 	camera.cpp
+	constant_fold.cpp
 	film.cpp
 	graph.cpp
 	image.cpp
@@ -28,6 +22,7 @@ set(SRC
 	light.cpp
 	mesh.cpp
 	mesh_displace.cpp
+	mesh_subdivision.cpp
 	nodes.cpp
 	object.cpp
 	osl.cpp
@@ -36,7 +31,6 @@ set(SRC
 	scene.cpp
 	session.cpp
 	shader.cpp
-	sky_model.cpp
 	sobol.cpp
 	svm.cpp
 	tables.cpp
@@ -47,9 +41,9 @@ set(SRC_HEADERS
 	attribute.h
 	bake.h
 	background.h
-	blackbody.h
 	buffers.h
 	camera.h
+	constant_fold.h
 	film.h
 	graph.h
 	image.h
@@ -64,8 +58,6 @@ set(SRC_HEADERS
 	scene.h
 	session.h
 	shader.h
-	sky_model.h
-	sky_model_data.h
 	sobol.h
 	svm.h
 	tables.h

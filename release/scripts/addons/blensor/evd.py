@@ -54,6 +54,8 @@ frame_counter = 0
 WRITER_MODE_EVD = 1
 WRITER_MODE_PCL = 2
 WRITER_MODE_PGM = 3
+WRITER_MODE_NUMPY = 4
+
 
 class evd_file:
     filename = ""
@@ -64,6 +66,7 @@ class evd_file:
     def __init__(self, filename, width=0, height=0, max_depth=1.0):
         self.filename = filename
         self.buffer = []
+        self.extension = ""
         self.mode = WRITER_MODE_EVD
         self.output_labels = output_labels
         self.width = width
@@ -72,6 +75,14 @@ class evd_file:
           if self.filename[-4:] == ".pcd":
             self.mode = WRITER_MODE_PCL
             self.filename = self.filename[:-4]
+          elif self.filename[-6:] == ".numpy":
+            self.mode = WRITER_MODE_NUMPY
+            self.filename = self.filename[:-6]
+            self.extension = ".numpy"
+          elif self.filename[-9:] == ".numpy.gz":
+            self.mode = WRITER_MODE_NUMPY
+            self.filename = self.filename[:-9]
+            self.extension = ".numpy.gz"
           elif self.filename[-4:] == ".pgm":
             if width==0 or height==0:
               raise Exception("Width or Height not set")
@@ -83,7 +94,6 @@ class evd_file:
         except:
           pass
 
-
     def addEntry(self, timestamp=0.0, yaw=0.0, pitch=0.0, distance=0.0, 
                  distance_noise=0.0, x=0.0, y=0.0, z=0.0,
                  x_noise = 0.0, y_noise = 0.0, z_noise = 0.0, object_id=0, color=(1.0,1.0,1.0), idx=0):
@@ -92,13 +102,20 @@ class evd_file:
           if idx >=0 and idx < len(self.image):
             self.image[idx]=distance
             self.image_noisy[idx]=distance_noise
+        elif self.mode == WRITER_MODE_NUMPY:
+          #Add flattened row    
+          self.buffer.append([timestamp, yaw, pitch, distance,distance_noise,
+                       x,y,z,x_noise,y_noise,z_noise,object_id,int(255*color[0]),int(255*color[1]),int(255*color[2]),idx])
         else:
+          #Add row wit color as a 3-tuple
           self.buffer.append([timestamp, yaw, pitch, distance,distance_noise,
                        x,y,z,x_noise,y_noise,z_noise,object_id,(int(255*color[0]),int(255*color[1]),int(255*color[2])),idx])
 
     def writeEvdFile(self):
         if self.mode == WRITER_MODE_PCL:
           self.writePCLFile()
+        if self.mode == WRITER_MODE_NUMPY:
+              self.writeNUMPYFile()
         elif self.mode == WRITER_MODE_PGM:
           self.writePGMFile()
         else:
@@ -112,6 +129,8 @@ class evd_file:
     def appendEvdFile(self):
         if self.mode == WRITER_MODE_PCL:
           self.writePCLFile()
+        if self.mode == WRITER_MODE_NUMPY:
+              self.writeNUMPYFile()
         elif self.mode == WRITER_MODE_PGM:
           self.writePGMFile()
         else:
@@ -177,7 +196,29 @@ class evd_file:
         pcl_noisy.close()
       except Exception as e:
         traceback.print_exc()      
-        
+
+    def writeNUMPYFile(self):
+      global frame_counter    #Not nice to have it global but it needs to persist
+      
+      sparse_mode = True #Write only valid points
+      if self.width == 0 or self.height == 0:
+        width=len(self.buffer)
+        height = 1
+      else:
+        sparse_mode = False # Write all points
+        width = self.width
+        height = self.height
+      try:
+        import numpy as np
+        data = np.array(self.buffer)
+        if not sparse_mode:
+          tmp = np.zeros((width*height,data.shape[1]),dtype=np.float64)
+          tmp[np.int64(data[:,-1])] = data
+          data = tmp
+        np.savetxt("%s%05d%s"%(self.filename,frame_counter,self.extension), data)
+      except Exception as e:
+        traceback.print_exc()      
+
     def writePGMFile(self):
       global frame_counter    #Not nice to have it global but it needs to persist
       try:

@@ -20,15 +20,16 @@
 
 bl_info = {
     "name": "Web3D X3D/VRML2 format",
-    "author": "Campbell Barton, Bart",
-    "blender": (2, 73, 0),
+    "author": "Campbell Barton, Bart, Bastien Montagne, Seva Alekseyev",
+    "version": (1, 2, 0),
+    "blender": (2, 76, 0),
     "location": "File > Import-Export",
     "description": "Import-Export X3D, Import VRML2",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
-                "Scripts/Import-Export/Web3D",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Import-Export/Web3D",
     "support": 'OFFICIAL',
-    "category": "Import-Export"}
+    "category": "Import-Export",
+}
 
 if "bpy" in locals():
     import importlib
@@ -38,16 +39,25 @@ if "bpy" in locals():
         importlib.reload(export_x3d)
 
 import bpy
-from bpy.props import StringProperty, BoolProperty, EnumProperty, FloatProperty
-from bpy_extras.io_utils import (ImportHelper,
-                                 ExportHelper,
-                                 OrientationHelper,
-                                 axis_conversion,
-                                 path_reference_mode,
-                                 )
+from bpy.props import (
+        BoolProperty,
+        EnumProperty,
+        FloatProperty,
+        StringProperty,
+        )
+from bpy_extras.io_utils import (
+        ImportHelper,
+        ExportHelper,
+        orientation_helper_factory,
+        axis_conversion,
+        path_reference_mode,
+        )
 
 
-class ImportX3D(bpy.types.Operator, ImportHelper, OrientationHelper):
+IOX3DOrientationHelper = orientation_helper_factory("IOX3DOrientationHelper", axis_forward='Z', axis_up='Y')
+
+
+class ImportX3D(bpy.types.Operator, ImportHelper, IOX3DOrientationHelper):
     """Import an X3D or VRML2 file"""
     bl_idname = "import_scene.x3d"
     bl_label = "Import X3D/VRML2"
@@ -68,10 +78,10 @@ class ImportX3D(bpy.types.Operator, ImportHelper, OrientationHelper):
                                         ).to_4x4()
         keywords["global_matrix"] = global_matrix
 
-        return import_x3d.load(self, context, **keywords)
+        return import_x3d.load(context, **keywords)
 
 
-class ExportX3D(bpy.types.Operator, ExportHelper, OrientationHelper):
+class ExportX3D(bpy.types.Operator, ExportHelper, IOX3DOrientationHelper):
     """Export selection to Extensible 3D file (.x3d)"""
     bl_idname = "export_scene.x3d"
     bl_label = 'Export X3D'
@@ -146,7 +156,7 @@ class ExportX3D(bpy.types.Operator, ExportHelper, OrientationHelper):
                                         ).to_4x4() * Matrix.Scale(self.global_scale, 4)
         keywords["global_matrix"] = global_matrix
 
-        return export_x3d.save(self, context, **keywords)
+        return export_x3d.save(context, **keywords)
 
 
 def menu_func_import(self, context):

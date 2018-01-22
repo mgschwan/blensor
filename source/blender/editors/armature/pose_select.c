@@ -62,7 +62,7 @@
 
 #include "armature_intern.h"
 
-/* utility macros fro storing a temp int in the bone (selection flag) */
+/* utility macros for storing a temp int in the bone (selection flag) */
 #define PBONE_PREV_FLAG_GET(pchan) ((void)0, (GET_INT_FROM_POINTER((pchan)->temp)))
 #define PBONE_PREV_FLAG_SET(pchan, val) ((pchan)->temp = SET_INT_IN_POINTER(val))
 
@@ -132,8 +132,9 @@ void ED_pose_bone_select(Object *ob, bPoseChannel *pchan, bool select)
 
 /* called from editview.c, for mode-less pose selection */
 /* assumes scene obact and basact is still on old situation */
-int ED_do_pose_selectbuffer(Scene *scene, Base *base, unsigned int *buffer, short hits,
-                            bool extend, bool deselect, bool toggle, bool do_nearest)
+bool ED_do_pose_selectbuffer(
+        Scene *scene, Base *base, const unsigned int *buffer, short hits,
+        bool extend, bool deselect, bool toggle, bool do_nearest)
 {
 	Object *ob = base->object;
 	Bone *nearBone;
@@ -280,12 +281,9 @@ static int pose_select_connected_invoke(bContext *C, wmOperator *op, const wmEve
 	const bool extend = RNA_boolean_get(op->ptr, "extend");
 
 	view3d_operator_needs_opengl(C);
-	
-	if (extend)
-		bone = get_nearest_bone(C, 0, event->mval[0], event->mval[1]);
-	else
-		bone = get_nearest_bone(C, 1, event->mval[0], event->mval[1]);
-	
+
+	bone = get_nearest_bone(C, event->mval, !extend);
+
 	if (!bone)
 		return OPERATOR_CANCELLED;
 	
@@ -458,7 +456,7 @@ static int pose_select_constraint_target_exec(bContext *C, wmOperator *UNUSED(op
 	{
 		if (pchan->bone->flag & BONE_SELECTED) {
 			for (con = pchan->constraints.first; con; con = con->next) {
-				bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+				const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 				ListBase targets = {NULL, NULL};
 				bConstraintTarget *ct;
 				
@@ -821,7 +819,7 @@ static int pose_select_grouped_exec(bContext *C, wmOperator *op)
 			break;
 		
 		default:
-			printf("pose_select_grouped() - Unknown selection type %d\n", type);
+			printf("pose_select_grouped() - Unknown selection type %u\n", type);
 			break;
 	}
 	

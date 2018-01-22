@@ -47,8 +47,8 @@
  * contains an Amiga-format file).
  */
 
-#define IB_MIPMAP_LEVELS	20
-#define IB_FILENAME_SIZE	1024
+#define IMB_MIPMAP_LEVELS	20
+#define IMB_FILENAME_SIZE	1024
 
 typedef struct DDSData {
 	unsigned int fourcc; /* DDS fourcc info */
@@ -65,6 +65,80 @@ typedef struct DDSData {
  * Also; add new variables to the end to save pain!
  *
  */
+
+/* ibuf->ftype flag, main image types */
+/* Warning: Keep explicit value assignements here, this file is included in areas where not all format defines
+ *          are set (e.g. intern/dds only get WITH_DDS, even if TIFF, HDR etc are also defined). See T46524. */
+enum eImbTypes {
+	IMB_FTYPE_PNG       = 1,
+	IMB_FTYPE_TGA       = 2,
+	IMB_FTYPE_JPG       = 3,
+	IMB_FTYPE_BMP       = 4,
+	IMB_FTYPE_OPENEXR   = 5,
+	IMB_FTYPE_IMAGIC    = 6,
+#ifdef WITH_OPENIMAGEIO
+	IMB_FTYPE_PSD       = 7,
+#endif
+#ifdef WITH_OPENJPEG
+	IMB_FTYPE_JP2       = 8,
+#endif
+#ifdef WITH_HDR
+	IMB_FTYPE_RADHDR    = 9,
+#endif
+#ifdef WITH_TIFF
+	IMB_FTYPE_TIF       = 10,
+#endif
+#ifdef WITH_CINEON
+	IMB_FTYPE_CINEON    = 11,
+	IMB_FTYPE_DPX       = 12,
+#endif
+
+#ifdef WITH_DDS
+	IMB_FTYPE_DDS       = 13,
+#endif
+};
+
+/* ibuf->foptions flag, type specific options.
+ * Some formats include compression rations on some bits */
+
+#define OPENEXR_HALF	(1 << 8 )
+/* careful changing this, it's used in DNA as well */
+#define OPENEXR_COMPRESS (15)
+
+#ifdef WITH_CINEON
+#define CINEON_LOG		(1 << 8)
+#define CINEON_16BIT	(1 << 7)
+#define CINEON_12BIT	(1 << 6)
+#define CINEON_10BIT	(1 << 5)
+#endif
+
+#ifdef WITH_OPENJPEG
+#define JP2_12BIT		(1 << 9)
+#define JP2_16BIT		(1 << 8)
+#define JP2_YCC			(1 << 7)
+#define JP2_CINE		(1 << 6)
+#define JP2_CINE_48FPS	(1 << 5)
+#define JP2_JP2	(1 << 4)
+#define JP2_J2K	(1 << 3)
+#endif
+
+#define PNG_16BIT			(1 << 10)
+
+#define RAWTGA	        1
+
+#ifdef WITH_TIFF
+#define TIF_16BIT			(1 << 8)
+#define TIF_COMPRESS_NONE		(1 << 7)
+#define TIF_COMPRESS_DEFLATE		(1 << 6)
+#define TIF_COMPRESS_LZW		(1 << 5)
+#define TIF_COMPRESS_PACKBITS		(1 << 4)
+#endif
+
+typedef struct ImbFormatOptions {
+	short flag;
+	char quality; /* quality serves dual purpose as quality number for jpeg or compression amount for png */
+} ImbFormatOptions;
+
 typedef struct ImBuf {
 	struct ImBuf *next, *prev;	/**< allow lists of ImBufs, for caches or flipbooks */
 
@@ -82,10 +156,19 @@ typedef struct ImBuf {
 	int	mall;				/* what is malloced internal, and can be freed */
 
 	/* pixels */
-	unsigned int *rect;		/* pixel values stored here */
-	float *rect_float;		/* floating point Rect equivalent
-	                         * Linear RGB color space - may need gamma correction to
-	                         * sRGB when generating 8bit representations */
+
+	/** Image pixel buffer (8bit representation):
+	 * - color space defaults to `sRGB`.
+	 * - alpha defaults to 'straight'.
+	 */
+	unsigned int *rect;
+	/** Image pixel buffer (float representation):
+	 * - color space defaults to 'linear' (`rec709`).
+	 * - alpha defaults to 'premul'.
+	 * \note May need gamma correction to `sRGB` when generating 8bit representations.
+	 * \note Formats that support higher more than 8 but channels load as floats.
+	 */
+	float *rect_float;
 
 	/* resolution - pixels per meter */
 	double ppm[2];
@@ -103,19 +186,20 @@ typedef struct ImBuf {
 	float dither;				/* random dither value, for conversion from float -> byte rect */
 
 	/* mipmapping */
-	struct ImBuf *mipmap[IB_MIPMAP_LEVELS]; /* MipMap levels, a series of halved images */
+	struct ImBuf *mipmap[IMB_MIPMAP_LEVELS]; /* MipMap levels, a series of halved images */
 	int miptot, miplevel;
 
 	/* externally used data */
 	int index;						/* reference index for ImBuf lists */
 	int	userflags;					/* used to set imbuf to dirty and other stuff */
 	struct IDProperty *metadata;	/* image metadata */
-	void *userdata;					/* temporary storage, only used by baking at the moment */
+	void *userdata;					/* temporary storage */
 
 	/* file information */
-	int	ftype;							/* file type we are going to save as */
-	char name[IB_FILENAME_SIZE];		/* filename associated with this image */
-	char cachename[IB_FILENAME_SIZE];	/* full filename used for reading from cache */
+	enum eImbTypes	ftype;				/* file type we are going to save as */
+	ImbFormatOptions foptions;			/* file format specific flags */
+	char name[IMB_FILENAME_SIZE];		/* filename associated with this image */
+	char cachename[IMB_FILENAME_SIZE];	/* full filename used for reading from cache */
 
 	/* memory cache limiter */
 	struct MEM_CacheLimiterHandle_s *c_handle; /* handle for cache limiter */
@@ -153,9 +237,8 @@ typedef struct ImBuf {
 /**
  * \name Imbuf Component flags
  * \brief These flags determine the components of an ImBuf struct.
- */
-/**@{*/
-/** \brief Flag defining the components of the ImBuf struct. */
+ *
+ * \{ */
 
 #define IB_rect				(1 << 0)
 #define IB_test				(1 << 1)
@@ -172,82 +255,22 @@ typedef struct ImBuf {
 #define IB_alphamode_premul	(1 << 12)  /* indicates whether image on disk have premul alpha */
 #define IB_alphamode_detect	(1 << 13)  /* if this flag is set, alpha mode would be guessed from file */
 #define IB_ignore_alpha		(1 << 14)  /* ignore alpha on load and substitude it with 1.0f */
+#define IB_thumbnail		(1 << 15)
+#define IB_multiview		(1 << 16)
 
-/*
- * The bit flag is stored in the ImBuf.ftype variable.
- * Note that the lower 11 bits is used for storing custom flags
- */
-#define IB_CUSTOM_FLAGS_MASK 0x7ff
-
-#ifdef WITH_OPENIMAGEIO
-#define PSD				(1 << 31)
-#endif
-
-#define PNG				(1 << 30)
-#define TGA				(1 << 28)
-#define JPG				(1 << 27)
-#define BMP				(1 << 26)
-
-#ifdef WITH_QUICKTIME
-#define QUICKTIME		(1 << 25)
-#endif
-
-#ifdef WITH_HDR
-#define RADHDR			(1 << 24)
-#endif
-#ifdef WITH_TIFF
-#define TIF				(1 << 23)
-#define TIF_16BIT		(1 << 8 )
-#endif
-
-#define OPENEXR			(1 << 22)
-#define OPENEXR_HALF	(1 << 8 )
-#define OPENEXR_COMPRESS (15)
-
-#ifdef WITH_CINEON
-#define CINEON			(1 << 21)
-#define DPX				(1 << 20)
-#define CINEON_LOG		(1 << 8)
-#define CINEON_16BIT	(1 << 7)
-#define CINEON_12BIT	(1 << 6)
-#define CINEON_10BIT	(1 << 5)
-#endif
-
-#ifdef WITH_DDS
-#define DDS				(1 << 19)
-#endif
-
-#ifdef WITH_OPENJPEG
-#define JP2				(1 << 18)
-#define JP2_12BIT		(1 << 17)
-#define JP2_16BIT		(1 << 16)
-#define JP2_YCC			(1 << 15)
-#define JP2_CINE		(1 << 14)
-#define JP2_CINE_48FPS	(1 << 13) 
-#define JP2_JP2	(1 << 12)
-#define JP2_J2K	(1 << 11)
-#endif
-
-#define PNG_16BIT			(1 << 10)
-
-#define RAWTGA	        (TGA | 1)
-
-#define JPG_STD	        (JPG | (0 << 8))
-#define JPG_VID	        (JPG | (1 << 8))
-#define JPG_JST	        (JPG | (2 << 8))
-#define JPG_MAX	        (JPG | (3 << 8))
-#define JPG_MSK	        (0xffffff00)
-
-#define IMAGIC			0732
+/** \} */
 
 /**
  * \name Imbuf preset profile tags
  * \brief Some predefined color space profiles that 8 bit imbufs can represent
- */
+ *
+ * \{ */
 #define IB_PROFILE_NONE			0
 #define IB_PROFILE_LINEAR_RGB	1
 #define IB_PROFILE_SRGB			2
 #define IB_PROFILE_CUSTOM		3
+
+/** \} */
 
 /* dds */
 #ifdef WITH_DDS
@@ -279,8 +302,16 @@ extern const char *imb_ext_audio[];
 /* image formats that can only be loaded via filepath */
 extern const char *imb_ext_image_filepath_only[];
 
+/**
+ * \name Imbuf Color Management Flag
+ * \brief Used with #ImBuf.colormanage_flag
+ *
+ * \{ */
+
 enum {
 	IMB_COLORMANAGE_IS_DATA = (1 << 0)
 };
 
-#endif
+/** \} */
+
+#endif  /* __IMB_IMBUF_TYPES_H__ */

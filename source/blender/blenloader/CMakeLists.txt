@@ -28,12 +28,17 @@ set(INC
 	../blenfont
 	../blenkernel
 	../blenlib
+	../blentranslation
 	../imbuf
 	../makesdna
 	../makesrna
 	../nodes
 	../render/extern/include
 	../../../intern/guardedalloc
+
+	# for writefile.c: dna_type_offsets.h
+	${CMAKE_BINARY_DIR}/source/blender/makesdna/intern
+
 )
 
 set(INC_SYS
@@ -64,6 +69,12 @@ if(WITH_BUILDINFO)
 	add_definitions(-DWITH_BUILDINFO)
 endif()
 
+if(WITH_PYTHON)
+	if(WITH_PYTHON_SECURITY)
+		add_definitions(-DWITH_PYTHON_SECURITY)
+	endif()
+endif()
+
 if(WITH_INTERNATIONAL)
 	add_definitions(-DWITH_INTERNATIONAL)
 endif()
@@ -72,4 +83,14 @@ if(WITH_CODEC_FFMPEG)
 	add_definitions(-DWITH_FFMPEG)
 endif()
 
+if(WITH_ALEMBIC)
+	list(APPEND INC
+		../alembic
+	)
+	add_definitions(-DWITH_ALEMBIC)
+endif()
+
 blender_add_lib(bf_blenloader "${SRC}" "${INC}" "${INC_SYS}")
+
+# needed so writefile.c can use dna_type_offsets.h
+add_dependencies(bf_blenloader bf_dna)

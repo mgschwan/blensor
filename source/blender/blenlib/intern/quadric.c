@@ -29,10 +29,14 @@
  * \note This isn't fully complete,
  * possible there are other useful functions to add here.
  *
- * \note try to follow BLI_math naming convention here.
+ * \note follow BLI_math naming convention here.
+ *
+ * \note this uses doubles for internal calculations,
+ * even though input/output are floats in some cases.
+ *
+ * This is done because the cases quadrics are useful
+ * often need high precision, see T44780.
  */
-
-//#include <string.h>
 
 #include "BLI_math.h"
 #include "BLI_strict_flags.h"
@@ -40,9 +44,9 @@
 #include "BLI_quadric.h"  /* own include */
 
 
-#define QUADRIC_FLT_TOT (sizeof(Quadric) / sizeof(float))
+#define QUADRIC_FLT_TOT (sizeof(Quadric) / sizeof(double))
 
-void BLI_quadric_from_v3_dist(Quadric *q, const float v[3], const float offset)
+void BLI_quadric_from_plane(Quadric *q, const double v[4])
 {
 	q->a2 = v[0] * v[0];
 	q->b2 = v[1] * v[1];
@@ -52,14 +56,16 @@ void BLI_quadric_from_v3_dist(Quadric *q, const float v[3], const float offset)
 	q->ac = v[0] * v[2];
 	q->bc = v[1] * v[2];
 
-	q->ad = v[0] * offset;
-	q->bd = v[1] * offset;
-	q->cd = v[2] * offset;
+	q->ad = v[0] * v[3];
+	q->bd = v[1] * v[3];
+	q->cd = v[2] * v[3];
 
-	q->d2 = offset * offset;
+	q->d2 = v[3] * v[3];
 }
 
-void BLI_quadric_to_tensor_m3(const Quadric *q, float m[3][3])
+#if 0  /* UNUSED */
+
+static void quadric_to_tensor_m3(const Quadric *q, double m[3][3])
 {
 	m[0][0] = q->a2;
 	m[0][1] = q->ab;
@@ -74,7 +80,47 @@ void BLI_quadric_to_tensor_m3(const Quadric *q, float m[3][3])
 	m[2][2] = q->c2;
 }
 
-void BLI_quadric_to_vector_v3(const Quadric *q, float v[3])
+#endif
+
+/**
+ * Inline inverse matrix creation.
+ * Equivalent of:
+ *
+ * \code{.c}
+ * quadric_to_tensor_m3(q, m);
+ * invert_m3_db(m, eps);
+ * \endcode
+ */
+static bool quadric_to_tensor_m3_inverse(const Quadric *q, double m[3][3], double epsilon)
+{
+	const double det =
+	        (q->a2 * (q->b2 * q->c2 - q->bc * q->bc) -
+	         q->ab * (q->ab * q->c2 - q->ac * q->bc) +
+	         q->ac * (q->ab * q->bc - q->ac * q->b2));
+
+	if (fabs(det) > epsilon) {
+		const double invdet = 1.0 / det;
+
+		m[0][0] = (q->b2 * q->c2 - q->bc * q->bc) * invdet;
+		m[1][0] = (q->bc * q->ac - q->ab * q->c2) * invdet;
+		m[2][0] = (q->ab * q->bc - q->b2 * q->ac) * invdet;
+
+		m[0][1] = (q->ac * q->bc - q->ab * q->c2) * invdet;
+		m[1][1] = (q->a2 * q->c2 - q->ac * q->ac) * invdet;
+		m[2][1] = (q->ab * q->ac - q->a2 * q->bc) * invdet;
+
+		m[0][2] = (q->ab * q->bc - q->ac * q->b2) * invdet;
+		m[1][2] = (q->ac * q->ab - q->a2 * q->bc) * invdet;
+		m[2][2] = (q->a2 * q->b2 - q->ab * q->ab) * invdet;
+
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+void BLI_quadric_to_vector_v3(const Quadric *q, double v[3])
 {
 	v[0] = q->ad;
 	v[1] = q->bd;
@@ -88,38 +134,35 @@ void BLI_quadric_clear(Quadric *q)
 
 void BLI_quadric_add_qu_qu(Quadric *a, const Quadric *b)
 {
-	add_vn_vn((float *)a, (float *)b, QUADRIC_FLT_TOT);
+	add_vn_vn_d((double *)a, (double *)b, QUADRIC_FLT_TOT);
 }
 
 void BLI_quadric_add_qu_ququ(Quadric *r, const Quadric *a, const Quadric *b)
 {
-	add_vn_vnvn((float *)r, (const float *)a, (const float *)b, QUADRIC_FLT_TOT);
+	add_vn_vnvn_d((double *)r, (const double *)a, (const double *)b, QUADRIC_FLT_TOT);
 }
 
-void BLI_quadric_mul(Quadric *a, const float scalar)
+void BLI_quadric_mul(Quadric *a, const double scalar)
 {
-	mul_vn_fl((float *)a, QUADRIC_FLT_TOT, scalar);
+	mul_vn_db((double *)a, QUADRIC_FLT_TOT, scalar);
 }
 
-float BLI_quadric_evaluate(const Quadric *q, const float v[3])
+double BLI_quadric_evaluate(const Quadric *q, const double v[3])
 {
-	return  (v[0] * v[0] * q->a2 + 2.0f * v[0] * v[1] * q->ab + 2.0f * v[0] * v[2] * q->ac + 2.0f * v[0] * q->ad +
-	         v[1] * v[1] * q->b2 + 2.0f * v[1] * v[2] * q->bc + 2.0f * v[1] * q->bd +
-	         v[2] * v[2] * q->c2 + 2.0f * v[2] * q->cd +
-	         q->d2);
+	return ((q->a2 * v[0] * v[0]) + (q->ab * 2 * v[0] * v[1]) + (q->ac * 2 * v[0] * v[2]) + (q->ad * 2 * v[0]) +
+	        (q->b2 * v[1] * v[1]) + (q->bc * 2 * v[1] * v[2]) + (q->bd * 2 * v[1]) +
+	        (q->c2 * v[2] * v[2]) + (q->cd * 2 * v[2]) +
+	        (q->d2));
 }
 
-bool BLI_quadric_optimize(const Quadric *q, float v[3], const float epsilon)
+bool BLI_quadric_optimize(const Quadric *q, double v[3], const double epsilon)
 {
-	float m[3][3];
+	double m[3][3];
 
-	BLI_quadric_to_tensor_m3(q, m);
-
-	if (invert_m3_ex(m, epsilon)) {
+	if (quadric_to_tensor_m3_inverse(q, m, epsilon)) {
 		BLI_quadric_to_vector_v3(q, v);
-		mul_m3_v3(m, v);
-		negate_v3(v);
-
+		mul_m3_v3_db(m, v);
+		negate_v3_db(v);
 		return true;
 	}
 	else {

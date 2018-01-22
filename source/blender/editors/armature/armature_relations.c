@@ -41,7 +41,7 @@
 #include "BLI_ghash.h"
 #include "BLI_math.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_action.h"
 #include "BKE_animsys.h"
@@ -78,7 +78,7 @@ static void joined_armature_fix_links_constraints(
 	bConstraint *con;
 
 	for (con = lb->first; con; con = con->next) {
-		bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+		const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 		ListBase targets = {NULL, NULL};
 		bConstraintTarget *ct;
 
@@ -380,7 +380,7 @@ int join_armature_exec(bContext *C, wmOperator *op)
 			if (base->object->adt) {
 				if (ob->adt == NULL) {
 					/* no animdata, so just use a copy of the whole thing */
-					ob->adt = BKE_copy_animdata(base->object->adt, false);
+					ob->adt = BKE_animdata_copy(base->object->adt, false);
 				}
 				else {
 					/* merge in data - we'll fix the drivers manually */
@@ -391,7 +391,7 @@ int join_armature_exec(bContext *C, wmOperator *op)
 			if (curarm->adt) {
 				if (arm->adt == NULL) {
 					/* no animdata, so just use a copy of the whole thing */
-					arm->adt = BKE_copy_animdata(curarm->adt, false);
+					arm->adt = BKE_animdata_copy(curarm->adt, false);
 				}
 				else {
 					/* merge in data - we'll fix the drivers manually */
@@ -435,7 +435,7 @@ static void separated_armature_fix_links(Object *origArm, Object *newArm)
 		if (ob->type == OB_ARMATURE) {
 			for (pchan = ob->pose->chanbase.first; pchan; pchan = pchan->next) {
 				for (con = pchan->constraints.first; con; con = con->next) {
-					bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+					const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 					ListBase targets = {NULL, NULL};
 					bConstraintTarget *ct;
 					
@@ -473,7 +473,7 @@ static void separated_armature_fix_links(Object *origArm, Object *newArm)
 		/* fix object-level constraints */
 		if (ob != origArm) {
 			for (con = ob->constraints.first; con; con = con->next) {
-				bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+				const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 				ListBase targets = {NULL, NULL};
 				bConstraintTarget *ct;
 				
@@ -548,7 +548,7 @@ static void separate_armature_bones(Object *ob, short sel)
 			for (ebo = arm->edbo->first; ebo; ebo = ebo->next) {
 				if (ebo->parent == curbone) {
 					ebo->parent = NULL;
-					ebo->temp = NULL; /* this is needed to prevent random crashes with in ED_armature_from_edit */
+					ebo->temp.p = NULL; /* this is needed to prevent random crashes with in ED_armature_from_edit */
 					ebo->flag &= ~BONE_CONNECTED;
 				}
 			}
@@ -641,6 +641,9 @@ static int separate_armature_exec(bContext *C, wmOperator *op)
 	
 	ED_armature_to_edit(obedit->data);
 	
+	/* parents tips remain selected when connected children are removed. */
+	ED_armature_deselect_all(obedit);
+
 	BKE_report(op->reports, RPT_INFO, "Separated bones");
 
 	/* note, notifier might evolve */
@@ -660,6 +663,7 @@ void ARMATURE_OT_separate(wmOperatorType *ot)
 	ot->description = "Isolate selected bones into a separate armature";
 	
 	/* callbacks */
+	ot->invoke = WM_operator_confirm;
 	ot->exec = separate_armature_exec;
 	ot->poll = ED_operator_editarmature;
 	
@@ -809,7 +813,7 @@ static int armature_parent_set_exec(bContext *C, wmOperator *op)
 static int armature_parent_set_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *UNUSED(event))
 {
 	EditBone *actbone = CTX_data_active_bone(C);
-	uiPopupMenu *pup = UI_popup_menu_begin(C, CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Make Parent"), ICON_NONE);
+	uiPopupMenu *pup = UI_popup_menu_begin(C, CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Make Parent"), ICON_NONE);
 	uiLayout *layout = UI_popup_menu_layout(pup);
 	int allchildbones = 0;
 	

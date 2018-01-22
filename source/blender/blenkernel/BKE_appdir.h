@@ -27,16 +27,25 @@
 /* note on naming: typical _get() suffix is omitted here,
  * since its the main purpose of the API. */
 const char *BKE_appdir_folder_default(void);
+const char *BKE_appdir_folder_id_ex(const int folder_id, const char *subfolder, char *path, size_t path_len);
 const char *BKE_appdir_folder_id(const int folder_id, const char *subfolder);
 const char *BKE_appdir_folder_id_create(const int folder_id, const char *subfolder);
 const char *BKE_appdir_folder_id_user_notest(const int folder_id, const char *subfolder);
 const char *BKE_appdir_folder_id_version(const int folder_id, const int ver, const bool do_check);
+
+bool BKE_appdir_app_template_any(void);
+bool BKE_appdir_app_template_id_search(const char *app_template, char *path, size_t path_len);
 
 /* Initialize path to program executable */
 void        BKE_appdir_program_path_init(const char *argv0);
 
 const char *BKE_appdir_program_path(void);
 const char *BKE_appdir_program_dir(void);
+
+/* find python executable */
+bool BKE_appdir_program_python_search(
+        char *fullpath, const size_t fullpath_len,
+        const int version_major, const int version_minor);
 
 /* Initialize path to temporary directory. */
 void        BKE_tempdir_init(char *userdir);

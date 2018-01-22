@@ -21,12 +21,12 @@
 bl_info = {
     "name": "BioVision Motion Capture (BVH) format",
     "author": "Campbell Barton",
-    "blender": (2, 73, 0),
+    "blender": (2, 74, 0),
     "location": "File > Import-Export",
     "description": "Import-Export BVH from armature objects",
     "warning": "",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
-                "Scripts/Import-Export/MotionCapture_BVH",
+                "Scripts/Import-Export/BVH_Importer_Exporter",
     "support": 'OFFICIAL',
     "category": "Import-Export"}
 
@@ -38,20 +38,25 @@ if "bpy" in locals():
         importlib.reload(export_bvh)
 
 import bpy
-from bpy.props import (StringProperty,
-                       FloatProperty,
-                       IntProperty,
-                       BoolProperty,
-                       EnumProperty,
-                       )
-from bpy_extras.io_utils import (ImportHelper,
-                                 ExportHelper,
-                                 OrientationHelper,
-                                 axis_conversion,
-                                 )
+from bpy.props import (
+        StringProperty,
+        FloatProperty,
+        IntProperty,
+        BoolProperty,
+        EnumProperty,
+        )
+from bpy_extras.io_utils import (
+        ImportHelper,
+        ExportHelper,
+        orientation_helper_factory,
+        axis_conversion,
+        )
 
 
-class ImportBVH(bpy.types.Operator, ImportHelper, OrientationHelper):
+ImportBVHOrientationHelper = orientation_helper_factory("ImportBVHOrientationHelper", axis_forward='-Z', axis_up='Y')
+
+
+class ImportBVH(bpy.types.Operator, ImportHelper, ImportBVHOrientationHelper):
     """Load a BVH motion capture file"""
     bl_idname = "import_anim.bvh"
     bl_label = "Import BVH"
@@ -82,9 +87,19 @@ class ImportBVH(bpy.types.Operator, ImportHelper, OrientationHelper):
             )
     use_fps_scale = BoolProperty(
             name="Scale FPS",
-            description=("Scale the framerate from the BVH to "
-                         "the current scenes, otherwise each "
-                         "BVH frame maps directly to a Blender frame"),
+            description=("Scale the framerate from the BVH to the current scenes, "
+                         "otherwise each BVH frame maps directly to a Blender frame"),
+            default=False,
+            )
+    update_scene_fps = BoolProperty(
+            name="Update Scene FPS",
+            description="Set the scene framerate to that of the BVH file (note that this "
+                        "nullifies the 'Scale FPS' option, as the scale will be 1:1)",
+            default=False
+            )
+    update_scene_duration = BoolProperty(
+            name="Update Scene Duration",
+            description="Extend the scene's duration to the BVH duration (never shortens the scene)",
             default=False,
             )
     use_cyclic = BoolProperty(
@@ -97,8 +112,8 @@ class ImportBVH(bpy.types.Operator, ImportHelper, OrientationHelper):
             description="Rotation conversion",
             items=(('QUATERNION', "Quaternion",
                     "Convert rotations to quaternions"),
-                   ('NATIVE', "Euler (Native)", ("Use the rotation order "
-                                                 "defined in the BVH file")),
+                   ('NATIVE', "Euler (Native)",
+                              "Use the rotation order defined in the BVH file"),
                    ('XYZ', "Euler (XYZ)", "Convert rotations to euler XYZ"),
                    ('XZY', "Euler (XZY)", "Convert rotations to euler XZY"),
                    ('YXZ', "Euler (YXZ)", "Convert rotations to euler YXZ"),
@@ -122,7 +137,7 @@ class ImportBVH(bpy.types.Operator, ImportHelper, OrientationHelper):
         keywords["global_matrix"] = global_matrix
 
         from . import import_bvh
-        return import_bvh.load(self, context, **keywords)
+        return import_bvh.load(context, report=self.report, **keywords)
 
 
 class ExportBVH(bpy.types.Operator, ExportHelper):
@@ -157,7 +172,7 @@ class ExportBVH(bpy.types.Operator, ExportHelper):
             name="Rotation",
             description="Rotation conversion",
             items=(('NATIVE', "Euler (Native)",
-                    "Use the rotation order defined in the BVH file"),
+                              "Use the rotation order defined in the BVH file"),
                    ('XYZ', "Euler (XYZ)", "Convert rotations to euler XYZ"),
                    ('XZY', "Euler (XZY)", "Convert rotations to euler XZY"),
                    ('YXZ', "Euler (YXZ)", "Convert rotations to euler YXZ"),

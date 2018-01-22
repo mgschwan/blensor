@@ -54,6 +54,8 @@
 #  include <sys/time.h>
 #endif
 
+#include "atomic_ops.h"
+
 #if defined(__APPLE__) && defined(_OPENMP) && (__GNUC__ == 4) && (__GNUC_MINOR__ == 2) && !defined(__clang__)
 #  define USE_APPLE_OMP_FIX
 #endif
@@ -122,8 +124,9 @@ static pthread_mutex_t _nodes_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t _movieclip_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t _colormanage_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t _fftw_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t _view3d_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_t mainid;
-static int thread_levels = 0;  /* threads can be invoked inside threads */
+static unsigned int thread_levels = 0;  /* threads can be invoked inside threads */
 static int num_threads_override = 0;
 
 /* just a max for security reasons */
@@ -197,8 +200,9 @@ void BLI_init_threads(ListBase *threadbase, void *(*do_thread)(void *), int tot)
 			tslot->avail = 1;
 		}
 	}
-	
-	if (thread_levels == 0) {
+
+	unsigned int level = atomic_fetch_and_add_u(&thread_levels, 1);
+	if (level == 0) {
 		MEM_set_lock_callback(BLI_lock_malloc_thread, BLI_unlock_malloc_thread);
 
 #ifdef USE_APPLE_OMP_FIX
@@ -208,8 +212,6 @@ void BLI_init_threads(ListBase *threadbase, void *(*do_thread)(void *), int tot)
 		thread_tls_data = pthread_getspecific(gomp_tls_key);
 #endif
 	}
-
-	thread_levels++;
 }
 
 /* amount of available threads */
@@ -328,9 +330,10 @@ void BLI_end_threads(ListBase *threadbase)
 		BLI_freelistN(threadbase);
 	}
 
-	thread_levels--;
-	if (thread_levels == 0)
+	unsigned int level = atomic_sub_and_fetch_u(&thread_levels, 1);
+	if (level == 0) {
 		MEM_set_lock_callback(NULL, NULL);
+	}
 }
 
 /* System Information */
@@ -338,33 +341,37 @@ void BLI_end_threads(ListBase *threadbase)
 /* how many threads are native on this system? */
 int BLI_system_thread_count(void)
 {
-	int t;
+	static int t = -1;
+
+	if (num_threads_override != 0) {
+		return num_threads_override;
+	}
+	else if (LIKELY(t != -1)) {
+		return t;
+	}
+
+	{
 #ifdef WIN32
-	SYSTEM_INFO info;
-	GetSystemInfo(&info);
-	t = (int) info.dwNumberOfProcessors;
+		SYSTEM_INFO info;
+		GetSystemInfo(&info);
+		t = (int) info.dwNumberOfProcessors;
 #else 
 #   ifdef __APPLE__
-	int mib[2];
-	size_t len;
-	
-	mib[0] = CTL_HW;
-	mib[1] = HW_NCPU;
-	len = sizeof(t);
-	sysctl(mib, 2, &t, &len, NULL, 0);
+		int mib[2];
+		size_t len;
+
+		mib[0] = CTL_HW;
+		mib[1] = HW_NCPU;
+		len = sizeof(t);
+		sysctl(mib, 2, &t, &len, NULL, 0);
 #   else
-	t = (int)sysconf(_SC_NPROCESSORS_ONLN);
+		t = (int)sysconf(_SC_NPROCESSORS_ONLN);
 #   endif
 #endif
+	}
 
-	if (num_threads_override > 0)
-		return num_threads_override;
-	
-	if (t > RE_MAX_THREAD)
-		return RE_MAX_THREAD;
-	if (t < 1)
-		return 1;
-	
+	CLAMP(t, 1, RE_MAX_THREAD);
+
 	return t;
 }
 
@@ -380,52 +387,45 @@ int BLI_system_num_threads_override_get(void)
 
 /* Global Mutex Locks */
 
+static ThreadMutex *global_mutex_from_type(const int type)
+{
+	switch (type) {
+		case LOCK_IMAGE:
+			return &_image_lock;
+		case LOCK_DRAW_IMAGE:
+			return &_image_draw_lock;
+		case LOCK_VIEWER:
+			return &_viewer_lock;
+		case LOCK_CUSTOM1:
+			return &_custom1_lock;
+		case LOCK_RCACHE:
+			return &_rcache_lock;
+		case LOCK_OPENGL:
+			return &_opengl_lock;
+		case LOCK_NODES:
+			return &_nodes_lock;
+		case LOCK_MOVIECLIP:
+			return &_movieclip_lock;
+		case LOCK_COLORMANAGE:
+			return &_colormanage_lock;
+		case LOCK_FFTW:
+			return &_fftw_lock;
+		case LOCK_VIEW3D:
+			return &_view3d_lock;
+		default:
+			BLI_assert(0);
+			return NULL;
+	}
+}
+
 void BLI_lock_thread(int type)
 {
-	if (type == LOCK_IMAGE)
-		pthread_mutex_lock(&_image_lock);
-	else if (type == LOCK_DRAW_IMAGE)
-		pthread_mutex_lock(&_image_draw_lock);
-	else if (type == LOCK_VIEWER)
-		pthread_mutex_lock(&_viewer_lock);
-	else if (type == LOCK_CUSTOM1)
-		pthread_mutex_lock(&_custom1_lock);
-	else if (type == LOCK_RCACHE)
-		pthread_mutex_lock(&_rcache_lock);
-	else if (type == LOCK_OPENGL)
-		pthread_mutex_lock(&_opengl_lock);
-	else if (type == LOCK_NODES)
-		pthread_mutex_lock(&_nodes_lock);
-	else if (type == LOCK_MOVIECLIP)
-		pthread_mutex_lock(&_movieclip_lock);
-	else if (type == LOCK_COLORMANAGE)
-		pthread_mutex_lock(&_colormanage_lock);
-	else if (type == LOCK_FFTW)
-		pthread_mutex_lock(&_fftw_lock);
+	pthread_mutex_lock(global_mutex_from_type(type));
 }
 
 void BLI_unlock_thread(int type)
 {
-	if (type == LOCK_IMAGE)
-		pthread_mutex_unlock(&_image_lock);
-	else if (type == LOCK_DRAW_IMAGE)
-		pthread_mutex_unlock(&_image_draw_lock);
-	else if (type == LOCK_VIEWER)
-		pthread_mutex_unlock(&_viewer_lock);
-	else if (type == LOCK_CUSTOM1)
-		pthread_mutex_unlock(&_custom1_lock);
-	else if (type == LOCK_RCACHE)
-		pthread_mutex_unlock(&_rcache_lock);
-	else if (type == LOCK_OPENGL)
-		pthread_mutex_unlock(&_opengl_lock);
-	else if (type == LOCK_NODES)
-		pthread_mutex_unlock(&_nodes_lock);
-	else if (type == LOCK_MOVIECLIP)
-		pthread_mutex_unlock(&_movieclip_lock);
-	else if (type == LOCK_COLORMANAGE)
-		pthread_mutex_unlock(&_colormanage_lock);
-	else if (type == LOCK_FFTW)
-		pthread_mutex_unlock(&_fftw_lock);
+	pthread_mutex_unlock(global_mutex_from_type(type));
 }
 
 /* Mutex Locks */
@@ -606,6 +606,11 @@ void BLI_condition_wait(ThreadCondition *cond, ThreadMutex *mutex)
 	pthread_cond_wait(cond, mutex);
 }
 
+void BLI_condition_wait_global_mutex(ThreadCondition *cond, const int type)
+{
+	pthread_cond_wait(cond, global_mutex_from_type(type));
+}
+
 void BLI_condition_notify_one(ThreadCondition *cond)
 {
 	pthread_cond_signal(cond);
@@ -768,6 +773,17 @@ int BLI_thread_queue_size(ThreadQueue *queue)
 	return size;
 }
 
+bool BLI_thread_queue_is_empty(ThreadQueue *queue)
+{
+	bool is_empty;
+
+	pthread_mutex_lock(&queue->mutex);
+	is_empty = BLI_gsqueue_is_empty(queue->queue);
+	pthread_mutex_unlock(&queue->mutex);
+
+	return is_empty;
+}
+
 void BLI_thread_queue_nowait(ThreadQueue *queue)
 {
 	pthread_mutex_lock(&queue->mutex);
@@ -794,22 +810,22 @@ void BLI_thread_queue_wait_finish(ThreadQueue *queue)
 
 void BLI_begin_threaded_malloc(void)
 {
-	/* Used for debug only */
-	/* BLI_assert(thread_levels >= 0); */
-
-	if (thread_levels == 0) {
+	unsigned int level = atomic_fetch_and_add_u(&thread_levels, 1);
+	if (level == 0) {
 		MEM_set_lock_callback(BLI_lock_malloc_thread, BLI_unlock_malloc_thread);
+		/* There is a little chance that two threads will meed to acces to a
+		 * scheduler which was not yet created from main thread. which could
+		 * cause scheduler created multiple times.
+		 */
+		BLI_task_scheduler_get();
 	}
-	thread_levels++;
 }
 
 void BLI_end_threaded_malloc(void)
 {
-	/* Used for debug only */
-	/* BLI_assert(thread_levels >= 0); */
-
-	thread_levels--;
-	if (thread_levels == 0)
+	unsigned int level = atomic_sub_and_fetch_u(&thread_levels, 1);
+	if (level == 0) {
 		MEM_set_lock_callback(NULL, NULL);
+	}
 }
 

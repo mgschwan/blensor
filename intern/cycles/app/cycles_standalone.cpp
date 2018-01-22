@@ -16,27 +16,29 @@
 
 #include <stdio.h>
 
-#include "buffers.h"
-#include "camera.h"
-#include "device.h"
-#include "scene.h"
-#include "session.h"
+#include "render/buffers.h"
+#include "render/camera.h"
+#include "device/device.h"
+#include "render/scene.h"
+#include "render/session.h"
+#include "render/integrator.h"
 
-#include "util_args.h"
-#include "util_foreach.h"
-#include "util_function.h"
-#include "util_logging.h"
-#include "util_path.h"
-#include "util_progress.h"
-#include "util_string.h"
-#include "util_time.h"
-#include "util_transform.h"
+#include "util/util_args.h"
+#include "util/util_foreach.h"
+#include "util/util_function.h"
+#include "util/util_logging.h"
+#include "util/util_path.h"
+#include "util/util_progress.h"
+#include "util/util_string.h"
+#include "util/util_time.h"
+#include "util/util_transform.h"
+#include "util/util_version.h"
 
 #ifdef WITH_CYCLES_STANDALONE_GUI
-#include "util_view.h"
+#include "util/util_view.h"
 #endif
 
-#include "cycles_xml.h"
+#include "app/cycles_xml.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -70,20 +72,17 @@ static void session_print(const string& str)
 
 static void session_print_status()
 {
-	int sample, tile;
-	double total_time, sample_time, render_time;
 	string status, substatus;
 
 	/* get status */
-	sample = options.session->progress.get_sample();
-	options.session->progress.get_tile(tile, total_time, sample_time, render_time);
+	float progress = options.session->progress.get_progress();
 	options.session->progress.get_status(status, substatus);
 
 	if(substatus != "")
 		status += ": " + substatus;
 
 	/* print status */
-	status = string_printf("Sample %d   %s", sample, status.c_str());
+	status = string_printf("Progress %05.2f   %s", (double) progress*100, status.c_str());
 	session_print(status);
 }
 
@@ -124,7 +123,7 @@ static void scene_init()
 	xml_read_file(options.scene, options.filepath.c_str());
 
 	/* Camera width/height override? */
-	if (!(options.width == 0 || options.height == 0)) {
+	if(!(options.width == 0 || options.height == 0)) {
 		options.scene->camera->width = options.width;
 		options.scene->camera->height = options.height;
 	}
@@ -165,13 +164,12 @@ static void display_info(Progress& progress)
 	latency = (elapsed - last);
 	last = elapsed;
 
-	int sample, tile;
-	double total_time, sample_time, render_time;
+	double total_time, sample_time;
 	string status, substatus;
 
-	sample = progress.get_sample();
-	progress.get_tile(tile, total_time, sample_time, render_time);
+	progress.get_time(total_time, sample_time);
 	progress.get_status(status, substatus);
+	float progress_val = progress.get_progress();
 
 	if(substatus != "")
 		status += ": " + substatus;
@@ -182,10 +180,10 @@ static void display_info(Progress& progress)
 	        "%s"
 	        "        Time: %.2f"
 	        "        Latency: %.4f"
-	        "        Sample: %d"
+	        "        Progress: %05.2f"
 	        "        Average: %.4f"
 	        "        Interactive: %s",
-	        status.c_str(), total_time, latency, sample, sample_time, interactive.c_str());
+	        status.c_str(), total_time, latency, (double) progress_val*100, sample_time, interactive.c_str());
 
 	view_display_info(str.c_str());
 
@@ -272,6 +270,7 @@ static void keyboard(unsigned char key)
 	else if(key == 'i')
 		options.interactive = !(options.interactive);
 
+	/* Navigation */
 	else if(options.interactive && (key == 'w' || key == 'a' || key == 's' || key == 'd')) {
 		Transform matrix = options.session->scene->camera->matrix;
 		float3 translate;
@@ -291,6 +290,25 @@ static void keyboard(unsigned char key)
 		options.session->scene->camera->matrix = matrix;
 		options.session->scene->camera->need_update = true;
 		options.session->scene->camera->need_device_update = true;
+
+		options.session->reset(session_buffer_params(), options.session_params.samples);
+	}
+
+	/* Set Max Bounces */
+	else if(options.interactive && (key == '0' || key == '1' || key == '2' || key == '3')) {
+		int bounce;
+		switch(key) {
+			case '0': bounce = 0; break;
+			case '1': bounce = 1; break;
+			case '2': bounce = 2; break;
+			case '3': bounce = 3; break;
+			default: bounce = 0; break;
+		}
+
+		options.session->scene->integrator->max_bounce = bounce;
+
+		/* Update and Reset */
+		options.session->scene->integrator->need_update = true;
 
 		options.session->reset(session_buffer_params(), options.session_params.samples);
 	}
@@ -315,7 +333,7 @@ static void options_parse(int argc, const char **argv)
 
 	/* device names */
 	string device_names = "";
-	string devicename = "cpu";
+	string devicename = "CPU";
 	bool list = false;
 
 	vector<DeviceType>& types = Device::available_types();
@@ -337,7 +355,7 @@ static void options_parse(int argc, const char **argv)
 
 	/* parse options */
 	ArgParse ap;
-	bool help = false, debug = false;
+	bool help = false, debug = false, version = false;
 	int verbosity = 1;
 
 	ap.options ("Usage: cycles [options] file.xml",
@@ -353,12 +371,15 @@ static void options_parse(int argc, const char **argv)
 		"--threads %d", &options.session_params.threads, "CPU Rendering Threads",
 		"--width  %d", &options.width, "Window width in pixel",
 		"--height %d", &options.height, "Window height in pixel",
+		"--tile-width %d", &options.session_params.tile_size.x, "Tile width in pixels",
+		"--tile-height %d", &options.session_params.tile_size.y, "Tile height in pixels",
 		"--list-devices", &list, "List information about all available devices",
 #ifdef WITH_CYCLES_LOGGING
 		"--debug", &debug, "Enable debug logging",
 		"--verbose %d", &verbosity, "Set verbosity of the logger",
 #endif
 		"--help", &help, "Print help message",
+		"--version", &version, "Print version number",
 		NULL);
 
 	if(ap.parse(argc, argv) < 0) {
@@ -367,7 +388,7 @@ static void options_parse(int argc, const char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	if (debug) {
+	if(debug) {
 		util_logging_start();
 		util_logging_verbosity_set(verbosity);
 	}
@@ -377,11 +398,16 @@ static void options_parse(int argc, const char **argv)
 		printf("Devices:\n");
 
 		foreach(DeviceInfo& info, devices) {
-			printf("    %s%s\n",
+			printf("    %-10s%s%s\n",
+				Device::string_from_type(info.type).c_str(),
 				info.description.c_str(),
 				(info.display_device)? " (display)": "");
 		}
 
+		exit(EXIT_SUCCESS);
+	}
+	else if(version) {
+		printf("%s\n", CYCLES_VERSION_STRING);
 		exit(EXIT_SUCCESS);
 	}
 	else if(help || options.filepath == "") {

@@ -21,7 +21,10 @@ import bpy
 import os
 from bpy.types import Operator
 from bpy.props import FloatProperty
-from mathutils import Vector, Matrix
+from mathutils import (
+    Vector,
+    Matrix,
+)
 
 
 def CLIP_spaces_walk(context, all_screens, tarea, tspace, callback, *args):
@@ -225,7 +228,8 @@ class CLIP_OT_track_to_empty(Operator):
     bl_label = "Link Empty to Track"
     bl_options = {'UNDO', 'REGISTER'}
 
-    def _link_track(self, context, clip, tracking_object, track):
+    @staticmethod
+    def _link_track(context, clip, tracking_object, track):
         sc = context.space_data
         constraint = None
         ob = None
@@ -331,7 +335,8 @@ class CLIP_OT_delete_proxy(Operator):
 
         return wm.invoke_confirm(self, event)
 
-    def _rmproxy(self, abspath):
+    @staticmethod
+    def _rmproxy(abspath):
         import shutil
 
         if not os.path.exists(abspath):
@@ -552,8 +557,8 @@ class CLIP_OT_setup_tracking_scene(Operator):
         world.light_settings.sample_method = 'ADAPTIVE_QMC'
         world.light_settings.samples = 7
         world.light_settings.threshold = 0.005
-        if hasattr(scene, 'cycles'):
-                world.light_settings.ao_factor = 0.05
+        if hasattr(scene, "cycles"):
+            world.light_settings.ao_factor = 0.05
 
     @staticmethod
     def _findOrCreateCamera(context):
@@ -777,8 +782,8 @@ class CLIP_OT_setup_tracking_scene(Operator):
         tree.links.new(mul_shadow.outputs["Image"], mul_image.inputs[2])
 
         tree.links.new(rlayer_fg.outputs["Image"], vector_blur.inputs["Image"])
-        tree.links.new(rlayer_fg.outputs["Z"], vector_blur.inputs["Z"])
-        tree.links.new(rlayer_fg.outputs["Speed"], vector_blur.inputs["Speed"])
+        tree.links.new(rlayer_fg.outputs["Depth"], vector_blur.inputs["Z"])
+        tree.links.new(rlayer_fg.outputs["Vector"], vector_blur.inputs["Speed"])
 
         tree.links.new(mul_image.outputs["Image"], alphaover.inputs[1])
         tree.links.new(vector_blur.outputs["Image"], alphaover.inputs[2])
@@ -841,7 +846,7 @@ class CLIP_OT_setup_tracking_scene(Operator):
         self._offsetNodes(tree)
 
         scene.render.alpha_mode = 'TRANSPARENT'
-        if hasattr(scene, 'cycles'):
+        if hasattr(scene, "cycles"):
             scene.cycles.film_transparent = True
 
     @staticmethod
@@ -1069,3 +1074,17 @@ class CLIP_OT_track_settings_to_track(bpy.types.Operator):
                     setattr(marker_selected, attr, getattr(marker, attr))
 
         return {'FINISHED'}
+
+
+classes = (
+    CLIP_OT_bundles_to_mesh,
+    CLIP_OT_constraint_to_fcurve,
+    CLIP_OT_delete_proxy,
+    CLIP_OT_filter_tracks,
+    CLIP_OT_set_active_clip,
+    CLIP_OT_set_viewport_background,
+    CLIP_OT_setup_tracking_scene,
+    CLIP_OT_track_settings_as_default,
+    CLIP_OT_track_settings_to_track,
+    CLIP_OT_track_to_empty,
+)

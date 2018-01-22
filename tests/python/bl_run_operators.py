@@ -65,6 +65,7 @@ op_blacklist = (
     "wm.blenderplayer_start",
     "wm.recover_auto_save",
     "wm.quit_blender",
+    "wm.window_close",
     "wm.url_open",
     "wm.doc_view",
     "wm.doc_edit",
@@ -99,10 +100,8 @@ def blend_list(mainpath):
 
     def file_list(path, filename_check=None):
         for dirpath, dirnames, filenames in os.walk(path):
-
-            # skip '.svn'
-            if dirpath.startswith("."):
-                continue
+            # skip '.git'
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
 
             for filename in filenames:
                 filepath = join(dirpath, filename)
@@ -163,7 +162,7 @@ if USE_ATTRSET:
             if issubclass(cls, skip_classes):
                 continue
 
-            ## to support skip-save we cant get all props
+            # # to support skip-save we cant get all props
             # properties = cls.bl_rna.properties.keys()
             properties = []
             for prop_id, prop in cls.bl_rna.properties.items():
@@ -285,8 +284,8 @@ def run_ops(operators, setup_func=None, reset=True):
                 try:
                     op(mode)
                 except:
-                    #import traceback
-                    #traceback.print_exc()
+                    # import traceback
+                    # traceback.print_exc()
                     pass
 
                 if USE_ATTRSET:
@@ -308,16 +307,7 @@ def run_ops(operators, setup_func=None, reset=True):
 
 # contexts
 def ctx_clear_scene():  # copied from batch_import.py
-    unique_obs = set()
-    for scene in bpy.data.scenes:
-        for obj in scene.objects[:]:
-            scene.objects.unlink(obj)
-            unique_obs.add(obj)
-
-    # remove obdata, for now only worry about the startup scene
-    for bpy_data_iter in (bpy.data.objects, bpy.data.meshes, bpy.data.lamps, bpy.data.cameras):
-        for id_data in bpy_data_iter:
-            bpy_data_iter.remove(id_data)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
 def ctx_editmode_mesh():
@@ -445,7 +435,7 @@ def main():
     filter_op_list(operators)
 
     # for testing, mix the list up.
-    #operators.reverse()
+    # operators.reverse()
 
     if USE_RANDOM:
         import random

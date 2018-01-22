@@ -110,6 +110,7 @@ def write(fw, mesh_source, image_width, image_height, opacity, face_iter_func):
     material_wire.type = 'WIRE'
     material_wire.use_shadeless = True
     material_wire.diffuse_color = 0, 0, 0
+    material_wire.use_transparency = True
 
     # scene render settings
     scene.render.use_raytrace = False
@@ -131,18 +132,20 @@ def write(fw, mesh_source, image_width, image_height, opacity, face_iter_func):
     scene.render.image_settings.file_format = 'PNG'
     scene.render.filepath = filepath
 
+    scene.update()
+
     data_context = {"blend_data": bpy.context.blend_data, "scene": scene}
     bpy.ops.render.render(data_context, write_still=True)
 
     # cleanup
-    bpy.data.scenes.remove(scene)
-    bpy.data.objects.remove(obj_cam)
-    bpy.data.objects.remove(obj_solid)
-    bpy.data.objects.remove(obj_wire)
+    bpy.data.scenes.remove(scene, do_unlink=True)
+    bpy.data.objects.remove(obj_cam, do_unlink=True)
+    bpy.data.objects.remove(obj_solid, do_unlink=True)
+    bpy.data.objects.remove(obj_wire, do_unlink=True)
 
-    bpy.data.cameras.remove(cam)
-    bpy.data.meshes.remove(mesh)
+    bpy.data.cameras.remove(cam, do_unlink=True)
+    bpy.data.meshes.remove(mesh, do_unlink=True)
 
-    bpy.data.materials.remove(material_wire)
+    bpy.data.materials.remove(material_wire, do_unlink=True)
     for mat_solid in material_solids:
-        bpy.data.materials.remove(mat_solid)
+        bpy.data.materials.remove(mat_solid, do_unlink=True)

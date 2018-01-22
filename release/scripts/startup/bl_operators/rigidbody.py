@@ -20,8 +20,10 @@
 
 import bpy
 from bpy.types import Operator
-from bpy.props import IntProperty
-from bpy.props import EnumProperty
+from bpy.props import (
+    EnumProperty,
+    IntProperty,
+)
 
 
 class CopyRigidbodySettings(Operator):
@@ -163,7 +165,7 @@ class BakeToKeyframes(Operator):
                     elif rot_mode == 'AXIS_ANGLE':
                         # this is a little roundabout but there's no better way right now
                         aa = mat.to_quaternion().to_axis_angle()
-                        obj.rotation_axis_angle = (aa[1], ) + aa[0][:]
+                        obj.rotation_axis_angle = (aa[1], *aa[0])
                     else:  # euler
                         # make sure euler rotation is compatible to previous frame
                         # NOTE: assume that on first frame, the starting rotation is appropriate
@@ -309,3 +311,10 @@ class ConnectRigidBodies(Operator):
         else:
             self.report({'WARNING'}, "No other objects selected")
             return {'CANCELLED'}
+
+
+classes = (
+    BakeToKeyframes,
+    ConnectRigidBodies,
+    CopyRigidbodySettings,
+)

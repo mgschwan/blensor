@@ -60,7 +60,7 @@ void NormalizeOperation::deinitExecution()
 	NodeOperation::deinitMutex();
 }
 
-bool NormalizeOperation::determineDependingAreaOfInterest(rcti *input, ReadBufferOperation *readOperation, rcti *output)
+bool NormalizeOperation::determineDependingAreaOfInterest(rcti * /*input*/, ReadBufferOperation *readOperation, rcti *output)
 {
 	rcti imageInput;
 	if (this->m_cachedInstance) return false;
@@ -109,7 +109,7 @@ void *NormalizeOperation::initializeTileData(rcti *rect)
 
 		minmult->x = minv;
 		/* The rare case of flat buffer  would cause a divide by 0 */
-		minmult->y = ((maxv != minv) ? 1.0f / (maxv - minv) : 0.f);
+		minmult->y = ((maxv != minv) ? 1.0f / (maxv - minv) : 0.0f);
 
 		this->m_cachedInstance = minmult;
 	}
@@ -118,7 +118,7 @@ void *NormalizeOperation::initializeTileData(rcti *rect)
 	return this->m_cachedInstance;
 }
 
-void NormalizeOperation::deinitializeTileData(rcti *rect, void *data)
+void NormalizeOperation::deinitializeTileData(rcti * /*rect*/, void * /*data*/)
 {
 	/* pass */
 }

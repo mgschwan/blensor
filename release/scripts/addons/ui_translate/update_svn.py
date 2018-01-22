@@ -25,15 +25,16 @@ if "bpy" in locals():
     importlib.reload(utils_languages_menu)
 else:
     import bpy
-    from bpy.props import (BoolProperty,
-                           CollectionProperty,
-                           EnumProperty,
-                           FloatProperty,
-                           FloatVectorProperty,
-                           IntProperty,
-                           PointerProperty,
-                           StringProperty,
-                           )
+    from bpy.props import (
+            BoolProperty,
+            CollectionProperty,
+            EnumProperty,
+            FloatProperty,
+            FloatVectorProperty,
+            IntProperty,
+            PointerProperty,
+            StringProperty,
+            )
     from . import settings
     from bl_i18n_utils import utils as utils_i18n
     from bl_i18n_utils import utils_languages_menu
@@ -62,6 +63,8 @@ class UI_OT_i18n_updatetranslation_svn_branches(bpy.types.Operator):
         context.window_manager.progress_begin(0, len(i18n_sett.langs) + 1)
         context.window_manager.progress_update(0)
         if not self.use_skip_pot_gen:
+            env = os.environ.copy()
+            env["ASAN_OPTIONS"] = "exitcode=0"
             # Generate base pot from RNA messages (we use another blender instance here, to be able to perfectly
             # control our environment (factory startup, specific addons enabled/disabled...)).
             # However, we need to export current user settings about this addon!
@@ -72,14 +75,14 @@ class UI_OT_i18n_updatetranslation_svn_branches(bpy.types.Operator):
                 "--python",
                 os.path.join(os.path.dirname(utils_i18n.__file__), "bl_extract_messages.py"),
                 "--",
-                "bl_extract_messages.py",  # arg parser expects first arg to be prog name!
                 "--settings",
                 self.settings.to_json(),
             )
             # Not working (UI is not refreshed...).
             #self.report({'INFO'}, "Extracting messages, this will take some time...")
             context.window_manager.progress_update(1)
-            if subprocess.call(cmmd):
+            ret = subprocess.run(cmmd, env=env)
+            if ret.returncode != 0:
                 self.report({'ERROR'}, "Message extraction process failed!")
                 context.window_manager.progress_end()
                 return {'CANCELLED'}
@@ -138,6 +141,7 @@ class UI_OT_i18n_updatetranslation_svn_trunk(bpy.types.Operator):
                 po.write(kind="PO", dest=lng.po_path_trunk[:-3] + "_raw.po")
                 po.rtl_process()
             po.write(kind="PO", dest=lng.po_path_trunk)
+            po.write(kind="PO_COMPACT", dest=lng.po_path_git)
             po.write(kind="MO", dest=lng.mo_path_trunk)
             po.update_info()
             stats[lng.uid] = po.nbr_trans_msgs / po.nbr_msgs
@@ -220,3 +224,10 @@ class UI_OT_i18n_updatetranslation_svn_statistics(bpy.types.Operator):
     def invoke(self, context, event):
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
+
+
+classes = (
+    UI_OT_i18n_updatetranslation_svn_branches,
+    UI_OT_i18n_updatetranslation_svn_trunk,
+    UI_OT_i18n_updatetranslation_svn_statistics,
+)

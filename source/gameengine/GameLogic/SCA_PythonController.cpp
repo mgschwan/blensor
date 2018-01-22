@@ -39,7 +39,7 @@
 #include "SCA_LogicManager.h"
 #include "SCA_ISensor.h"
 #include "SCA_IActuator.h"
-#include "PyObjectPlus.h"
+#include "EXP_PyObjectPlus.h"
 
 #ifdef WITH_PYTHON
 #include "compile.h"
@@ -163,7 +163,9 @@ void SCA_PythonController::SetNamespace(PyObject*	pythondictionary)
 	
 	/* Without __file__ set the sys.argv[0] is used for the filename
 	 * which ends up with lines from the blender binary being printed in the console */
-	PyDict_SetItemString(m_pythondictionary, "__file__", PyUnicode_From_STR_String(m_scriptName));
+	PyObject *value = PyUnicode_From_STR_String(m_scriptName);
+	PyDict_SetItemString(m_pythondictionary, "__file__", value);
+	Py_DECREF(value);
 	
 }
 #endif
@@ -386,8 +388,7 @@ bool SCA_PythonController::Import()
 void SCA_PythonController::Trigger(SCA_LogicManager* logicmgr)
 {
 	m_sCurrentController = this;
-	m_sCurrentLogicManager = logicmgr;
-	
+
 	PyObject *excdict=		NULL;
 	PyObject *resultobj=	NULL;
 	
@@ -470,7 +471,7 @@ void SCA_PythonController::Trigger(SCA_LogicManager* logicmgr)
 PyObject *SCA_PythonController::PyActivate(PyObject *value)
 {
 	if (m_sCurrentController != this) {
-		PyErr_SetString(PyExc_SystemError, "Cannot add an actuator from a non-active controller");
+		PyErr_SetString(PyExc_SystemError, "Cannot activate an actuator from a non-active controller");
 		return NULL;
 	}
 	
@@ -478,14 +479,14 @@ PyObject *SCA_PythonController::PyActivate(PyObject *value)
 	if (actu==NULL)
 		return NULL;
 	
-	m_sCurrentLogicManager->AddActiveActuator((SCA_IActuator*)actu, true);
+	m_logicManager->AddActiveActuator((SCA_IActuator*)actu, true);
 	Py_RETURN_NONE;
 }
 
 PyObject *SCA_PythonController::PyDeActivate(PyObject *value)
 {
 	if (m_sCurrentController != this) {
-		PyErr_SetString(PyExc_SystemError, "Cannot add an actuator from a non-active controller");
+		PyErr_SetString(PyExc_SystemError, "Cannot deactivate an actuator from a non-active controller");
 		return NULL;
 	}
 	
@@ -493,7 +494,7 @@ PyObject *SCA_PythonController::PyDeActivate(PyObject *value)
 	if (actu==NULL)
 		return NULL;
 	
-	m_sCurrentLogicManager->AddActiveActuator((SCA_IActuator*)actu, false);
+	m_logicManager->AddActiveActuator((SCA_IActuator*)actu, false);
 	Py_RETURN_NONE;
 }
 

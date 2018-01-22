@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "util_aligned_malloc.h"
-#include "util_guarded_allocator.h"
+#include "util/util_aligned_malloc.h"
+#include "util/util_guarded_allocator.h"
 
 #include <cassert>
 
@@ -44,8 +44,7 @@ void *util_aligned_malloc(size_t size, int alignment)
 {
 #ifdef WITH_BLENDER_GUARDEDALLOC
 	return MEM_mallocN_aligned(size, alignment, "Cycles Aligned Alloc");
-#endif
-#ifdef _WIN32
+#elif defined(_WIN32)
 	return _aligned_malloc(size, alignment);
 #elif defined(__APPLE__)
 	/* On Mac OS X, both the heap and the stack are guaranteed 16-byte aligned so
@@ -55,7 +54,7 @@ void *util_aligned_malloc(size_t size, int alignment)
 	return malloc(size);
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
 	void *result;
-	if (posix_memalign(&result, alignment, size)) {
+	if(posix_memalign(&result, alignment, size)) {
 		/* Non-zero means allocation error
 		 * either no allocation or bad alignment value.
 		 */

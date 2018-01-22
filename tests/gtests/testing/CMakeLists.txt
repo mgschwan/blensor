@@ -24,19 +24,10 @@
 set(INC
 	.
 	..
-	../../../extern/libmv/third_party/gflags
+	${GLOG_INCLUDE_DIRS}
+	${GFLAGS_INCLUDE_DIRS}
 	../../../extern/gtest/include
 )
-
-if(WIN32)
-	list(APPEND INC
-		../../../extern/libmv/third_party/glog/src/windows
-	)
-else()
-	list(APPEND INC
-		../../../extern/libmv/third_party/glog/src
-	)
-endif()
 
 set(INC_SYS
 )

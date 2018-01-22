@@ -16,6 +16,13 @@
 
 /* Constant Globals */
 
+#ifndef __KERNEL_GLOBALS_H__
+#define __KERNEL_GLOBALS_H__
+
+#ifdef __KERNEL_CPU__
+#  include "util/util_vector.h"
+#endif
+
 CCL_NAMESPACE_BEGIN
 
 /* On the CPU, we pass along the struct KernelGlobals to nearly everywhere in
@@ -25,36 +32,55 @@ CCL_NAMESPACE_BEGIN
 
 #ifdef __KERNEL_CPU__
 
-#ifdef __OSL__
+#  ifdef __OSL__
 struct OSLGlobals;
 struct OSLThreadData;
 struct OSLShadingSystem;
-#endif
+#  endif
 
-#define MAX_BYTE_IMAGES   1024
-#define MAX_FLOAT_IMAGES  1024
+struct Intersection;
+struct VolumeStep;
 
 typedef struct KernelGlobals {
-	texture_image_uchar4 texture_byte_images[MAX_BYTE_IMAGES];
-	texture_image_float4 texture_float_images[MAX_FLOAT_IMAGES];
+	vector<texture_image_float4> texture_float4_images;
+	vector<texture_image_uchar4> texture_byte4_images;
+	vector<texture_image_half4> texture_half4_images;
+	vector<texture_image_float> texture_float_images;
+	vector<texture_image_uchar> texture_byte_images;
+	vector<texture_image_half> texture_half_images;
 
-#define KERNEL_TEX(type, ttype, name) ttype name;
-#define KERNEL_IMAGE_TEX(type, ttype, name)
-#include "kernel_textures.h"
+#  define KERNEL_TEX(type, ttype, name) ttype name;
+#  define KERNEL_IMAGE_TEX(type, ttype, name)
+#  include "kernel/kernel_textures.h"
 
 	KernelData __data;
 
-#ifdef __OSL__
+#  ifdef __OSL__
 	/* On the CPU, we also have the OSL globals here. Most data structures are shared
 	 * with SVM, the difference is in the shaders and object/mesh attributes. */
 	OSLGlobals *osl;
 	OSLShadingSystem *osl_ss;
 	OSLThreadData *osl_tdata;
-#endif
+#  endif
 
+	/* **** Run-time data ****  */
+
+	/* Heap-allocated storage for transparent shadows intersections. */
+	Intersection *transparent_shadow_intersections;
+
+	/* Storage for decoupled volume steps. */
+	VolumeStep *decoupled_volume_steps[2];
+	int decoupled_volume_steps_index;
+
+	/* split kernel */
+	SplitData split_data;
+	SplitParams split_param_data;
+
+	int2 global_size;
+	int2 global_id;
 } KernelGlobals;
 
-#endif
+#endif  /* __KERNEL_CPU__ */
 
 /* For CUDA, constant memory textures must be globals, so we can't put them
  * into a struct. As a result we don't actually use this struct and use actual
@@ -64,37 +90,45 @@ typedef struct KernelGlobals {
 #ifdef __KERNEL_CUDA__
 
 __constant__ KernelData __data;
-typedef struct KernelGlobals {} KernelGlobals;
+typedef struct KernelGlobals {
+	/* NOTE: Keep the size in sync with SHADOW_STACK_MAX_HITS. */
+	Intersection hits_stack[64];
+} KernelGlobals;
 
-#ifdef __KERNEL_CUDA_TEX_STORAGE__
-#define KERNEL_TEX(type, ttype, name) ttype name;
-#else
-#define KERNEL_TEX(type, ttype, name) const __constant__ __device__ type *name;
-#endif
-#define KERNEL_IMAGE_TEX(type, ttype, name) ttype name;
-#include "kernel_textures.h"
+#  ifdef __KERNEL_CUDA_TEX_STORAGE__
+#    define KERNEL_TEX(type, ttype, name) ttype name;
+#  else
+#    define KERNEL_TEX(type, ttype, name) const __constant__ __device__ type *name;
+#  endif
+#  define KERNEL_IMAGE_TEX(type, ttype, name) ttype name;
+#  include "kernel/kernel_textures.h"
 
-#endif
+#endif  /* __KERNEL_CUDA__ */
 
 /* OpenCL */
 
 #ifdef __KERNEL_OPENCL__
 
-typedef struct KernelGlobals {
+typedef ccl_addr_space struct KernelGlobals {
 	ccl_constant KernelData *data;
 
-#define KERNEL_TEX(type, ttype, name) \
+#  define KERNEL_TEX(type, ttype, name) \
 	ccl_global type *name;
-#include "kernel_textures.h"
+#  include "kernel/kernel_textures.h"
+
+#  ifdef __SPLIT_KERNEL__
+	SplitData split_data;
+	SplitParams split_param_data;
+#  endif
 } KernelGlobals;
 
-#endif
+#endif  /* __KERNEL_OPENCL__ */
 
 /* Interpolated lookup table access */
 
 ccl_device float lookup_table_read(KernelGlobals *kg, float x, int offset, int size)
 {
-	x = clamp(x, 0.0f, 1.0f)*(size-1);
+	x = saturate(x)*(size-1);
 
 	int index = min(float_to_int(x), size-1);
 	int nindex = min(index+1, size-1);
@@ -110,7 +144,7 @@ ccl_device float lookup_table_read(KernelGlobals *kg, float x, int offset, int s
 
 ccl_device float lookup_table_read_2D(KernelGlobals *kg, float x, float y, int offset, int xsize, int ysize)
 {
-	y = clamp(y, 0.0f, 1.0f)*(ysize-1);
+	y = saturate(y)*(ysize-1);
 
 	int index = min(float_to_int(y), ysize-1);
 	int nindex = min(index+1, ysize-1);
@@ -126,3 +160,4 @@ ccl_device float lookup_table_read_2D(KernelGlobals *kg, float x, float y, int o
 
 CCL_NAMESPACE_END
 
+#endif  /* __KERNEL_GLOBALS_H__ */

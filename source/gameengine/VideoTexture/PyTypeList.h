@@ -36,7 +36,7 @@
 #include <memory>
 #include <vector>
 
-#include "PyObjectPlus.h"
+#include "EXP_PyObjectPlus.h"
 
 // forward declaration
 class PyTypeListItem;
@@ -66,7 +66,11 @@ public:
 
 protected:
 	/// pointer to list of types
+#if (__cplusplus > 199711L) /* || (defined(_MSC_VER) && _MSC_VER >= 1800) */
+	std::unique_ptr<PyTypeListType> m_list;
+#else
 	std::auto_ptr<PyTypeListType> m_list;
+#endif
 };
 
 

@@ -27,15 +27,13 @@ KM_HIERARCHY = [
     ('Window', 'EMPTY', 'WINDOW', []),  # file save, window change, exit
     ('Screen', 'EMPTY', 'WINDOW', [     # full screen, undo, screenshot
         ('Screen Editing', 'EMPTY', 'WINDOW', []),    # re-sizing, action corners
-        ]),
+        ('Header', 'EMPTY', 'WINDOW', []),            # header stuff (per region)
+    ]),
 
     ('View2D', 'EMPTY', 'WINDOW', []),    # view 2d navigation (per region)
     ('View2D Buttons List', 'EMPTY', 'WINDOW', []),  # view 2d with buttons navigation
-    ('Header', 'EMPTY', 'WINDOW', []),    # header stuff (per region)
 
-    ('Grease Pencil', 'EMPTY', 'WINDOW', [  # grease pencil stuff (per region)
-        ('Grease Pencil Stroke Edit Mode', 'EMPTY', 'WINDOW', []),
-        ]),
+    ('User Interface', 'EMPTY', 'WINDOW', []),
 
     ('3D View', 'VIEW_3D', 'WINDOW', [  # view 3d navigation and generic stuff (select, transform)
         ('Object Mode', 'EMPTY', 'WINDOW', []),
@@ -71,44 +69,42 @@ KM_HIERARCHY = [
         ('View3D Dolly Modal', 'EMPTY', 'WINDOW', []),
 
         ('3D View Generic', 'VIEW_3D', 'WINDOW', []),    # toolbar and properties
-        ]),
+    ]),
 
-    ('Frames', 'EMPTY', 'WINDOW', []),    # frame navigation (per region)
-    ('Markers', 'EMPTY', 'WINDOW', []),    # markers (per region)
-    ('Animation', 'EMPTY', 'WINDOW', []),    # frame change on click, preview range (per region)
-    ('Animation Channels', 'EMPTY', 'WINDOW', []),
     ('Graph Editor', 'GRAPH_EDITOR', 'WINDOW', [
         ('Graph Editor Generic', 'GRAPH_EDITOR', 'WINDOW', []),
-        ]),
-    ('Dopesheet', 'DOPESHEET_EDITOR', 'WINDOW', []),
+    ]),
+    ('Dopesheet', 'DOPESHEET_EDITOR', 'WINDOW', [
+        ('Dopesheet Generic', 'DOPESHEET_EDITOR', 'WINDOW', []),
+    ]),
     ('NLA Editor', 'NLA_EDITOR', 'WINDOW', [
         ('NLA Channels', 'NLA_EDITOR', 'WINDOW', []),
         ('NLA Generic', 'NLA_EDITOR', 'WINDOW', []),
-        ]),
+    ]),
+    ('Timeline', 'TIMELINE', 'WINDOW', []),
 
     ('Image', 'IMAGE_EDITOR', 'WINDOW', [
-        ('UV Editor', 'EMPTY', 'WINDOW', []),  # image (reverse order, UVEdit before Image
+        ('UV Editor', 'EMPTY', 'WINDOW', []),  # image (reverse order, UVEdit before Image)
         ('Image Paint', 'EMPTY', 'WINDOW', []),  # image and view3d
         ('UV Sculpt', 'EMPTY', 'WINDOW', []),
         ('Image Generic', 'IMAGE_EDITOR', 'WINDOW', []),
-        ]),
+    ]),
 
-    ('Timeline', 'TIMELINE', 'WINDOW', []),
     ('Outliner', 'OUTLINER', 'WINDOW', []),
 
     ('Node Editor', 'NODE_EDITOR', 'WINDOW', [
         ('Node Generic', 'NODE_EDITOR', 'WINDOW', []),
-        ]),
+    ]),
     ('Sequencer', 'SEQUENCE_EDITOR', 'WINDOW', [
         ('SequencerCommon', 'SEQUENCE_EDITOR', 'WINDOW', []),
         ('SequencerPreview', 'SEQUENCE_EDITOR', 'WINDOW', []),
-        ]),
+    ]),
     ('Logic Editor', 'LOGIC_EDITOR', 'WINDOW', []),
 
     ('File Browser', 'FILE_BROWSER', 'WINDOW', [
         ('File Browser Main', 'FILE_BROWSER', 'WINDOW', []),
         ('File Browser Buttons', 'FILE_BROWSER', 'WINDOW', []),
-        ]),
+    ]),
 
     ('Info', 'INFO', 'WINDOW', []),
 
@@ -116,14 +112,22 @@ KM_HIERARCHY = [
 
     ('Text', 'TEXT_EDITOR', 'WINDOW', [
         ('Text Generic', 'TEXT_EDITOR', 'WINDOW', []),
-        ]),
+    ]),
     ('Console', 'CONSOLE', 'WINDOW', []),
     ('Clip', 'CLIP_EDITOR', 'WINDOW', [
         ('Clip Editor', 'CLIP_EDITOR', 'WINDOW', []),
         ('Clip Graph Editor', 'CLIP_EDITOR', 'WINDOW', []),
         ('Clip Dopesheet Editor', 'CLIP_EDITOR', 'WINDOW', []),
-        ('Mask Editing', 'EMPTY', 'WINDOW', []),  # image (reverse order, UVEdit before Image
-        ]),
+    ]),
+
+    ('Grease Pencil', 'EMPTY', 'WINDOW', [  # grease pencil stuff (per region)
+        ('Grease Pencil Stroke Edit Mode', 'EMPTY', 'WINDOW', []),
+    ]),
+    ('Mask Editing', 'EMPTY', 'WINDOW', []),
+    ('Frames', 'EMPTY', 'WINDOW', []),    # frame navigation (per region)
+    ('Markers', 'EMPTY', 'WINDOW', []),    # markers (per region)
+    ('Animation', 'EMPTY', 'WINDOW', []),    # frame change on click, preview range (per region)
+    ('Animation Channels', 'EMPTY', 'WINDOW', []),
 
     ('View3D Gesture Circle', 'EMPTY', 'WINDOW', []),
     ('Gesture Straight Line', 'EMPTY', 'WINDOW', []),
@@ -132,7 +136,80 @@ KM_HIERARCHY = [
 
     ('Standard Modal Map', 'EMPTY', 'WINDOW', []),
     ('Transform Modal Map', 'EMPTY', 'WINDOW', []),
-    ]
+    ('Eyedropper Modal Map', 'EMPTY', 'WINDOW', []),
+]
+
+
+# -----------------------------------------------------------------------------
+# Add-on helpers to properly (un)register their own keymaps.
+
+# Example of keymaps_description:
+keymaps_description_doc = """
+keymaps_description is a tuple (((keymap_description), (tuple of keymap_item_descriptions))).
+keymap_description is a tuple (name, space_type, region_type, is_modal).
+keymap_item_description is a tuple ({kw_args_for_keymap_new}, (tuple of properties)).
+kw_args_for_keymap_new is a mapping which keywords match parameters of keymap.new() function.
+tuple of properties is a tuple of pairs (prop_name, prop_value) (properties being those of called operator).
+
+Example:
+
+KEYMAPS = (
+    # First, keymap identifiers (last bool is True for modal km).
+    (('Sequencer', 'SEQUENCE_EDITOR', 'WINDOW', False), (
+    # Then a tuple of keymap items, defined by a dict of kwargs for the km new func, and a tuple of tuples (name, val)
+    # for ops properties, if needing non-default values.
+        ({"idname": export_strips.SEQExportStrip.bl_idname, "type": 'P', "value": 'PRESS', "shift": True, "ctrl": True},
+         ()),
+    )),
+)
+"""
+
+
+def addon_keymap_register(wm, keymaps_description):
+    """
+    Register a set of keymaps for addons.
+
+    """ + keymaps_description_doc
+    kconf = wm.keyconfigs.addon
+    if not kconf:
+        return  # happens in background mode...
+    for km_info, km_items in keymaps_description:
+        km_name, km_sptype, km_regtype, km_ismodal = km_info
+        kmap = [k for k in kconf.keymaps
+                  if k.name == km_name and k.region_type == km_regtype and
+                     k.space_type == km_sptype and k.is_modal == km_ismodal]
+        if kmap:
+            kmap = kmap[0]
+        else:
+            kmap = kconf.keymaps.new(km_name, region_type=km_regtype, space_type=km_sptype, modal=km_ismodal)
+        for kmi_kwargs, props in km_items:
+            kmi = kmap.keymap_items.new(**kmi_kwargs)
+            kmi.active = True
+            for prop, val in props:
+                setattr(kmi.properties, prop, val)
+
+
+def addon_keymap_unregister(wm, keymaps_description):
+    """
+    Unregister a set of keymaps for addons.
+
+    """ + keymaps_description_doc
+    # NOTE: We must also clean up user keyconfig, else, if user has customized one of add-on's shortcut, this
+    #       customization remains in memory, and comes back when re-enabling the addon, causing a segfault... :/
+    kconfs = wm.keyconfigs
+    for kconf in (kconfs.user, kconfs.addon):
+        for km_info, km_items in keymaps_description:
+            km_name, km_sptype, km_regtype, km_ismodal = km_info
+            kmaps = (k for k in kconf.keymaps
+                       if k.name == km_name and k.region_type == km_regtype and
+                          k.space_type == km_sptype and k.is_modal == km_ismodal)
+            for kmap in kmaps:
+                for kmi_kwargs, props in km_items:
+                    idname = kmi_kwargs["idname"]
+                    for kmi in kmap.keymap_items:
+                        if kmi.idname == idname:
+                            kmap.keymap_items.remove(kmi)
+            # NOTE: We won't remove addons keymaps themselves, other addons might also use them!
 
 
 # -----------------------------------------------------------------------------
@@ -163,13 +240,12 @@ def _export_properties(prefix, properties, kmi_id, lines=None):
 
     def string_value(value):
         if isinstance(value, str) or isinstance(value, bool) or isinstance(value, float) or isinstance(value, int):
-            result = repr(value)
+            return repr(value)
         elif getattr(value, '__len__', False):
             return repr(list(value))
-        else:
-            print("Export key configuration: can't write ", value)
 
-        return result
+        print("Export key configuration: can't write ", value)
+        return ""
 
     for pname in properties.bl_rna.properties.keys():
         if pname != "rna_type":
@@ -234,7 +310,8 @@ def keyconfig_export(wm, kc, filepath):
             "    except Exception as e:\n"
             "        print(\"Warning: %r\" % e)\n\n")
     f.write("wm = bpy.context.window_manager\n")
-    f.write("kc = wm.keyconfigs.new(os.path.splitext(os.path.basename(__file__))[0])\n\n")  # keymap must be created by caller
+    # keymap must be created by caller
+    f.write("kc = wm.keyconfigs.new(os.path.splitext(os.path.basename(__file__))[0])\n\n")
 
     # Generate a list of keymaps to export:
     #
@@ -262,7 +339,8 @@ def keyconfig_export(wm, kc, filepath):
         km = km.active()
 
         f.write("# Map %s\n" % km.name)
-        f.write("km = kc.keymaps.new('%s', space_type='%s', region_type='%s', modal=%s)\n\n" % (km.name, km.space_type, km.region_type, km.is_modal))
+        f.write("km = kc.keymaps.new('%s', space_type='%s', region_type='%s', modal=%s)\n\n" %
+                (km.name, km.space_type, km.region_type, km.is_modal))
         for kmi in km.keymap_items:
             f.write(_kmistr(kmi, km.is_modal))
         f.write("\n")

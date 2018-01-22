@@ -59,6 +59,8 @@
 #include "BKE_main.h"
 
 #include "BKE_library.h"
+#include "BKE_library_query.h"
+#include "BKE_library_remap.h"
 #include "BKE_image.h"
 #include "BKE_material.h"
 #include "BKE_texture.h"
@@ -73,16 +75,16 @@
 
 /* ****************** Mapping ******************* */
 
-TexMapping *add_tex_mapping(int type)
+TexMapping *BKE_texture_mapping_add(int type)
 {
 	TexMapping *texmap = MEM_callocN(sizeof(TexMapping), "TexMapping");
 	
-	default_tex_mapping(texmap, type);
+	BKE_texture_mapping_default(texmap, type);
 	
 	return texmap;
 }
 
-void default_tex_mapping(TexMapping *texmap, int type)
+void BKE_texture_mapping_default(TexMapping *texmap, int type)
 {
 	memset(texmap, 0, sizeof(TexMapping));
 
@@ -97,7 +99,7 @@ void default_tex_mapping(TexMapping *texmap, int type)
 	texmap->type = type;
 }
 
-void init_tex_mapping(TexMapping *texmap)
+void BKE_texture_mapping_init(TexMapping *texmap)
 {
 	float smat[4][4], rmat[4][4], tmat[4][4], proj[4][4], size[3];
 
@@ -170,16 +172,16 @@ void init_tex_mapping(TexMapping *texmap)
 	}
 }
 
-ColorMapping *add_color_mapping(void)
+ColorMapping *BKE_texture_colormapping_add(void)
 {
 	ColorMapping *colormap = MEM_callocN(sizeof(ColorMapping), "ColorMapping");
 	
-	default_color_mapping(colormap);
+	BKE_texture_colormapping_default(colormap);
 	
 	return colormap;
 }
 
-void default_color_mapping(ColorMapping *colormap)
+void BKE_texture_colormapping_default(ColorMapping *colormap)
 {
 	memset(colormap, 0, sizeof(ColorMapping));
 
@@ -547,39 +549,56 @@ int colorband_element_remove(struct ColorBand *coba, int index)
 	if (index < 0 || index >= coba->tot)
 		return 0;
 
+	coba->tot--;
 	for (a = index; a < coba->tot; a++) {
 		coba->data[a] = coba->data[a + 1];
 	}
 	if (coba->cur) coba->cur--;
-	coba->tot--;
 	return 1;
 }
 
 /* ******************* TEX ************************ */
 
+/** Free (or release) any data used by this texture (does not free the texure itself). */
 void BKE_texture_free(Tex *tex)
 {
-	if (tex->coba) MEM_freeN(tex->coba);
-	if (tex->env) BKE_free_envmap(tex->env);
-	if (tex->pd) BKE_free_pointdensity(tex->pd);
-	if (tex->vd) BKE_free_voxeldata(tex->vd);
-	if (tex->ot) BKE_free_oceantex(tex->ot);
-	BKE_free_animdata((struct ID *)tex);
-	
-	BKE_previewimg_free(&tex->preview);
-	BKE_icon_delete((struct ID *)tex);
-	tex->id.icon_id = 0;
-	
+	BKE_animdata_free((ID *)tex, false);
+
+	/* is no lib link block, but texture extension */
 	if (tex->nodetree) {
 		ntreeFreeTree(tex->nodetree);
 		MEM_freeN(tex->nodetree);
+		tex->nodetree = NULL;
 	}
+
+	MEM_SAFE_FREE(tex->coba);
+	if (tex->env) {
+		BKE_texture_envmap_free(tex->env);
+		tex->env = NULL;
+	}
+	if (tex->pd) {
+		BKE_texture_pointdensity_free(tex->pd);
+		tex->pd = NULL;
+	}
+	if (tex->vd) {
+		BKE_texture_voxeldata_free(tex->vd);
+		tex->vd = NULL;
+	}
+	if (tex->ot) {
+		BKE_texture_ocean_free(tex->ot);
+		tex->ot = NULL;
+	}
+	
+	BKE_icon_id_delete((ID *)tex);
+	BKE_previewimg_free(&tex->preview);
 }
 
 /* ------------------------------------------------------------------------- */
 
-void default_tex(Tex *tex)
+void BKE_texture_default(Tex *tex)
 {
+	/* BLI_assert(MEMCMP_STRUCT_OFS_IS_ZERO(tex, id)); */  /* Not here, can be called with some pointers set. :/ */
+
 	tex->type = TEX_IMAGE;
 	tex->ima = NULL;
 	tex->stype = 0;
@@ -629,7 +648,7 @@ void default_tex(Tex *tex)
 		tex->env->stype = ENV_ANIM;
 		tex->env->clipsta = 0.1;
 		tex->env->clipend = 100;
-		tex->env->cuberes = 600;
+		tex->env->cuberes = 512;
 		tex->env->depth = 0;
 	}
 
@@ -657,25 +676,25 @@ void default_tex(Tex *tex)
 	tex->preview = NULL;
 }
 
-void tex_set_type(Tex *tex, int type)
+void BKE_texture_type_set(Tex *tex, int type)
 {
 	switch (type) {
 			
 		case TEX_VOXELDATA:
 			if (tex->vd == NULL)
-				tex->vd = BKE_add_voxeldata();
+				tex->vd = BKE_texture_voxeldata_add();
 			break;
 		case TEX_POINTDENSITY:
 			if (tex->pd == NULL)
-				tex->pd = BKE_add_pointdensity();
+				tex->pd = BKE_texture_pointdensity_add();
 			break;
 		case TEX_ENVMAP:
 			if (tex->env == NULL)
-				tex->env = BKE_add_envmap();
+				tex->env = BKE_texture_envmap_add();
 			break;
 		case TEX_OCEAN:
 			if (tex->ot == NULL)
-				tex->ot = BKE_add_oceantex();
+				tex->ot = BKE_texture_ocean_add();
 			break;
 	}
 	
@@ -684,20 +703,20 @@ void tex_set_type(Tex *tex, int type)
 
 /* ------------------------------------------------------------------------- */
 
-Tex *add_texture(Main *bmain, const char *name)
+Tex *BKE_texture_add(Main *bmain, const char *name)
 {
 	Tex *tex;
 
 	tex = BKE_libblock_alloc(bmain, ID_TE, name);
 	
-	default_tex(tex);
+	BKE_texture_default(tex);
 	
 	return tex;
 }
 
 /* ------------------------------------------------------------------------- */
 
-void default_mtex(MTex *mtex)
+void BKE_texture_mtex_default(MTex *mtex)
 {
 	mtex->texco = TEXCO_UV;
 	mtex->mapto = MAP_COL;
@@ -767,19 +786,19 @@ void default_mtex(MTex *mtex)
 
 /* ------------------------------------------------------------------------- */
 
-MTex *add_mtex(void)
+MTex *BKE_texture_mtex_add(void)
 {
 	MTex *mtex;
 	
-	mtex = MEM_callocN(sizeof(MTex), "add_mtex");
+	mtex = MEM_callocN(sizeof(MTex), "BKE_texture_mtex_add");
 	
-	default_mtex(mtex);
+	BKE_texture_mtex_default(mtex);
 	
 	return mtex;
 }
 
 /* slot -1 for first free ID */
-MTex *add_mtex_id(ID *id, int slot)
+MTex *BKE_texture_mtex_add_id(ID *id, int slot)
 {
 	MTex **mtex_ar;
 	short act;
@@ -820,18 +839,18 @@ MTex *add_mtex_id(ID *id, int slot)
 		((Material *)id)->septex &= ~(1 << slot);
 	}
 
-	mtex_ar[slot] = add_mtex();
+	mtex_ar[slot] = BKE_texture_mtex_add();
 
 	return mtex_ar[slot];
 }
 
 /* ------------------------------------------------------------------------- */
 
-Tex *BKE_texture_copy(Tex *tex)
+Tex *BKE_texture_copy(Main *bmain, const Tex *tex)
 {
 	Tex *texn;
 	
-	texn = BKE_libblock_copy(&tex->id);
+	texn = BKE_libblock_copy(bmain, &tex->id);
 	if (BKE_texture_is_image_user(tex)) {
 		id_us_plus((ID *)texn->ima);
 	}
@@ -840,28 +859,27 @@ Tex *BKE_texture_copy(Tex *tex)
 	}
 	
 	if (texn->coba) texn->coba = MEM_dupallocN(texn->coba);
-	if (texn->env) texn->env = BKE_copy_envmap(texn->env);
-	if (texn->pd) texn->pd = BKE_copy_pointdensity(texn->pd);
+	if (texn->env) texn->env = BKE_texture_envmap_copy(texn->env);
+	if (texn->pd) texn->pd = BKE_texture_pointdensity_copy(texn->pd);
 	if (texn->vd) texn->vd = MEM_dupallocN(texn->vd);
-	if (texn->ot) texn->ot = BKE_copy_oceantex(texn->ot);
-	if (tex->preview) texn->preview = BKE_previewimg_copy(tex->preview);
+	if (texn->ot) texn->ot = BKE_texture_ocean_copy(texn->ot);
 
 	if (tex->nodetree) {
 		if (tex->nodetree->execdata) {
 			ntreeTexEndExecTree(tex->nodetree->execdata);
 		}
-		texn->nodetree = ntreeCopyTree(tex->nodetree);
+		texn->nodetree = ntreeCopyTree(bmain, tex->nodetree);
 	}
-	
-	if (tex->id.lib) {
-		BKE_id_lib_local_paths(G.main, tex->id.lib, &texn->id);
-	}
+
+	BKE_previewimg_id_copy(&texn->id, &tex->id);
+
+	BKE_id_copy_ensure_local(bmain, &tex->id, &texn->id);
 
 	return texn;
 }
 
 /* texture copy without adding to main dbase */
-Tex *localize_texture(Tex *tex)
+Tex *BKE_texture_localize(Tex *tex)
 {
 	Tex *texn;
 	
@@ -871,17 +889,17 @@ Tex *localize_texture(Tex *tex)
 	
 	if (texn->coba) texn->coba = MEM_dupallocN(texn->coba);
 	if (texn->env) {
-		texn->env = BKE_copy_envmap(texn->env);
+		texn->env = BKE_texture_envmap_copy(texn->env);
 		id_us_min(&texn->env->ima->id);
 	}
-	if (texn->pd) texn->pd = BKE_copy_pointdensity(texn->pd);
+	if (texn->pd) texn->pd = BKE_texture_pointdensity_copy(texn->pd);
 	if (texn->vd) {
 		texn->vd = MEM_dupallocN(texn->vd);
 		if (texn->vd->dataset)
 			texn->vd->dataset = MEM_dupallocN(texn->vd->dataset);
 	}
 	if (texn->ot) {
-		texn->ot = BKE_copy_oceantex(tex->ot);
+		texn->ot = BKE_texture_ocean_copy(tex->ot);
 	}
 	
 	texn->preview = NULL;
@@ -896,195 +914,9 @@ Tex *localize_texture(Tex *tex)
 
 /* ------------------------------------------------------------------------- */
 
-static void extern_local_texture(Tex *tex)
+void BKE_texture_make_local(Main *bmain, Tex *tex, const bool lib_local)
 {
-	id_lib_extern((ID *)tex->ima);
-}
-
-void BKE_texture_make_local(Tex *tex)
-{
-	Main *bmain = G.main;
-	Material *ma;
-	World *wrld;
-	Lamp *la;
-	Brush *br;
-	ParticleSettings *pa;
-	FreestyleLineStyle *ls;
-	int a;
-	bool is_local = false, is_lib = false;
-
-	/* - only lib users: do nothing
-	 * - only local users: set flag
-	 * - mixed: make copy
-	 */
-	
-	if (tex->id.lib == NULL) return;
-
-	if (tex->id.us == 1) {
-		id_clear_lib_data(bmain, &tex->id);
-		extern_local_texture(tex);
-		return;
-	}
-	
-	ma = bmain->mat.first;
-	while (ma) {
-		for (a = 0; a < MAX_MTEX; a++) {
-			if (ma->mtex[a] && ma->mtex[a]->tex == tex) {
-				if (ma->id.lib) is_lib = true;
-				else is_local = true;
-			}
-		}
-		ma = ma->id.next;
-	}
-	la = bmain->lamp.first;
-	while (la) {
-		for (a = 0; a < MAX_MTEX; a++) {
-			if (la->mtex[a] && la->mtex[a]->tex == tex) {
-				if (la->id.lib) is_lib = true;
-				else is_local = true;
-			}
-		}
-		la = la->id.next;
-	}
-	wrld = bmain->world.first;
-	while (wrld) {
-		for (a = 0; a < MAX_MTEX; a++) {
-			if (wrld->mtex[a] && wrld->mtex[a]->tex == tex) {
-				if (wrld->id.lib) is_lib = true;
-				else is_local = true;
-			}
-		}
-		wrld = wrld->id.next;
-	}
-	br = bmain->brush.first;
-	while (br) {
-		if (br->mtex.tex == tex) {
-			if (br->id.lib) is_lib = true;
-			else is_local = true;
-		}
-		if (br->mask_mtex.tex == tex) {
-			if (br->id.lib) is_lib = true;
-			else is_local = true;
-		}
-		br = br->id.next;
-	}
-	pa = bmain->particle.first;
-	while (pa) {
-		for (a = 0; a < MAX_MTEX; a++) {
-			if (pa->mtex[a] && pa->mtex[a]->tex == tex) {
-				if (pa->id.lib) is_lib = true;
-				else is_local = true;
-			}
-		}
-		pa = pa->id.next;
-	}
-	ls = bmain->linestyle.first;
-	while (ls) {
-		for (a = 0; a < MAX_MTEX; a++) {
-			if (ls->mtex[a] && ls->mtex[a]->tex == tex) {
-				if (ls->id.lib) is_lib = true;
-				else is_local = true;
-			}
-		}
-		ls = ls->id.next;
-	}
-	
-	if (is_local && is_lib == false) {
-		id_clear_lib_data(bmain, &tex->id);
-		extern_local_texture(tex);
-	}
-	else if (is_local && is_lib) {
-		Tex *tex_new = BKE_texture_copy(tex);
-
-		tex_new->id.us = 0;
-
-		/* Remap paths of new ID using old library as base. */
-		BKE_id_lib_local_paths(bmain, tex->id.lib, &tex_new->id);
-		
-		ma = bmain->mat.first;
-		while (ma) {
-			for (a = 0; a < MAX_MTEX; a++) {
-				if (ma->mtex[a] && ma->mtex[a]->tex == tex) {
-					if (ma->id.lib == NULL) {
-						ma->mtex[a]->tex = tex_new;
-						tex_new->id.us++;
-						tex->id.us--;
-					}
-				}
-			}
-			ma = ma->id.next;
-		}
-		la = bmain->lamp.first;
-		while (la) {
-			for (a = 0; a < MAX_MTEX; a++) {
-				if (la->mtex[a] && la->mtex[a]->tex == tex) {
-					if (la->id.lib == NULL) {
-						la->mtex[a]->tex = tex_new;
-						tex_new->id.us++;
-						tex->id.us--;
-					}
-				}
-			}
-			la = la->id.next;
-		}
-		wrld = bmain->world.first;
-		while (wrld) {
-			for (a = 0; a < MAX_MTEX; a++) {
-				if (wrld->mtex[a] && wrld->mtex[a]->tex == tex) {
-					if (wrld->id.lib == NULL) {
-						wrld->mtex[a]->tex = tex_new;
-						tex_new->id.us++;
-						tex->id.us--;
-					}
-				}
-			}
-			wrld = wrld->id.next;
-		}
-		br = bmain->brush.first;
-		while (br) {
-			if (br->mtex.tex == tex) {
-				if (br->id.lib == NULL) {
-					br->mtex.tex = tex_new;
-					tex_new->id.us++;
-					tex->id.us--;
-				}
-			}
-			if (br->mask_mtex.tex == tex) {
-				if (br->id.lib == NULL) {
-					br->mask_mtex.tex = tex_new;
-					tex_new->id.us++;
-					tex->id.us--;
-				}
-			}
-			br = br->id.next;
-		}
-		pa = bmain->particle.first;
-		while (pa) {
-			for (a = 0; a < MAX_MTEX; a++) {
-				if (pa->mtex[a] && pa->mtex[a]->tex == tex) {
-					if (pa->id.lib == NULL) {
-						pa->mtex[a]->tex = tex_new;
-						tex_new->id.us++;
-						tex->id.us--;
-					}
-				}
-			}
-			pa = pa->id.next;
-		}
-		ls = bmain->linestyle.first;
-		while (ls) {
-			for (a = 0; a < MAX_MTEX; a++) {
-				if (ls->mtex[a] && ls->mtex[a]->tex == tex) {
-					if (ls->id.lib == NULL) {
-						ls->mtex[a]->tex = tex_new;
-						tex_new->id.us++;
-						tex->id.us--;
-					}
-				}
-			}
-			ls = ls->id.next;
-		}
-	}
+	BKE_id_make_local_generic(bmain, &tex->id, true, lib_local);
 }
 
 Tex *give_current_object_texture(Object *ob)
@@ -1132,7 +964,7 @@ void set_current_lamp_texture(Lamp *la, Tex *newtex)
 
 	if (newtex) {
 		if (!la->mtex[act]) {
-			la->mtex[act] = add_mtex();
+			la->mtex[act] = BKE_texture_mtex_add();
 			la->mtex[act]->texco = TEXCO_GLOB;
 		}
 		
@@ -1167,7 +999,7 @@ void set_current_linestyle_texture(FreestyleLineStyle *linestyle, Tex *newtex)
 
 	if (newtex) {
 		if (!linestyle->mtex[act]) {
-			linestyle->mtex[act] = add_mtex();
+			linestyle->mtex[act] = BKE_texture_mtex_add();
 			linestyle->mtex[act]->texco = TEXCO_STROKE;
 		}
 
@@ -1296,7 +1128,7 @@ void set_current_material_texture(Material *ma, Tex *newtex)
 
 		if (newtex) {
 			if (!ma->mtex[act]) {
-				ma->mtex[act] = add_mtex();
+				ma->mtex[act] = BKE_texture_mtex_add();
 				/* Reset this slot's ON/OFF toggle, for materials, when slot was empty. */
 				ma->septex &= ~(1 << act);
 			}
@@ -1347,7 +1179,7 @@ void set_current_world_texture(World *wo, Tex *newtex)
 
 	if (newtex) {
 		if (!wo->mtex[act]) {
-			wo->mtex[act] = add_mtex();
+			wo->mtex[act] = BKE_texture_mtex_add();
 			wo->mtex[act]->texco = TEXCO_VIEW;
 		}
 		
@@ -1398,7 +1230,7 @@ void set_current_particle_texture(ParticleSettings *part, Tex *newtex)
 
 	if (newtex) {
 		if (!part->mtex[act]) {
-			part->mtex[act] = add_mtex();
+			part->mtex[act] = BKE_texture_mtex_add();
 			part->mtex[act]->texco = TEXCO_ORCO;
 			part->mtex[act]->blendtype = MTEX_MUL;
 		}
@@ -1414,7 +1246,7 @@ void set_current_particle_texture(ParticleSettings *part, Tex *newtex)
 
 /* ------------------------------------------------------------------------- */
 
-EnvMap *BKE_add_envmap(void)
+EnvMap *BKE_texture_envmap_add(void)
 {
 	EnvMap *env;
 	
@@ -1423,7 +1255,7 @@ EnvMap *BKE_add_envmap(void)
 	env->stype = ENV_ANIM;
 	env->clipsta = 0.1;
 	env->clipend = 100.0;
-	env->cuberes = 600;
+	env->cuberes = 512;
 	env->viewscale = 0.5;
 	
 	return env;
@@ -1431,7 +1263,7 @@ EnvMap *BKE_add_envmap(void)
 
 /* ------------------------------------------------------------------------- */
 
-EnvMap *BKE_copy_envmap(EnvMap *env)
+EnvMap *BKE_texture_envmap_copy(const EnvMap *env)
 {
 	EnvMap *envn;
 	int a;
@@ -1446,7 +1278,7 @@ EnvMap *BKE_copy_envmap(EnvMap *env)
 
 /* ------------------------------------------------------------------------- */
 
-void BKE_free_envmapdata(EnvMap *env)
+void BKE_texture_envmap_free_data(EnvMap *env)
 {
 	unsigned int part;
 	
@@ -1460,21 +1292,18 @@ void BKE_free_envmapdata(EnvMap *env)
 
 /* ------------------------------------------------------------------------- */
 
-void BKE_free_envmap(EnvMap *env)
+void BKE_texture_envmap_free(EnvMap *env)
 {
 	
-	BKE_free_envmapdata(env);
+	BKE_texture_envmap_free_data(env);
 	MEM_freeN(env);
 	
 }
 
 /* ------------------------------------------------------------------------- */
 
-PointDensity *BKE_add_pointdensity(void)
+void BKE_texture_pointdensity_init_data(PointDensity *pd)
 {
-	PointDensity *pd;
-	
-	pd = MEM_callocN(sizeof(PointDensity), "pointdensity");
 	pd->flag = 0;
 	pd->radius = 0.3f;
 	pd->falloff_type = TEX_PD_FALLOFF_STD;
@@ -1498,11 +1327,16 @@ PointDensity *BKE_add_pointdensity(void)
 	pd->falloff_curve->cm->flag &= ~CUMA_EXTEND_EXTRAPOLATE;
 	curvemap_reset(pd->falloff_curve->cm, &pd->falloff_curve->clipr, pd->falloff_curve->preset, CURVEMAP_SLOPE_POSITIVE);
 	curvemapping_changed(pd->falloff_curve, false);
+}
 
+PointDensity *BKE_texture_pointdensity_add(void)
+{
+	PointDensity *pd = MEM_callocN(sizeof(PointDensity), "pointdensity");
+	BKE_texture_pointdensity_init_data(pd);
 	return pd;
 } 
 
-PointDensity *BKE_copy_pointdensity(PointDensity *pd)
+PointDensity *BKE_texture_pointdensity_copy(const PointDensity *pd)
 {
 	PointDensity *pdn;
 
@@ -1514,7 +1348,7 @@ PointDensity *BKE_copy_pointdensity(PointDensity *pd)
 	return pdn;
 }
 
-void BKE_free_pointdensitydata(PointDensity *pd)
+void BKE_texture_pointdensity_free_data(PointDensity *pd)
 {
 	if (pd->point_tree) {
 		BLI_bvhtree_free(pd->point_tree);
@@ -1532,15 +1366,15 @@ void BKE_free_pointdensitydata(PointDensity *pd)
 	curvemapping_free(pd->falloff_curve); /* can be NULL */
 }
 
-void BKE_free_pointdensity(PointDensity *pd)
+void BKE_texture_pointdensity_free(PointDensity *pd)
 {
-	BKE_free_pointdensitydata(pd);
+	BKE_texture_pointdensity_free_data(pd);
 	MEM_freeN(pd);
 }
 
 /* ------------------------------------------------------------------------- */
 
-void BKE_free_voxeldatadata(VoxelData *vd)
+void BKE_texture_voxeldata_free_data(VoxelData *vd)
 {
 	if (vd->dataset) {
 		MEM_freeN(vd->dataset);
@@ -1549,13 +1383,13 @@ void BKE_free_voxeldatadata(VoxelData *vd)
 
 }
  
-void BKE_free_voxeldata(VoxelData *vd)
+void BKE_texture_voxeldata_free(VoxelData *vd)
 {
-	BKE_free_voxeldatadata(vd);
+	BKE_texture_voxeldata_free_data(vd);
 	MEM_freeN(vd);
 }
  
-VoxelData *BKE_add_voxeldata(void)
+VoxelData *BKE_texture_voxeldata_add(void)
 {
 	VoxelData *vd;
 
@@ -1573,7 +1407,7 @@ VoxelData *BKE_add_voxeldata(void)
 	return vd;
 }
  
-VoxelData *BKE_copy_voxeldata(VoxelData *vd)
+VoxelData *BKE_texture_voxeldata_copy(VoxelData *vd)
 {
 	VoxelData *vdn;
 
@@ -1585,7 +1419,7 @@ VoxelData *BKE_copy_voxeldata(VoxelData *vd)
 
 /* ------------------------------------------------------------------------- */
 
-OceanTex *BKE_add_oceantex(void)
+OceanTex *BKE_texture_ocean_add(void)
 {
 	OceanTex *ot;
 	
@@ -1596,14 +1430,14 @@ OceanTex *BKE_add_oceantex(void)
 	return ot;
 }
 
-OceanTex *BKE_copy_oceantex(struct OceanTex *ot)
+OceanTex *BKE_texture_ocean_copy(const OceanTex *ot)
 {
 	OceanTex *otn = MEM_dupallocN(ot);
 	
 	return otn;
 }
 
-void BKE_free_oceantex(struct OceanTex *ot)
+void BKE_texture_ocean_free(struct OceanTex *ot)
 {
 	MEM_freeN(ot);
 }
@@ -1651,9 +1485,11 @@ bool BKE_texture_dependsOnTime(const struct Tex *texture)
 
 /* ------------------------------------------------------------------------- */
 
-void BKE_texture_get_value(
+void BKE_texture_get_value_ex(
         const Scene *scene, Tex *texture,
-        float *tex_co, TexResult *texres, bool use_color_management)
+        float *tex_co, TexResult *texres,
+        struct ImagePool *pool,
+        bool use_color_management)
 {
 	int result_type;
 	bool do_color_manage = false;
@@ -1663,7 +1499,7 @@ void BKE_texture_get_value(
 	}
 
 	/* no node textures for now */
-	result_type = multitex_ext_safe(texture, tex_co, texres, NULL, do_color_manage, false);
+	result_type = multitex_ext_safe(texture, tex_co, texres, pool, do_color_manage, false);
 
 	/* if the texture gave an RGB value, we assume it didn't give a valid
 	 * intensity, since this is in the context of modifiers don't use perceptual color conversion.
@@ -1674,5 +1510,42 @@ void BKE_texture_get_value(
 	}
 	else {
 		copy_v3_fl(&texres->tr, texres->tin);
+	}
+}
+
+void BKE_texture_get_value(
+        const Scene *scene, Tex *texture,
+        float *tex_co, TexResult *texres, bool use_color_management)
+{
+	BKE_texture_get_value_ex(scene, texture, tex_co, texres, NULL, use_color_management);
+}
+
+static void texture_nodes_fetch_images_for_pool(bNodeTree *ntree, struct ImagePool *pool)
+{
+	for (bNode *node = ntree->nodes.first; node; node = node->next) {
+		if (node->type == SH_NODE_TEX_IMAGE && node->id != NULL) {
+			Image *image = (Image *)node->id;
+			BKE_image_pool_acquire_ibuf(image, NULL, pool);
+		}
+		else if (node->type == NODE_GROUP && node->id != NULL) {
+			/* TODO(sergey): Do we need to control recursion here? */
+			bNodeTree *nested_tree = (bNodeTree *)node->id;
+			texture_nodes_fetch_images_for_pool(nested_tree, pool);
+		}
+	}
+}
+
+/* Make sure all images used by texture are loaded into pool. */
+void BKE_texture_fetch_images_for_pool(Tex *texture, struct ImagePool *pool)
+{
+	if (texture->nodetree != NULL) {
+		texture_nodes_fetch_images_for_pool(texture->nodetree, pool);
+	}
+	else {
+		if (texture->type == TEX_IMAGE) {
+			if (texture->ima != NULL) {
+				BKE_image_pool_acquire_ibuf(texture->ima, NULL, pool);
+			}
+		}
 	}
 }

@@ -12,6 +12,29 @@
     EXPECT_NEAR(a[2], b[2], eps); \
   } (void) 0
 
+#define EXPECT_V4_NEAR(a, b, eps) \
+{ \
+	EXPECT_NEAR(a[0], b[0], eps); \
+	EXPECT_NEAR(a[1], b[1], eps); \
+	EXPECT_NEAR(a[2], b[2], eps); \
+	EXPECT_NEAR(a[3], b[3], eps); \
+	} (void) 0
+
+#define EXPECT_M3_NEAR(a, b, eps) \
+do { \
+	EXPECT_V3_NEAR(a[0], b[0], eps); \
+	EXPECT_V3_NEAR(a[1], b[1], eps); \
+	EXPECT_V3_NEAR(a[2], b[2], eps); \
+} while(false);
+
+#define EXPECT_M4_NEAR(a, b, eps) \
+do { \
+	EXPECT_V3_NEAR(a[0], b[0], eps); \
+	EXPECT_V3_NEAR(a[1], b[1], eps); \
+	EXPECT_V3_NEAR(a[2], b[2], eps); \
+	EXPECT_V4_NEAR(a[3], b[3], eps); \
+} while(false);
+
 #define EXPECT_MATRIX_NEAR(a, b, tolerance) \
 do { \
   bool dims_match = (a.rows() == b.rows()) && (a.cols() == b.cols()); \
@@ -74,5 +97,21 @@ double CosinusBetweenMatrices(const TMat &a, const TMat &b) {
       libmv::FrobeniusNorm(a) / libmv::FrobeniusNorm(b);
 }
 #endif
+
+template <typename T>
+inline void EXPECT_EQ_ARRAY(const T *expected, T *actual, const size_t N) {
+  for(size_t i = 0; i < N; ++i) {
+    EXPECT_EQ(expected[i], actual[i]);
+  }
+}
+
+template <typename T>
+inline void EXPECT_EQ_ARRAY_ND(const T *expected, T *actual, const size_t N, const size_t D) {
+  for(size_t i = 0; i < N; ++i) {
+    for(size_t j = 0; j < D; ++j) {
+      EXPECT_EQ(expected[i][j], actual[i][j]);
+    }
+  }
+}
 
 #endif  // __BLENDER_TESTING_H__

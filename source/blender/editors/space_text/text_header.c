@@ -92,7 +92,7 @@ void TEXT_OT_properties(wmOperatorType *ot)
 {
 	/* identifiers */
 	ot->name = "Properties";
-	ot->description = "Toggle text properties panel";
+	ot->description = "Toggle the properties region visibility";
 	ot->idname = "TEXT_OT_properties";
 	
 	/* api callbacks */
@@ -202,12 +202,12 @@ void TEXT_OT_start_find(wmOperatorType *ot)
 	uiPopupMenu *pup;
 
 	pup = UI_popup_menu_begin(C, IFACE_("Text"), ICON_NONE);
-	uiItemEnumO(layout, "TEXT_OT_move", CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Top of File"),
+	uiItemEnumO(layout, "TEXT_OT_move", CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Top of File"),
 	            0, "type", FILE_TOP);
-	uiItemEnumO(layout, "TEXT_OT_move", CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Bottom of File"),
+	uiItemEnumO(layout, "TEXT_OT_move", CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Bottom of File"),
 	            0, "type", FILE_BOTTOM);
-	uiItemEnumO(layout, "TEXT_OT_move", CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Page Up"), 0, "type", PREV_PAGE);
-	uiItemEnumO(layout, "TEXT_OT_move", CTX_IFACE_(BLF_I18NCONTEXT_OPERATOR_DEFAULT, "Page Down"),
+	uiItemEnumO(layout, "TEXT_OT_move", CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Page Up"), 0, "type", PREV_PAGE);
+	uiItemEnumO(layout, "TEXT_OT_move", CTX_IFACE_(BLT_I18NCONTEXT_OPERATOR_DEFAULT, "Page Down"),
 	            0, "type", NEXT_PAGE);
 	UI_popup_menu_end(C, pup);
 }

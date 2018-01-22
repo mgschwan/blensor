@@ -48,16 +48,52 @@
 const BMAllocTemplate bm_mesh_allocsize_default = {512, 1024, 2048, 512};
 const BMAllocTemplate bm_mesh_chunksize_default = {512, 1024, 2048, 512};
 
-static void bm_mempool_init(BMesh *bm, const BMAllocTemplate *allocsize)
+static void bm_mempool_init_ex(
+        const BMAllocTemplate *allocsize, const bool use_toolflags,
+        BLI_mempool **r_vpool, BLI_mempool **r_epool, BLI_mempool **r_lpool, BLI_mempool **r_fpool)
 {
-	bm->vpool = BLI_mempool_create(sizeof(BMVert), allocsize->totvert,
-	                               bm_mesh_chunksize_default.totvert, BLI_MEMPOOL_ALLOW_ITER);
-	bm->epool = BLI_mempool_create(sizeof(BMEdge), allocsize->totedge,
-	                               bm_mesh_chunksize_default.totedge, BLI_MEMPOOL_ALLOW_ITER);
-	bm->lpool = BLI_mempool_create(sizeof(BMLoop), allocsize->totloop,
-	                               bm_mesh_chunksize_default.totloop, BLI_MEMPOOL_NOP);
-	bm->fpool = BLI_mempool_create(sizeof(BMFace), allocsize->totface,
-	                               bm_mesh_chunksize_default.totface, BLI_MEMPOOL_ALLOW_ITER);
+	size_t vert_size, edge_size, loop_size, face_size;
+
+	if (use_toolflags == true) {
+		vert_size = sizeof(BMVert_OFlag);
+		edge_size = sizeof(BMEdge_OFlag);
+		loop_size = sizeof(BMLoop);
+		face_size = sizeof(BMFace_OFlag);
+	}
+	else {
+		vert_size = sizeof(BMVert);
+		edge_size = sizeof(BMEdge);
+		loop_size = sizeof(BMLoop);
+		face_size = sizeof(BMFace);
+	}
+
+	if (r_vpool) {
+		*r_vpool = BLI_mempool_create(
+		        vert_size, allocsize->totvert,
+		        bm_mesh_chunksize_default.totvert, BLI_MEMPOOL_ALLOW_ITER);
+	}
+	if (r_epool) {
+		*r_epool = BLI_mempool_create(
+		        edge_size, allocsize->totedge,
+		        bm_mesh_chunksize_default.totedge, BLI_MEMPOOL_ALLOW_ITER);
+	}
+	if (r_lpool) {
+		*r_lpool = BLI_mempool_create(
+		        loop_size, allocsize->totloop,
+		        bm_mesh_chunksize_default.totloop, BLI_MEMPOOL_NOP);
+	}
+	if (r_fpool) {
+		*r_fpool = BLI_mempool_create(
+		        face_size, allocsize->totface,
+		        bm_mesh_chunksize_default.totface, BLI_MEMPOOL_ALLOW_ITER);
+	}
+}
+
+static void bm_mempool_init(BMesh *bm, const BMAllocTemplate *allocsize, const bool use_toolflags)
+{
+	bm_mempool_init_ex(
+	        allocsize, use_toolflags,
+	        &bm->vpool, &bm->epool, &bm->lpool, &bm->fpool);
 
 #ifdef USE_BMESH_HOLES
 	bm->looplistpool = BLI_mempool_create(sizeof(BMLoopList), 512, 512, BLI_MEMPOOL_NOP);
@@ -66,6 +102,8 @@ static void bm_mempool_init(BMesh *bm, const BMAllocTemplate *allocsize)
 
 void BM_mesh_elem_toolflags_ensure(BMesh *bm)
 {
+	BLI_assert(bm->use_toolflags);
+
 	if (bm->vtoolflagpool && bm->etoolflagpool && bm->ftoolflagpool) {
 		return;
 	}
@@ -80,7 +118,7 @@ void BM_mesh_elem_toolflags_ensure(BMesh *bm)
 		{
 			BLI_mempool *toolflagpool = bm->vtoolflagpool;
 			BMIter iter;
-			BMElemF *ele;
+			BMVert_OFlag *ele;
 			BM_ITER_MESH (ele, &iter, bm, BM_VERTS_OF_MESH) {
 				ele->oflags = BLI_mempool_calloc(toolflagpool);
 			}
@@ -89,7 +127,7 @@ void BM_mesh_elem_toolflags_ensure(BMesh *bm)
 		{
 			BLI_mempool *toolflagpool = bm->etoolflagpool;
 			BMIter iter;
-			BMElemF *ele;
+			BMEdge_OFlag *ele;
 			BM_ITER_MESH (ele, &iter, bm, BM_EDGES_OF_MESH) {
 				ele->oflags = BLI_mempool_calloc(toolflagpool);
 			}
@@ -98,7 +136,7 @@ void BM_mesh_elem_toolflags_ensure(BMesh *bm)
 		{
 			BLI_mempool *toolflagpool = bm->ftoolflagpool;
 			BMIter iter;
-			BMElemF *ele;
+			BMFace_OFlag *ele;
 			BM_ITER_MESH (ele, &iter, bm, BM_FACES_OF_MESH) {
 				ele->oflags = BLI_mempool_calloc(toolflagpool);
 			}
@@ -134,16 +172,19 @@ void BM_mesh_elem_toolflags_clear(BMesh *bm)
  *
  * \note ob is needed by multires
  */
-BMesh *BM_mesh_create(const BMAllocTemplate *allocsize)
+BMesh *BM_mesh_create(
+        const BMAllocTemplate *allocsize,
+        const struct BMeshCreateParams *params)
 {
 	/* allocate the structure */
 	BMesh *bm = MEM_callocN(sizeof(BMesh), __func__);
 	
 	/* allocate the memory pools for the mesh elements */
-	bm_mempool_init(bm, allocsize);
+	bm_mempool_init(bm, allocsize, params->use_toolflags);
 
 	/* allocate one flag pool that we don't get rid of. */
-	bm->stackdepth = 1;
+	bm->use_toolflags = params->use_toolflags;
+	bm->toolflag_index = 0;
 	bm->totflags = 0;
 
 	CustomData_reset(&bm->vdata);
@@ -239,14 +280,17 @@ void BM_mesh_data_free(BMesh *bm)
  */
 void BM_mesh_clear(BMesh *bm)
 {
+	const bool use_toolflags = bm->use_toolflags;
+
 	/* free old mesh */
 	BM_mesh_data_free(bm);
 	memset(bm, 0, sizeof(BMesh));
 
 	/* allocate the memory pools for the mesh elements */
-	bm_mempool_init(bm, &bm_mesh_allocsize_default);
+	bm_mempool_init(bm, &bm_mesh_allocsize_default, use_toolflags);
 
-	bm->stackdepth = 1;
+	bm->use_toolflags = use_toolflags;
+	bm->toolflag_index = 0;
 	bm->totflags = 0;
 
 	CustomData_reset(&bm->vdata);
@@ -303,8 +347,9 @@ static void bm_mesh_edges_calc_vectors(BMesh *bm, float (*edgevec)[3], const flo
 	bm->elem_index_dirty &= ~BM_EDGE;
 }
 
-static void bm_mesh_verts_calc_normals(BMesh *bm, const float (*edgevec)[3], const float (*fnos)[3],
-                                       const float (*vcos)[3], float (*vnos)[3])
+static void bm_mesh_verts_calc_normals(
+        BMesh *bm, const float (*edgevec)[3], const float (*fnos)[3],
+        const float (*vcos)[3], float (*vnos)[3])
 {
 	BM_mesh_elem_index_ensure(bm, (vnos) ? (BM_EDGE | BM_VERT) : BM_EDGE);
 
@@ -437,11 +482,11 @@ void BM_verts_calc_normal_vcos(BMesh *bm, const float (*fnos)[3], const float (*
 /**
  * Helpers for #BM_mesh_loop_normals_update and #BM_loops_calc_normals_vnos
  */
-static void bm_mesh_edges_sharp_tag(BMesh *bm, const float (*vnos)[3], const float (*fnos)[3], float split_angle,
-                                    float (*r_lnos)[3])
+static void bm_mesh_edges_sharp_tag(
+        BMesh *bm, const float (*vnos)[3], const float (*fnos)[3], float split_angle,
+        float (*r_lnos)[3])
 {
-	BMIter eiter, viter;
-	BMVert *v;
+	BMIter eiter;
 	BMEdge *e;
 	int i;
 
@@ -452,17 +497,11 @@ static void bm_mesh_edges_sharp_tag(BMesh *bm, const float (*vnos)[3], const flo
 	}
 
 	{
-		char htype = BM_LOOP;
+		char htype = BM_VERT | BM_LOOP;
 		if (fnos) {
 			htype |= BM_FACE;
 		}
 		BM_mesh_elem_index_ensure(bm, htype);
-	}
-
-	/* Clear all vertices' tags (means they are all smooth for now). */
-	BM_ITER_MESH_INDEX (v, &viter, bm, BM_VERTS_OF_MESH, i) {
-		BM_elem_index_set(v, i); /* set_inline */
-		BM_elem_flag_disable(v, BM_ELEM_TAG);
 	}
 
 	/* This first loop checks which edges are actually smooth, and pre-populate lnos with vnos (as if they were
@@ -505,20 +544,45 @@ static void bm_mesh_edges_sharp_tag(BMesh *bm, const float (*vnos)[3], const flo
 				no = vnos ? vnos[BM_elem_index_get(l_b->v)] : l_b->v->no;
 				copy_v3_v3(r_lnos[BM_elem_index_get(l_b)], no);
 			}
-			else {
-				/* Sharp edge, tag its verts as such. */
-				BM_elem_flag_enable(e->v1, BM_ELEM_TAG);
-				BM_elem_flag_enable(e->v2, BM_ELEM_TAG);
-			}
-		}
-		else {
-			/* Sharp edge, tag its verts as such. */
-			BM_elem_flag_enable(e->v1, BM_ELEM_TAG);
-			BM_elem_flag_enable(e->v2, BM_ELEM_TAG);
 		}
 	}
 
-	bm->elem_index_dirty &= ~(BM_EDGE | BM_VERT);
+	bm->elem_index_dirty &= ~BM_EDGE;
+}
+
+/* Check whether gievn loop is part of an unknown-so-far cyclic smooth fan, or not.
+ * Needed because cyclic smooth fans have no obvious 'entry point', and yet we need to walk them once, and only once. */
+static bool bm_mesh_loop_check_cyclic_smooth_fan(BMLoop *l_curr)
+{
+	BMLoop *lfan_pivot_next = l_curr;
+	BMEdge *e_next = l_curr->e;
+
+	BLI_assert(!BM_elem_flag_test(lfan_pivot_next, BM_ELEM_TAG));
+	BM_elem_flag_enable(lfan_pivot_next, BM_ELEM_TAG);
+
+	while (true) {
+		/* Much simpler than in sibling code with basic Mesh data! */
+		lfan_pivot_next = BM_vert_step_fan_loop(lfan_pivot_next, &e_next);
+
+		if (!lfan_pivot_next || !BM_elem_flag_test(e_next, BM_ELEM_TAG)) {
+			/* Sharp loop/edge, so not a cyclic smooth fan... */
+			return false;
+		}
+		/* Smooth loop/edge... */
+		else if (BM_elem_flag_test(lfan_pivot_next, BM_ELEM_TAG)) {
+			if (lfan_pivot_next == l_curr) {
+				/* We walked around a whole cyclic smooth fan without finding any already-processed loop, means we can
+				 * use initial l_curr/l_prev edge as start for this smooth fan. */
+				return true;
+			}
+			/* ... already checked in some previous looping, we can abort. */
+			return false;
+		}
+		else {
+			/* ... we can skip it in future, and keep checking the smooth fan. */
+			BM_elem_flag_enable(lfan_pivot_next, BM_ELEM_TAG);
+		}
+	}
 }
 
 /* BMesh version of BKE_mesh_normals_loop_split() in mesh_evaluate.c
@@ -541,13 +605,11 @@ static void bm_mesh_loops_calc_normals(
 	BLI_Stack *edge_vectors = NULL;
 
 	{
-		char htype = BM_LOOP;
+		char htype = 0;
 		if (vcos) {
 			htype |= BM_VERT;
 		}
-		if (fnos) {
-			htype |= BM_FACE;
-		}
+		/* Face/Loop indices are set inline below. */
 		BM_mesh_elem_index_ensure(bm, htype);
 	}
 
@@ -560,6 +622,21 @@ static void bm_mesh_loops_calc_normals(
 		edge_vectors = BLI_stack_new(sizeof(float[3]), __func__);
 	}
 
+	/* Clear all loops' tags (means none are to be skipped for now). */
+	int index_face, index_loop = 0;
+	BM_ITER_MESH_INDEX (f_curr, &fiter, bm, BM_FACES_OF_MESH, index_face) {
+		BMLoop *l_curr, *l_first;
+
+		BM_elem_index_set(f_curr, index_face); /* set_inline */
+
+		l_curr = l_first = BM_FACE_FIRST_LOOP(f_curr);
+		do {
+			BM_elem_index_set(l_curr, index_loop++); /* set_inline */
+			BM_elem_flag_disable(l_curr, BM_ELEM_TAG);
+		} while ((l_curr = l_curr->next) != l_first);
+	}
+	bm->elem_index_dirty &= ~(BM_FACE | BM_LOOP);
+
 	/* We now know edges that can be smoothed (they are tagged), and edges that will be hard (they aren't).
 	 * Now, time to generate the normals.
 	 */
@@ -568,16 +645,16 @@ static void bm_mesh_loops_calc_normals(
 
 		l_curr = l_first = BM_FACE_FIRST_LOOP(f_curr);
 		do {
+			/* A smooth edge, we have to check for cyclic smooth fan case.
+			 * If we find a new, never-processed cyclic smooth fan, we can do it now using that loop/edge as
+			 * 'entry point', otherwise we can skip it. */
+			/* Note: In theory, we could make bm_mesh_loop_check_cyclic_smooth_fan() store mlfan_pivot's in a stack,
+			 * to avoid having to fan again around the vert during actual computation of clnor & clnorspace.
+			 * However, this would complicate the code, add more memory usage, and BM_vert_step_fan_loop()
+			 * is quite cheap in term of CPU cycles, so really think it's not worth it. */
 			if (BM_elem_flag_test(l_curr->e, BM_ELEM_TAG) &&
-			    (!r_lnors_spacearr || BM_elem_flag_test(l_curr->v, BM_ELEM_TAG)))
+			    (BM_elem_flag_test(l_curr, BM_ELEM_TAG) || !bm_mesh_loop_check_cyclic_smooth_fan(l_curr)))
 			{
-				/* A smooth edge, and we are not generating lnors_spacearr, or the related vertex is sharp.
-				 * We skip it because it is either:
-				 * - in the middle of a 'smooth fan' already computed (or that will be as soon as we hit
-				 *   one of its ends, i.e. one of its two sharp edges), or...
-				 * - the related vertex is a "full smooth" one, in which case pre-populated normals from vertex
-				 *   are just fine!
-				 */
 			}
 			else if (!BM_elem_flag_test(l_curr->e, BM_ELEM_TAG) &&
 			         !BM_elem_flag_test(l_curr->prev->e, BM_ELEM_TAG))
@@ -1131,8 +1208,9 @@ finally:
  * These functions ensure its correct and are called more often in debug mode.
  */
 
-void BM_mesh_elem_index_validate(BMesh *bm, const char *location, const char *func,
-                                 const char *msg_a, const char *msg_b)
+void BM_mesh_elem_index_validate(
+        BMesh *bm, const char *location, const char *func,
+        const char *msg_a, const char *msg_b)
 {
 	const char iter_types[3] = {BM_VERTS_OF_MESH,
 	                            BM_EDGES_OF_MESH,
@@ -1379,6 +1457,41 @@ BMFace *BM_face_at_index_find(BMesh *bm, const int index)
 	return BLI_mempool_findelem(bm->fpool, index);
 }
 
+/**
+ * Use lookup table when available, else use slower find functions.
+ *
+ * \note Try to use #BM_mesh_elem_table_ensure instead.
+ */
+BMVert *BM_vert_at_index_find_or_table(BMesh *bm, const int index)
+{
+	if ((bm->elem_table_dirty & BM_VERT) == 0) {
+		return (index < bm->totvert) ? bm->vtable[index] : NULL;
+	}
+	else {
+		return BM_vert_at_index_find(bm, index);
+	}
+}
+
+BMEdge *BM_edge_at_index_find_or_table(BMesh *bm, const int index)
+{
+	if ((bm->elem_table_dirty & BM_EDGE) == 0) {
+		return (index < bm->totedge) ? bm->etable[index] : NULL;
+	}
+	else {
+		return BM_edge_at_index_find(bm, index);
+	}
+}
+
+BMFace *BM_face_at_index_find_or_table(BMesh *bm, const int index)
+{
+	if ((bm->elem_table_dirty & BM_FACE) == 0) {
+		return (index < bm->totface) ? bm->ftable[index] : NULL;
+	}
+	else {
+		return BM_face_at_index_find(bm, index);
+	}
+}
+
 
 /**
  * Return the amount of element of type 'type' in a given bmesh.
@@ -1399,6 +1512,7 @@ int BM_mesh_elem_count(BMesh *bm, const char htype)
 	}
 }
 
+
 /**
  * Remaps the vertices, edges and/or faces of the bmesh as indicated by vert/edge/face_idx arrays
  * (xxx_idx[org_index] = new_index).
@@ -1413,9 +1527,9 @@ int BM_mesh_elem_count(BMesh *bm, const char htype)
  */
 void BM_mesh_remap(
         BMesh *bm,
-        const unsigned int *vert_idx,
-        const unsigned int *edge_idx,
-        const unsigned int *face_idx)
+        const uint *vert_idx,
+        const uint *edge_idx,
+        const uint *face_idx)
 {
 	/* Mapping old to new pointers. */
 	GHash *vptr_map = NULL, *eptr_map = NULL, *fptr_map = NULL;
@@ -1438,7 +1552,10 @@ void BM_mesh_remap(
 	if (vert_idx) {
 		BMVert **verts_pool, *verts_copy, **vep;
 		int i, totvert = bm->totvert;
-		const unsigned int *new_idx;
+		const uint *new_idx;
+		/* Special case: Python uses custom - data layers to hold PyObject references.
+		 * These have to be kept in - place, else the PyObject's we point to, wont point back to us. */
+		const int cd_vert_pyptr  = CustomData_get_offset(&bm->vdata, CD_BM_ELEM_PYPTR);
 
 		/* Init the old-to-new vert pointers mapping */
 		vptr_map = BLI_ghash_ptr_new_ex("BM_mesh_remap vert pointers mapping", bm->totvert);
@@ -1446,9 +1563,14 @@ void BM_mesh_remap(
 		/* Make a copy of all vertices. */
 		verts_pool = bm->vtable;
 		verts_copy = MEM_mallocN(sizeof(BMVert) * totvert, "BM_mesh_remap verts copy");
+		void **pyptrs = (cd_vert_pyptr != -1) ? MEM_mallocN(sizeof(void *) * totvert, __func__) : NULL;
 		for (i = totvert, ve = verts_copy + totvert - 1, vep = verts_pool + totvert - 1; i--; ve--, vep--) {
 			*ve = **vep;
 /*			printf("*vep: %p, verts_pool[%d]: %p\n", *vep, i, verts_pool[i]);*/
+			if (cd_vert_pyptr != -1) {
+				void **pyptr = BM_ELEM_CD_GET_VOID_P(((BMElem *)ve), cd_vert_pyptr);
+				pyptrs[i] = *pyptr;
+			}
 		}
 
 		/* Copy back verts to their new place, and update old2new pointers mapping. */
@@ -1459,19 +1581,29 @@ void BM_mesh_remap(
 			BMVert *new_vep = verts_pool[*new_idx];
 			*new_vep = *ve;
 /*			printf("mapping vert from %d to %d (%p/%p to %p)\n", i, *new_idx, *vep, verts_pool[i], new_vep);*/
-			BLI_ghash_insert(vptr_map, (void *)*vep, (void *)new_vep);
+			BLI_ghash_insert(vptr_map, *vep, new_vep);
+			if (cd_vert_pyptr != -1) {
+				void **pyptr = BM_ELEM_CD_GET_VOID_P(((BMElem *)new_vep), cd_vert_pyptr);
+				*pyptr = pyptrs[*new_idx];
+			}
 		}
 		bm->elem_index_dirty |= BM_VERT;
 		bm->elem_table_dirty |= BM_VERT;
 
 		MEM_freeN(verts_copy);
+		if (pyptrs) {
+			MEM_freeN(pyptrs);
+		}
 	}
 
 	/* Remap Edges */
 	if (edge_idx) {
 		BMEdge **edges_pool, *edges_copy, **edp;
 		int i, totedge = bm->totedge;
-		const unsigned int *new_idx;
+		const uint *new_idx;
+		/* Special case: Python uses custom - data layers to hold PyObject references.
+		 * These have to be kept in - place, else the PyObject's we point to, wont point back to us. */
+		const int cd_edge_pyptr  = CustomData_get_offset(&bm->edata, CD_BM_ELEM_PYPTR);
 
 		/* Init the old-to-new vert pointers mapping */
 		eptr_map = BLI_ghash_ptr_new_ex("BM_mesh_remap edge pointers mapping", bm->totedge);
@@ -1479,8 +1611,13 @@ void BM_mesh_remap(
 		/* Make a copy of all vertices. */
 		edges_pool = bm->etable;
 		edges_copy = MEM_mallocN(sizeof(BMEdge) * totedge, "BM_mesh_remap edges copy");
+		void **pyptrs = (cd_edge_pyptr != -1) ? MEM_mallocN(sizeof(void *) * totedge, __func__) : NULL;
 		for (i = totedge, ed = edges_copy + totedge - 1, edp = edges_pool + totedge - 1; i--; ed--, edp--) {
 			*ed = **edp;
+			if (cd_edge_pyptr != -1) {
+				void **pyptr = BM_ELEM_CD_GET_VOID_P(((BMElem *)ed), cd_edge_pyptr);
+				pyptrs[i] = *pyptr;
+			}
 		}
 
 		/* Copy back verts to their new place, and update old2new pointers mapping. */
@@ -1490,20 +1627,30 @@ void BM_mesh_remap(
 		for (i = totedge; i--; new_idx--, ed--, edp--) {
 			BMEdge *new_edp = edges_pool[*new_idx];
 			*new_edp = *ed;
-			BLI_ghash_insert(eptr_map, (void *)*edp, (void *)new_edp);
+			BLI_ghash_insert(eptr_map, *edp, new_edp);
 /*			printf("mapping edge from %d to %d (%p/%p to %p)\n", i, *new_idx, *edp, edges_pool[i], new_edp);*/
+			if (cd_edge_pyptr != -1) {
+				void **pyptr = BM_ELEM_CD_GET_VOID_P(((BMElem *)new_edp), cd_edge_pyptr);
+				*pyptr = pyptrs[*new_idx];
+			}
 		}
 		bm->elem_index_dirty |= BM_EDGE;
 		bm->elem_table_dirty |= BM_EDGE;
 
 		MEM_freeN(edges_copy);
+		if (pyptrs) {
+			MEM_freeN(pyptrs);
+		}
 	}
 
 	/* Remap Faces */
 	if (face_idx) {
 		BMFace **faces_pool, *faces_copy, **fap;
 		int i, totface = bm->totface;
-		const unsigned int *new_idx;
+		const uint *new_idx;
+		/* Special case: Python uses custom - data layers to hold PyObject references.
+		 * These have to be kept in - place, else the PyObject's we point to, wont point back to us. */
+		const int cd_poly_pyptr  = CustomData_get_offset(&bm->pdata, CD_BM_ELEM_PYPTR);
 
 		/* Init the old-to-new vert pointers mapping */
 		fptr_map = BLI_ghash_ptr_new_ex("BM_mesh_remap face pointers mapping", bm->totface);
@@ -1511,8 +1658,13 @@ void BM_mesh_remap(
 		/* Make a copy of all vertices. */
 		faces_pool = bm->ftable;
 		faces_copy = MEM_mallocN(sizeof(BMFace) * totface, "BM_mesh_remap faces copy");
+		void **pyptrs = (cd_poly_pyptr != -1) ? MEM_mallocN(sizeof(void *) * totface, __func__) : NULL;
 		for (i = totface, fa = faces_copy + totface - 1, fap = faces_pool + totface - 1; i--; fa--, fap--) {
 			*fa = **fap;
+			if (cd_poly_pyptr != -1) {
+				void **pyptr = BM_ELEM_CD_GET_VOID_P(((BMElem *)fa), cd_poly_pyptr);
+				pyptrs[i] = *pyptr;
+			}
 		}
 
 		/* Copy back verts to their new place, and update old2new pointers mapping. */
@@ -1522,21 +1674,31 @@ void BM_mesh_remap(
 		for (i = totface; i--; new_idx--, fa--, fap--) {
 			BMFace *new_fap = faces_pool[*new_idx];
 			*new_fap = *fa;
-			BLI_ghash_insert(fptr_map, (void *)*fap, (void *)new_fap);
+			BLI_ghash_insert(fptr_map, *fap, new_fap);
+			if (cd_poly_pyptr != -1) {
+				void **pyptr = BM_ELEM_CD_GET_VOID_P(((BMElem *)new_fap), cd_poly_pyptr);
+				*pyptr = pyptrs[*new_idx];
+			}
 		}
 
 		bm->elem_index_dirty |= BM_FACE | BM_LOOP;
 		bm->elem_table_dirty |= BM_FACE;
 
 		MEM_freeN(faces_copy);
+		if (pyptrs) {
+			MEM_freeN(pyptrs);
+		}
 	}
 
 	/* And now, fix all vertices/edges/faces/loops pointers! */
 	/* Verts' pointers, only edge pointers... */
 	if (eptr_map) {
 		BM_ITER_MESH (ve, &iter, bm, BM_VERTS_OF_MESH) {
-/*			printf("Vert e: %p -> %p\n", ve->e, BLI_ghash_lookup(eptr_map, (const void *)ve->e));*/
-			ve->e = BLI_ghash_lookup(eptr_map, (const void *)ve->e);
+/*			printf("Vert e: %p -> %p\n", ve->e, BLI_ghash_lookup(eptr_map, ve->e));*/
+			if (ve->e) {
+				ve->e = BLI_ghash_lookup(eptr_map, ve->e);
+				BLI_assert(ve->e);
+			}
 		}
 	}
 
@@ -1545,24 +1707,30 @@ void BM_mesh_remap(
 	if (vptr_map || eptr_map) {
 		BM_ITER_MESH (ed, &iter, bm, BM_EDGES_OF_MESH) {
 			if (vptr_map) {
-/*				printf("Edge v1: %p -> %p\n", ed->v1, BLI_ghash_lookup(vptr_map, (const void *)ed->v1));*/
-/*				printf("Edge v2: %p -> %p\n", ed->v2, BLI_ghash_lookup(vptr_map, (const void *)ed->v2));*/
-				ed->v1 = BLI_ghash_lookup(vptr_map, (const void *)ed->v1);
-				ed->v2 = BLI_ghash_lookup(vptr_map, (const void *)ed->v2);
+/*				printf("Edge v1: %p -> %p\n", ed->v1, BLI_ghash_lookup(vptr_map, ed->v1));*/
+/*				printf("Edge v2: %p -> %p\n", ed->v2, BLI_ghash_lookup(vptr_map, ed->v2));*/
+				ed->v1 = BLI_ghash_lookup(vptr_map, ed->v1);
+				ed->v2 = BLI_ghash_lookup(vptr_map, ed->v2);
+				BLI_assert(ed->v1);
+				BLI_assert(ed->v2);
 			}
 			if (eptr_map) {
 /*				printf("Edge v1_disk_link prev: %p -> %p\n", ed->v1_disk_link.prev,*/
-/*				       BLI_ghash_lookup(eptr_map, (const void *)ed->v1_disk_link.prev));*/
+/*				       BLI_ghash_lookup(eptr_map, ed->v1_disk_link.prev));*/
 /*				printf("Edge v1_disk_link next: %p -> %p\n", ed->v1_disk_link.next,*/
-/*				       BLI_ghash_lookup(eptr_map, (const void *)ed->v1_disk_link.next));*/
+/*				       BLI_ghash_lookup(eptr_map, ed->v1_disk_link.next));*/
 /*				printf("Edge v2_disk_link prev: %p -> %p\n", ed->v2_disk_link.prev,*/
-/*				       BLI_ghash_lookup(eptr_map, (const void *)ed->v2_disk_link.prev));*/
+/*				       BLI_ghash_lookup(eptr_map, ed->v2_disk_link.prev));*/
 /*				printf("Edge v2_disk_link next: %p -> %p\n", ed->v2_disk_link.next,*/
-/*				       BLI_ghash_lookup(eptr_map, (const void *)ed->v2_disk_link.next));*/
-				ed->v1_disk_link.prev = BLI_ghash_lookup(eptr_map, (const void *)ed->v1_disk_link.prev);
-				ed->v1_disk_link.next = BLI_ghash_lookup(eptr_map, (const void *)ed->v1_disk_link.next);
-				ed->v2_disk_link.prev = BLI_ghash_lookup(eptr_map, (const void *)ed->v2_disk_link.prev);
-				ed->v2_disk_link.next = BLI_ghash_lookup(eptr_map, (const void *)ed->v2_disk_link.next);
+/*				       BLI_ghash_lookup(eptr_map, ed->v2_disk_link.next));*/
+				ed->v1_disk_link.prev = BLI_ghash_lookup(eptr_map, ed->v1_disk_link.prev);
+				ed->v1_disk_link.next = BLI_ghash_lookup(eptr_map, ed->v1_disk_link.next);
+				ed->v2_disk_link.prev = BLI_ghash_lookup(eptr_map, ed->v2_disk_link.prev);
+				ed->v2_disk_link.next = BLI_ghash_lookup(eptr_map, ed->v2_disk_link.next);
+				BLI_assert(ed->v1_disk_link.prev);
+				BLI_assert(ed->v1_disk_link.next);
+				BLI_assert(ed->v2_disk_link.prev);
+				BLI_assert(ed->v2_disk_link.next);
 			}
 		}
 	}
@@ -1571,17 +1739,54 @@ void BM_mesh_remap(
 	BM_ITER_MESH (fa, &iter, bm, BM_FACES_OF_MESH) {
 		BM_ITER_ELEM (lo, &iterl, fa, BM_LOOPS_OF_FACE) {
 			if (vptr_map) {
-/*				printf("Loop v: %p -> %p\n", lo->v, BLI_ghash_lookup(vptr_map, (const void *)lo->v));*/
-				lo->v = BLI_ghash_lookup(vptr_map, (const void *)lo->v);
+/*				printf("Loop v: %p -> %p\n", lo->v, BLI_ghash_lookup(vptr_map, lo->v));*/
+				lo->v = BLI_ghash_lookup(vptr_map, lo->v);
+				BLI_assert(lo->v);
 			}
 			if (eptr_map) {
-/*				printf("Loop e: %p -> %p\n", lo->e, BLI_ghash_lookup(eptr_map, (const void *)lo->e));*/
-				lo->e = BLI_ghash_lookup(eptr_map, (const void *)lo->e);
+/*				printf("Loop e: %p -> %p\n", lo->e, BLI_ghash_lookup(eptr_map, lo->e));*/
+				lo->e = BLI_ghash_lookup(eptr_map, lo->e);
+				BLI_assert(lo->e);
 			}
 			if (fptr_map) {
-/*				printf("Loop f: %p -> %p\n", lo->f, BLI_ghash_lookup(fptr_map, (const void *)lo->f));*/
-				lo->f = BLI_ghash_lookup(fptr_map, (const void *)lo->f);
+/*				printf("Loop f: %p -> %p\n", lo->f, BLI_ghash_lookup(fptr_map, lo->f));*/
+				lo->f = BLI_ghash_lookup(fptr_map, lo->f);
+				BLI_assert(lo->f);
 			}
+		}
+	}
+
+	/* Selection history */
+	{
+		BMEditSelection *ese;
+		for (ese = bm->selected.first; ese; ese = ese->next) {
+			switch (ese->htype) {
+				case BM_VERT:
+					if (vptr_map) {
+						ese->ele = BLI_ghash_lookup(vptr_map, ese->ele);
+						BLI_assert(ese->ele);
+					}
+					break;
+				case BM_EDGE:
+					if (eptr_map) {
+						ese->ele = BLI_ghash_lookup(eptr_map, ese->ele);
+						BLI_assert(ese->ele);
+					}
+					break;
+				case BM_FACE:
+					if (fptr_map) {
+						ese->ele = BLI_ghash_lookup(fptr_map, ese->ele);
+						BLI_assert(ese->ele);
+					}
+					break;
+			}
+		}
+	}
+
+	if (fptr_map) {
+		if (bm->act_face) {
+			bm->act_face = BLI_ghash_lookup(fptr_map, bm->act_face);
+			BLI_assert(bm->act_face);
 		}
 	}
 
@@ -1591,4 +1796,263 @@ void BM_mesh_remap(
 		BLI_ghash_free(eptr_map, NULL, NULL);
 	if (fptr_map)
 		BLI_ghash_free(fptr_map, NULL, NULL);
+}
+
+/**
+ * Use new memory pools for this mesh.
+ *
+ * \note needed for re-sizing elements (adding/removing tool flags)
+ * but could also be used for packing fragmented bmeshes.
+ */
+void BM_mesh_rebuild(
+        BMesh *bm, const struct BMeshCreateParams *params,
+        BLI_mempool *vpool_dst, BLI_mempool *epool_dst, BLI_mempool *lpool_dst, BLI_mempool *fpool_dst)
+{
+	const char remap =
+	        (vpool_dst ? BM_VERT : 0) |
+	        (epool_dst ? BM_EDGE : 0) |
+	        (lpool_dst ? BM_LOOP : 0) |
+	        (fpool_dst ? BM_FACE : 0);
+
+	BMVert **vtable_dst = (remap & BM_VERT) ? MEM_mallocN(bm->totvert * sizeof(BMVert *), __func__) : NULL;
+	BMEdge **etable_dst = (remap & BM_EDGE) ? MEM_mallocN(bm->totedge * sizeof(BMEdge *), __func__) : NULL;
+	BMLoop **ltable_dst = (remap & BM_LOOP) ? MEM_mallocN(bm->totloop * sizeof(BMLoop *), __func__) : NULL;
+	BMFace **ftable_dst = (remap & BM_FACE) ? MEM_mallocN(bm->totface * sizeof(BMFace *), __func__) : NULL;
+
+	const bool use_toolflags = params->use_toolflags;
+
+	if (remap & BM_VERT) {
+		BMIter iter;
+		int index;
+		BMVert *v_src;
+		BM_ITER_MESH_INDEX (v_src, &iter, bm, BM_VERTS_OF_MESH, index) {
+			BMVert *v_dst = BLI_mempool_alloc(vpool_dst);
+			memcpy(v_dst, v_src, sizeof(BMVert));
+			if (use_toolflags) {
+				((BMVert_OFlag *)v_dst)->oflags = bm->vtoolflagpool ? BLI_mempool_calloc(bm->vtoolflagpool) : NULL;
+			}
+
+			vtable_dst[index] = v_dst;
+			BM_elem_index_set(v_src, index);  /* set_ok */
+		}
+	}
+
+	if (remap & BM_EDGE) {
+		BMIter iter;
+		int index;
+		BMEdge *e_src;
+		BM_ITER_MESH_INDEX (e_src, &iter, bm, BM_EDGES_OF_MESH, index) {
+			BMEdge *e_dst = BLI_mempool_alloc(epool_dst);
+			memcpy(e_dst, e_src, sizeof(BMEdge));
+			if (use_toolflags) {
+				((BMEdge_OFlag *)e_dst)->oflags = bm->etoolflagpool ? BLI_mempool_calloc(bm->etoolflagpool) : NULL;
+			}
+
+			etable_dst[index] = e_dst;
+			BM_elem_index_set(e_src, index);  /* set_ok */
+		}
+	}
+
+	if (remap & (BM_LOOP | BM_FACE)) {
+		BMIter iter;
+		int index, index_loop = 0;
+		BMFace *f_src;
+		BM_ITER_MESH_INDEX (f_src, &iter, bm, BM_FACES_OF_MESH, index) {
+
+			if (remap & BM_FACE) {
+				BMFace *f_dst = BLI_mempool_alloc(fpool_dst);
+				memcpy(f_dst, f_src, sizeof(BMFace));
+				if (use_toolflags) {
+					((BMFace_OFlag *)f_dst)->oflags = bm->ftoolflagpool ? BLI_mempool_calloc(bm->ftoolflagpool) : NULL;
+				}
+
+				ftable_dst[index] = f_dst;
+				BM_elem_index_set(f_src, index);  /* set_ok */
+			}
+
+			/* handle loops */
+			if (remap & BM_LOOP) {
+				BMLoop *l_iter_src, *l_first_src;
+				l_iter_src = l_first_src = BM_FACE_FIRST_LOOP((BMFace *)f_src);
+				do {
+					BMLoop *l_dst = BLI_mempool_alloc(lpool_dst);
+					memcpy(l_dst, l_iter_src, sizeof(BMLoop));
+					ltable_dst[index_loop] = l_dst;
+					BM_elem_index_set(l_iter_src, index_loop++); /* set_ok */
+				} while ((l_iter_src = l_iter_src->next) != l_first_src);
+			}
+		}
+	}
+
+#define MAP_VERT(ele) vtable_dst[BM_elem_index_get(ele)]
+#define MAP_EDGE(ele) etable_dst[BM_elem_index_get(ele)]
+#define MAP_LOOP(ele) ltable_dst[BM_elem_index_get(ele)]
+#define MAP_FACE(ele) ftable_dst[BM_elem_index_get(ele)]
+
+#define REMAP_VERT(ele) { if (remap & BM_VERT) { ele = MAP_VERT(ele); }} ((void)0)
+#define REMAP_EDGE(ele) { if (remap & BM_EDGE) { ele = MAP_EDGE(ele); }} ((void)0)
+#define REMAP_LOOP(ele) { if (remap & BM_LOOP) { ele = MAP_LOOP(ele); }} ((void)0)
+#define REMAP_FACE(ele) { if (remap & BM_FACE) { ele = MAP_FACE(ele); }} ((void)0)
+
+	/* verts */
+	{
+		for (int i = 0; i < bm->totvert; i++) {
+			BMVert *v = vtable_dst[i];
+			if (v->e) {
+				REMAP_EDGE(v->e);
+			}
+		}
+	}
+
+	/* edges */
+	{
+		for (int i = 0; i < bm->totedge; i++) {
+			BMEdge *e = etable_dst[i];
+			REMAP_VERT(e->v1);
+			REMAP_VERT(e->v2);
+			REMAP_EDGE(e->v1_disk_link.next);
+			REMAP_EDGE(e->v1_disk_link.prev);
+			REMAP_EDGE(e->v2_disk_link.next);
+			REMAP_EDGE(e->v2_disk_link.prev);
+			if (e->l) {
+				REMAP_LOOP(e->l);
+			}
+		}
+	}
+
+	/* faces */
+	{
+		for (int i = 0; i < bm->totface; i++) {
+			BMFace *f = ftable_dst[i];
+			REMAP_LOOP(f->l_first);
+
+			{
+				BMLoop *l_iter, *l_first;
+				l_iter = l_first = BM_FACE_FIRST_LOOP((BMFace *)f);
+				do {
+					REMAP_VERT(l_iter->v);
+					REMAP_EDGE(l_iter->e);
+					REMAP_FACE(l_iter->f);
+
+					REMAP_LOOP(l_iter->radial_next);
+					REMAP_LOOP(l_iter->radial_prev);
+					REMAP_LOOP(l_iter->next);
+					REMAP_LOOP(l_iter->prev);
+				} while ((l_iter = l_iter->next) != l_first);
+			}
+		}
+	}
+
+	for (BMEditSelection *ese = bm->selected.first; ese; ese = ese->next) {
+		switch (ese->htype) {
+			case BM_VERT:
+				if (remap & BM_VERT) {
+					ese->ele = (BMElem *)MAP_VERT(ese->ele);
+				}
+				break;
+			case BM_EDGE:
+				if (remap & BM_EDGE) {
+					ese->ele = (BMElem *)MAP_EDGE(ese->ele);
+				}
+				break;
+			case BM_FACE:
+				if (remap & BM_FACE) {
+					ese->ele = (BMElem *)MAP_FACE(ese->ele);
+				}
+				break;
+		}
+	}
+
+	if (bm->act_face) {
+		REMAP_FACE(bm->act_face);
+	}
+
+#undef MAP_VERT
+#undef MAP_EDGE
+#undef MAP_LOOP
+#undef MAP_EDGE
+
+#undef REMAP_VERT
+#undef REMAP_EDGE
+#undef REMAP_LOOP
+#undef REMAP_EDGE
+
+	/* Cleanup, re-use local tables if the current mesh had tables allocated.
+	 * could use irrespective but it may use more memory then the caller wants (and not be needed). */
+	if (remap & BM_VERT) {
+		if (bm->vtable) {
+			SWAP(BMVert **, vtable_dst, bm->vtable);
+			bm->vtable_tot = bm->totvert;
+			bm->elem_table_dirty &= ~BM_VERT;
+		}
+		MEM_freeN(vtable_dst);
+		BLI_mempool_destroy(bm->vpool);
+		bm->vpool = vpool_dst;
+	}
+
+	if (remap & BM_EDGE) {
+		if (bm->etable) {
+			SWAP(BMEdge **, etable_dst, bm->etable);
+			bm->etable_tot = bm->totedge;
+			bm->elem_table_dirty &= ~BM_EDGE;
+		}
+		MEM_freeN(etable_dst);
+		BLI_mempool_destroy(bm->epool);
+		bm->epool = epool_dst;
+	}
+
+	if (remap & BM_LOOP) {
+		/* no loop table */
+		MEM_freeN(ltable_dst);
+		BLI_mempool_destroy(bm->lpool);
+		bm->lpool = lpool_dst;
+	}
+
+	if (remap & BM_FACE) {
+		if (bm->ftable) {
+			SWAP(BMFace **, ftable_dst, bm->ftable);
+			bm->ftable_tot = bm->totface;
+			bm->elem_table_dirty &= ~BM_FACE;
+		}
+		MEM_freeN(ftable_dst);
+		BLI_mempool_destroy(bm->fpool);
+		bm->fpool = fpool_dst;
+	}
+}
+
+/**
+ * Re-allocates mesh data with/without toolflags.
+ */
+void BM_mesh_toolflags_set(BMesh *bm, bool use_toolflags)
+{
+	if (bm->use_toolflags == use_toolflags) {
+		return;
+	}
+
+	const BMAllocTemplate allocsize = BMALLOC_TEMPLATE_FROM_BM(bm);
+
+	BLI_mempool *vpool_dst = NULL;
+	BLI_mempool *epool_dst = NULL;
+	BLI_mempool *fpool_dst = NULL;
+
+	bm_mempool_init_ex(
+	        &allocsize, use_toolflags,
+	        &vpool_dst, &epool_dst, NULL, &fpool_dst);
+
+	if (use_toolflags == false) {
+		BLI_mempool_destroy(bm->vtoolflagpool);
+		BLI_mempool_destroy(bm->etoolflagpool);
+		BLI_mempool_destroy(bm->ftoolflagpool);
+
+		bm->vtoolflagpool = NULL;
+		bm->etoolflagpool = NULL;
+		bm->ftoolflagpool = NULL;
+	}
+
+	BM_mesh_rebuild(
+	        bm,
+	        &((struct BMeshCreateParams){.use_toolflags = use_toolflags,}),
+	        vpool_dst, epool_dst, NULL, fpool_dst);
+
+	bm->use_toolflags = use_toolflags;
 }

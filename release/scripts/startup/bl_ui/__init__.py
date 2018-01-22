@@ -20,11 +20,12 @@
 
 # note, properties_animviz is a helper module only.
 
+# support reloading sub-modules
 if "bpy" in locals():
     from importlib import reload
-    for val in _modules_loaded.values():
-        reload(val)
+    _modules_loaded[:] = [reload(val) for val in _modules_loaded]
     del reload
+
 _modules = [
     "properties_animviz",
     "properties_constraint",
@@ -78,20 +79,24 @@ _modules = [
     "space_userpref",
     "space_view3d",
     "space_view3d_toolbar",
-]
+    ]
 
 import bpy
 
 if bpy.app.build_options.freestyle:
     _modules.append("properties_freestyle")
+
 __import__(name=__name__, fromlist=_modules)
 _namespace = globals()
-_modules_loaded = {name: _namespace[name] for name in _modules if name != 'bpy'}
+_modules_loaded = [_namespace[name] for name in _modules]
 del _namespace
 
 
 def register():
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for mod in _modules_loaded:
+        for cls in mod.classes:
+            register_class(cls)
 
     # space_userprefs.py
     from bpy.props import StringProperty, EnumProperty
@@ -123,7 +128,7 @@ def register():
     WindowManager.addon_filter = EnumProperty(
             items=addon_filter_items,
             name="Category",
-            description="Filter addons by category",
+            description="Filter add-ons by category",
             )
 
     WindowManager.addon_support = EnumProperty(
@@ -140,8 +145,11 @@ def register():
 
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
-
+    from bpy.utils import unregister_class
+    for mod in reversed(_modules_loaded):
+        for cls in reversed(mod.classes):
+            if cls.is_registered:
+                unregister_class(cls)
 
 # Define a default UIList, when a list does not need any custom drawing...
 # Keep in sync with its #defined name in UI_interface.h

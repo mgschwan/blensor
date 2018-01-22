@@ -25,6 +25,10 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
+/** \file blender/physics/BPH_mass_spring.h
+ *  \ingroup bph
+ */
+
 #ifndef __BPH_MASS_SPRING_H__
 #define __BPH_MASS_SPRING_H__
 
@@ -47,6 +51,7 @@ typedef enum eMassSpringSolverStatus {
 
 struct Implicit_Data *BPH_mass_spring_solver_create(int numverts, int numsprings);
 void BPH_mass_spring_solver_free(struct Implicit_Data *id);
+int BPH_mass_spring_solver_numvert(struct Implicit_Data *id);
 
 int BPH_cloth_solver_init(struct Object *ob, struct ClothModifierData *clmd);
 void BPH_cloth_solver_free(struct ClothModifierData *clmd);

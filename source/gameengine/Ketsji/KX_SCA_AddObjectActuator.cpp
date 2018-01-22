@@ -38,7 +38,7 @@
 #include "KX_SCA_AddObjectActuator.h"
 #include "SCA_IScene.h"
 #include "KX_GameObject.h"
-#include "PyObjectPlus.h" 
+#include "EXP_PyObjectPlus.h" 
 
 /* ------------------------------------------------------------------------- */
 /* Native functions                                                          */
@@ -216,7 +216,7 @@ int KX_SCA_AddObjectActuator::pyattr_set_object(void *self, const struct KX_PYAT
 	KX_SCA_AddObjectActuator* actuator = static_cast<KX_SCA_AddObjectActuator*>(self);
 	KX_GameObject *gameobj;
 		
-	if (!ConvertPythonToGameObject(value, &gameobj, true, "actuator.object = value: KX_SCA_AddObjectActuator"))
+	if (!ConvertPythonToGameObject(actuator->GetLogicManager(), value, &gameobj, true, "actuator.object = value: KX_SCA_AddObjectActuator"))
 		return PY_SET_ATTR_FAIL; // ConvertPythonToGameObject sets the error
 		
 	if (actuator->m_OriginalObject != NULL)

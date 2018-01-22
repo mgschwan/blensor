@@ -29,9 +29,9 @@ set(INC
 	intern
 	shader
 	texture
-	../blenfont
 	../blenkernel
 	../blenlib
+	../blentranslation
 	../gpu
 	../imbuf
 	../makesdna
@@ -122,6 +122,7 @@ set(SRC
 	composite/nodes/node_composite_boxmask.c
 	composite/nodes/node_composite_ellipsemask.c
 	composite/nodes/node_composite_switch.c
+	composite/nodes/node_composite_switchview.c
 	composite/nodes/node_composite_colorcorrection.c
 	composite/nodes/node_composite_pixelate.c
 
@@ -162,6 +163,7 @@ set(SRC
 	shader/nodes/node_shader_background.c
 	shader/nodes/node_shader_bsdf_anisotropic.c
 	shader/nodes/node_shader_bsdf_diffuse.c
+	shader/nodes/node_shader_bsdf_principled.c
 	shader/nodes/node_shader_bsdf_glass.c
 	shader/nodes/node_shader_bsdf_glossy.c
 	shader/nodes/node_shader_bsdf_toon.c
@@ -199,6 +201,7 @@ set(SRC
 	shader/nodes/node_shader_tex_magic.c
 	shader/nodes/node_shader_tex_musgrave.c
 	shader/nodes/node_shader_tex_noise.c
+	shader/nodes/node_shader_tex_pointdensity.c
 	shader/nodes/node_shader_tex_sky.c
 	shader/nodes/node_shader_tex_voronoi.c
 	shader/nodes/node_shader_tex_wave.c

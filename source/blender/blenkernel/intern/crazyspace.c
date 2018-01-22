@@ -39,6 +39,7 @@
 #include "DNA_meshdata_types.h"
 
 #include "BLI_utildefines.h"
+#include "BLI_linklist.h"
 #include "BLI_math.h"
 
 #include "BKE_crazyspace.h"
@@ -108,7 +109,7 @@ float (*BKE_crazyspace_get_mapped_editverts(Scene *scene, Object *obedit))[3]
 	/* disable subsurf temporal, get mapped cos, and enable it */
 	if (modifiers_disable_subsurf_temporary(obedit)) {
 		/* need to make new derivemesh */
-		makeDerivedMesh(scene, obedit, me->edit_btmesh, CD_MASK_BAREMESH, 0);
+		makeDerivedMesh(scene, obedit, me->edit_btmesh, CD_MASK_BAREMESH, false);
 	}
 
 	/* now get the cage */
@@ -247,7 +248,9 @@ void BKE_crazyspace_set_quats_mesh(Mesh *me, float (*origcos)[3], float (*mapped
 	}
 }
 
-int editbmesh_get_first_deform_matrices(Scene *scene, Object *ob, BMEditMesh *em, 
+/** returns an array of deform matrices for crazyspace correction, and the
+ * number of modifiers left */
+int BKE_crazyspace_get_first_deform_matrices_editbmesh(Scene *scene, Object *ob, BMEditMesh *em,
                                         float (**deformmats)[3][3], float (**deformcos)[3])
 {
 	ModifierData *md;
@@ -266,14 +269,20 @@ int editbmesh_get_first_deform_matrices(Scene *scene, Object *ob, BMEditMesh *em
 	 * modifiers with on cage editing that are enabled and support computing
 	 * deform matrices */
 	for (i = 0; md && i <= cageIndex; i++, md = md->next) {
-		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 		if (!editbmesh_modifier_is_enabled(scene, md, dm))
 			continue;
 
 		if (mti->type == eModifierTypeType_OnlyDeform && mti->deformMatricesEM) {
 			if (!defmats) {
-				dm = getEditDerivedBMesh(em, ob, NULL);
+				const int required_mode = eModifierMode_Realtime | eModifierMode_Editmode;
+				CustomDataMask data_mask = CD_MASK_BAREMESH;
+				CDMaskLink *datamasks = modifiers_calcDataMasks(scene, ob, md, data_mask, required_mode, NULL, 0);
+				data_mask = datamasks->mask;
+				BLI_linklist_free((LinkNode *)datamasks, NULL);
+
+				dm = getEditDerivedBMesh(em, ob, data_mask, NULL);
 				deformedVerts = editbmesh_get_vertex_cos(em, &numVerts);
 				defmats = MEM_mallocN(sizeof(*defmats) * numVerts, "defmats");
 
@@ -322,7 +331,7 @@ int BKE_sculpt_get_first_deform_matrices(Scene *scene, Object *ob, float (**defo
 	md = modifiers_getVirtualModifierList(ob, &virtualModifierData);
 
 	for (; md; md = md->next) {
-		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 		if (!modifier_isEnabled(scene, md, eModifierMode_Realtime)) continue;
 
@@ -343,7 +352,7 @@ int BKE_sculpt_get_first_deform_matrices(Scene *scene, Object *ob, float (**defo
 	}
 
 	for (; md; md = md->next) {
-		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 		if (!modifier_isEnabled(scene, md, eModifierMode_Realtime)) continue;
 
@@ -377,7 +386,7 @@ void BKE_crazyspace_build_sculpt(Scene *scene, Object *ob, float (**deformmats)[
 		Mesh *me = (Mesh *)ob->data;
 
 		for (; md; md = md->next) {
-			ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+			const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 			if (!modifier_isEnabled(scene, md, eModifierMode_Realtime)) continue;
 

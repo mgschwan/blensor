@@ -23,11 +23,9 @@
 # <pep8 compliant>
 
 """
-Example Win32 usage:
- c:\Python32\python.exe c:\blender_dev\blender\build_files\cmake\cmake_qtcreator_project.py c:\blender_dev\cmake_build
+Module for accessing project file data for Blender.
 
-Example Linux usage:
- python ~/blenderSVN/blender/build_files/cmake/cmake_qtcreator_project.py ~/blenderSVN/cmake
+Before use, call init(cmake_build_dir).
 """
 
 __all__ = (
@@ -41,7 +39,8 @@ __all__ = (
     "is_py",
     "cmake_advanced_info",
     "cmake_compiler_defines",
-    "project_name_get"
+    "project_name_get",
+    "init",
 )
 
 
@@ -61,27 +60,32 @@ SOURCE_DIR = abspath(SOURCE_DIR)
 
 SIMPLE_PROJECTFILE = False
 
-# get cmake path
-CMAKE_DIR = sys.argv[-1]
-
-if not exists(join(CMAKE_DIR, "CMakeCache.txt")):
-    CMAKE_DIR = os.getcwd()
-if not exists(join(CMAKE_DIR, "CMakeCache.txt")):
-    print("CMakeCache.txt not found in %r or %r\n    Pass CMake build dir as an argument, or run from that dir, aborting" % (CMAKE_DIR, os.getcwd()))
-    sys.exit(1)
+# must initialize from 'init'
+CMAKE_DIR = None
 
 
-# could be either.
-# PROJECT_DIR = SOURCE_DIR
-PROJECT_DIR = CMAKE_DIR
+def init(cmake_path):
+    global CMAKE_DIR, PROJECT_DIR
+
+    # get cmake path
+    cmake_path = cmake_path or ""
+
+    if (not cmake_path) or (not exists(join(cmake_path, "CMakeCache.txt"))):
+        cmake_path = os.getcwd()
+    if not exists(join(cmake_path, "CMakeCache.txt")):
+        print("CMakeCache.txt not found in %r or %r\n"
+              "    Pass CMake build dir as an argument, or run from that dir, aborting" %
+              (cmake_path, os.getcwd()))
+        return False
+
+    PROJECT_DIR = CMAKE_DIR = cmake_path
+    return True
 
 
 def source_list(path, filename_check=None):
     for dirpath, dirnames, filenames in os.walk(path):
-
-        # skip '.svn'
-        if dirpath.startswith("."):
-            continue
+        # skip '.git'
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
 
         for filename in filenames:
             filepath = join(dirpath, filename)
@@ -130,7 +134,7 @@ def is_project_file(filename):
 
 
 def cmake_advanced_info():
-    """ Extracr includes and defines from cmake.
+    """ Extract includes and defines from cmake.
     """
 
     make_exe = cmake_cache_var("CMAKE_MAKE_PROGRAM")
@@ -139,7 +143,7 @@ def cmake_advanced_info():
     def create_eclipse_project():
         print("CMAKE_DIR %r" % CMAKE_DIR)
         if sys.platform == "win32":
-            cmd = 'cmake "%s" -G"Eclipse CDT4 - MinGW Makefiles"' % CMAKE_DIR
+            raise Exception("Error: win32 is not supported")
         else:
             if make_exe_basename.startswith(("make", "gmake")):
                 cmd = 'cmake "%s" -G"Eclipse CDT4 - Unix Makefiles"' % CMAKE_DIR
@@ -208,7 +212,12 @@ def cmake_advanced_info():
 
 def cmake_cache_var(var):
     cache_file = open(join(CMAKE_DIR, "CMakeCache.txt"), encoding='utf-8')
-    lines = [l_strip for l in cache_file for l_strip in (l.strip(),) if l_strip if not l_strip.startswith("//") if not l_strip.startswith("#")]
+    lines = [
+        l_strip for l in cache_file
+        for l_strip in (l.strip(),)
+        if l_strip
+        if not l_strip.startswith(("//", "#"))
+    ]
     cache_file.close()
 
     for l in lines:

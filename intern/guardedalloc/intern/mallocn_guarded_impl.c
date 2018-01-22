@@ -505,8 +505,8 @@ static void make_memhead_header(MemHead *memh, size_t len, const char *str)
 	memt = (MemTail *)(((char *) memh) + sizeof(MemHead) + len);
 	memt->tag3 = MEMTAG3;
 
-	atomic_add_u(&totblock, 1);
-	atomic_add_z(&mem_in_use, len);
+	atomic_add_and_fetch_u(&totblock, 1);
+	atomic_add_and_fetch_z(&mem_in_use, len);
 
 	mem_lock_thread();
 	addtail(membase, &memh->next);
@@ -638,7 +638,7 @@ void *MEM_guarded_mapallocN(size_t len, const char *str)
 	if (memh != (MemHead *)-1) {
 		make_memhead_header(memh, len, str);
 		memh->mmap = 1;
-		atomic_add_z(&mmap_in_use, len);
+		atomic_add_and_fetch_z(&mmap_in_use, len);
 		mem_lock_thread();
 		peak_mem = mmap_in_use > peak_mem ? mmap_in_use : peak_mem;
 		mem_unlock_thread();
@@ -711,10 +711,12 @@ void MEM_guarded_printmemlist_stats(void)
 		totpb++;
 		pb++;
 
-		if (!membl->mmap) {
+#ifdef USE_MALLOC_USABLE_SIZE
+		if (!membl->mmap && membl->alignment == 0) {
 			mem_in_use_slop += (sizeof(MemHead) + sizeof(MemTail) +
 			                    malloc_usable_size((void *)membl)) - membl->len;
 		}
+#endif
 
 		if (membl->next)
 			membl = MEMNEXT(membl->next);
@@ -1005,8 +1007,8 @@ static void rem_memblock(MemHead *memh)
 	}
 	mem_unlock_thread();
 
-	atomic_sub_u(&totblock, 1);
-	atomic_sub_z(&mem_in_use, memh->len);
+	atomic_sub_and_fetch_u(&totblock, 1);
+	atomic_sub_and_fetch_z(&mem_in_use, memh->len);
 
 #ifdef DEBUG_MEMDUPLINAME
 	if (memh->need_free_name)
@@ -1014,7 +1016,7 @@ static void rem_memblock(MemHead *memh)
 #endif
 
 	if (memh->mmap) {
-		atomic_sub_z(&mmap_in_use, memh->len);
+		atomic_sub_and_fetch_z(&mmap_in_use, memh->len);
 #if defined(WIN32)
 		/* our windows mmap implementation is not thread safe */
 		mem_lock_thread();

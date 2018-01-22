@@ -766,7 +766,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 					bSoundActuator *sAct = (bSoundActuator*) act->data;
 					if (sAct->sound) {
 						sound = blo_do_versions_newlibadr(fd, lib, sAct->sound);
-						sAct->flag = sound->flags & SOUND_FLAGS_3D ? ACT_SND_3D_SOUND : 0;
+						sAct->flag = (sound->flags & SOUND_FLAGS_3D) ? ACT_SND_3D_SOUND : 0;
 						sAct->pitch = sound->pitch;
 						sAct->volume = sound->volume;
 						sAct->sound3D.reference_distance = sound->distance;
@@ -795,14 +795,18 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 						char str[FILE_MAX];
 						BLI_join_dirfile(str, sizeof(str), seq->strip->dir, seq->strip->stripdata->name);
 						BLI_path_abs(str, main->name);
-						seq->sound = sound_new_file(main, str);
+						seq->sound = BKE_sound_new_file(main, str);
 					}
+#define SEQ_USE_PROXY_CUSTOM_DIR (1 << 19)
+#define SEQ_USE_PROXY_CUSTOM_FILE (1 << 21)
 					/* don't know, if anybody used that this way, but just in case, upgrade to new way... */
 					if ((seq->flag & SEQ_USE_PROXY_CUSTOM_FILE) &&
 					   !(seq->flag & SEQ_USE_PROXY_CUSTOM_DIR))
 					{
 						BLI_snprintf(seq->strip->proxy->dir, FILE_MAXDIR, "%s/BL_proxy", seq->strip->dir);
 					}
+#undef SEQ_USE_PROXY_CUSTOM_DIR
+#undef SEQ_USE_PROXY_CUSTOM_FILE
 				}
 				SEQ_END
 			}
@@ -1104,6 +1108,8 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 				sce->gm.flag |= GAME_GLSL_NO_NODES;
 			if (fd->fileflags & G_FILE_GLSL_NO_EXTRA_TEX)
 				sce->gm.flag |= GAME_GLSL_NO_EXTRA_TEX;
+			if (fd->fileflags & G_FILE_GLSL_NO_ENV_LIGHTING)
+				sce->gm.flag |= GAME_GLSL_NO_ENV_LIGHTING;
 			if (fd->fileflags & G_FILE_IGNORE_DEPRECATION_WARNINGS)
 				sce->gm.flag |= GAME_IGNORE_DEPRECATION_WARNINGS;
 
@@ -1585,7 +1591,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 					bAnimVizSettings *avs = &ob->pose->avs;
 
 					/* ghosting settings ---------------- */
-						/* ranges */
+					/* ranges */
 					avs->ghost_bc = avs->ghost_ac = arm->ghostep;
 
 					avs->ghost_sf = arm->ghostsf;
@@ -1595,19 +1601,19 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 						avs->ghost_ef = 100;
 					}
 
-						/* type */
+					/* type */
 					if (arm->ghostep == 0)
 						avs->ghost_type = GHOST_TYPE_NONE;
 					else
 						avs->ghost_type = arm->ghosttype + 1;
 
-						/* stepsize */
+					/* stepsize */
 					avs->ghost_step = arm->ghostsize;
 					if (avs->ghost_step == 0)
 						avs->ghost_step = 1;
 
 					/* path settings --------------------- */
-						/* ranges */
+					/* ranges */
 					avs->path_bc = arm->pathbc;
 					avs->path_ac = arm->pathac;
 					if ((avs->path_bc == avs->path_ac) && (avs->path_bc == 0))
@@ -1620,7 +1626,7 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 						avs->path_ef = 250;
 					}
 
-						/* flags */
+					/* flags */
 					if (arm->pathflag & ARM_PATH_FNUMS)
 						avs->path_viewflag |= MOTIONPATH_VIEW_FNUMS;
 					if (arm->pathflag & ARM_PATH_KFRAS)
@@ -1628,15 +1634,15 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 					if (arm->pathflag & ARM_PATH_KFNOS)
 						avs->path_viewflag |= MOTIONPATH_VIEW_KFNOS;
 
-						/* bake flags */
+					/* bake flags */
 					if (arm->pathflag & ARM_PATH_HEADS)
 						avs->path_bakeflag |= MOTIONPATH_BAKE_HEADS;
 
-						/* type */
+					/* type */
 					if (arm->pathflag & ARM_PATH_ACFRA)
 						avs->path_type = MOTIONPATH_TYPE_ACFRA;
 
-						/* stepsize */
+					/* stepsize */
 					avs->path_step = arm->pathsize;
 					if (avs->path_step == 0)
 						avs->path_step = 1;
@@ -1648,8 +1654,8 @@ void blo_do_versions_250(FileData *fd, Library *lib, Main *main)
 
 		/* brush texture changes */
 		for (brush = main->brush.first; brush; brush = brush->id.next) {
-			default_mtex(&brush->mtex);
-			default_mtex(&brush->mask_mtex);
+			BKE_texture_mtex_default(&brush->mtex);
+			BKE_texture_mtex_default(&brush->mask_mtex);
 		}
 
 		for (ma = main->mat.first; ma; ma = ma->id.next) {

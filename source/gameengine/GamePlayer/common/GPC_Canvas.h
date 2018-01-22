@@ -40,7 +40,7 @@
 #  include <windows.h>
 #endif  /* WIN32 */
 
-#include "glew-mx.h"
+#include "GPU_glew.h"
 
 #include <map>
 
@@ -56,8 +56,6 @@ protected:
 	/** Rect that defines the area used for rendering,
 	 * relative to the context */
 	RAS_Rect m_displayarea;
-	/** Frame counter for screenshots */
-	int m_frame;
 
 	int m_viewport[4];
 
@@ -70,6 +68,8 @@ public:
 	void Resize(int width, int height);
 
 	virtual void ResizeWindow(int width, int height) {}
+
+	virtual void GetDisplayDimensions(int &width, int &height) {}
 
 	/**
 	 * \section Methods inherited from abstract base class RAS_ICanvas.

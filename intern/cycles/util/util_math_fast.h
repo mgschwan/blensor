@@ -47,7 +47,6 @@
 
 CCL_NAMESPACE_BEGIN
 
-/* TODO(sergey): Make sure it does not conflict with SSE intrinsics. */
 ccl_device_inline float madd(const float a, const float b, const float c)
 {
 	/* NOTE: In the future we may want to explicitly ask for a fused
@@ -248,7 +247,7 @@ ccl_device float fast_sinpif(float x)
 	 * The basic idea of this approximation starts with the coarse approximation:
 	 *      sin(pi*x) ~= f(x) =  4 * (x - x * abs(x))
 	 *
-	 * This approximation always _over_ estimates the target. On the otherhand,
+	 * This approximation always _over_ estimates the target. On the other hand,
 	 * the curve:
 	 *      sin(pi*x) ~= f(x) * abs(f(x)) / 4
 	 *
@@ -314,8 +313,7 @@ ccl_device float fast_atanf(float x)
 	float r = s * madd(0.43157974f, t, 1.0f) /
 	              madd(madd(0.05831938f, t, 0.76443945f), t, 1.0f);
 	if(a > 1.0f) {
-		/* TODO(sergey): Is it M_PI_2_F? */
-		r = 1.570796326794896557998982f - r;
+		r = M_PI_2_F - r;
 	}
 	return copysignf(r, x);
 }
@@ -341,8 +339,7 @@ ccl_device float fast_atan2f(float y, float x)
 
 	if(b > a) {
 		/* Account for arg reduction. */
-		/* TODO(sergey): Is it M_PI_2_F? */
-		r = 1.570796326794896557998982f - r;
+		r = M_PI_2_F - r;
 	}
 	/* Test sign bit of x. */
 	if(__float_as_uint(x) & 0x80000000u) {
@@ -360,7 +357,7 @@ ccl_device float fast_log2f(float x)
 {
 	/* NOTE: clamp to avoid special cases and make result "safe" from large
 	 * negative values/nans. */
-	clamp(x, FLT_MIN, FLT_MAX);
+	x = clamp(x, FLT_MIN, FLT_MAX);
 	unsigned bits = __float_as_uint(x);
 	int exponent = (int)(bits >> 23) - 127;
 	float f = __uint_as_float((bits & 0x007FFFFF) | 0x3f800000) - 1.0f;
@@ -402,7 +399,7 @@ ccl_device float fast_logb(float x)
 {
 	/* Don't bother with denormals. */
 	x = fabsf(x);
-	clamp(x, FLT_MIN, FLT_MAX);
+	x = clamp(x, FLT_MIN, FLT_MAX);
 	unsigned bits = __float_as_uint(x);
 	return (int)(bits >> 23) - 127;
 }
@@ -410,7 +407,7 @@ ccl_device float fast_logb(float x)
 ccl_device float fast_exp2f(float x)
 {
 	/* Clamp to safe range for final addition. */
-	clamp(x, -126.0f, 126.0f);
+	x = clamp(x, -126.0f, 126.0f);
 	/* Range reduction. */
 	int m = (int)x; x -= m;
 	x = 1.0f - (1.0f - x); /* Crush denormals (does not affect max ulps!). */
@@ -536,10 +533,10 @@ ccl_device float fast_safe_powf(float x, float y)
 }
 
 /* TODO(sergey): Check speed  with our erf functions implementation from
- * bsdf_microfaset.h.
+ * bsdf_microfacet.h.
  */
 
-ccl_device float fast_erff(float x)
+ccl_device_inline float fast_erff(float x)
 {
 	/* Examined 1082130433 values of erff on [0,4]: 1.93715e-06 max error. */
 	/* Abramowitz and Stegun, 7.1.28. */
@@ -550,6 +547,9 @@ ccl_device float fast_erff(float x)
 	const float a5 = 0.0002765672f;
 	const float a6 = 0.0000430638f;
 	const float a = fabsf(x);
+	if(a >= 12.3f) {
+		return copysignf(1.0f, x);
+	}
 	const float b = 1.0f - (1.0f - a);  /* Crush denormals. */
 	const float r = madd(madd(madd(madd(madd(madd(a6, b, a5), b, a4), b, a3), b, a2), b, a1), b, 1.0f);
 	const float s = r * r;  /* ^2 */
@@ -570,7 +570,7 @@ ccl_device_inline float fast_erfcf(float x)
 	return 1.0f - fast_erff(x);
 }
 
-ccl_device float fast_ierff(float x)
+ccl_device_inline float fast_ierff(float x)
 {
 	/* From: Approximating the erfinv function by Mike Giles. */
 	/* To avoid trouble at the limit, clamp input to 1-eps. */

@@ -25,11 +25,12 @@
 
 set(INC
 	.
-	../blenfont
 	../blenkernel
 	../blenlib
+	../blentranslation
 	../makesdna
 	../../../intern/guardedalloc
+	../../../intern/eigen
 	../../../extern/rangetree
 )
 
@@ -61,6 +62,8 @@ set(SRC
 	operators/bmo_mesh_conv.c
 	operators/bmo_mirror.c
 	operators/bmo_normals.c
+	operators/bmo_offset_edgeloops.c
+	operators/bmo_planar_faces.c
 	operators/bmo_poke.c
 	operators/bmo_primitive.c
 	operators/bmo_removedoubles.c
@@ -110,6 +113,8 @@ set(SRC
 	intern/bmesh_operators_private.h
 	intern/bmesh_polygon.c
 	intern/bmesh_polygon.h
+	intern/bmesh_polygon_edgenet.c
+	intern/bmesh_polygon_edgenet.h
 	intern/bmesh_private.h
 	intern/bmesh_queries.c
 	intern/bmesh_queries.h
@@ -143,8 +148,12 @@ set(SRC
 	tools/bmesh_intersect.h
 	tools/bmesh_path.c
 	tools/bmesh_path.h
+	tools/bmesh_path_region.c
+	tools/bmesh_path_region.h
 	tools/bmesh_region_match.c
 	tools/bmesh_region_match.h
+	tools/bmesh_separate.c
+	tools/bmesh_separate.h
 	tools/bmesh_triangulate.c
 	tools/bmesh_triangulate.h
 	tools/bmesh_wireframe.c
@@ -158,7 +167,7 @@ set(SRC
 )
 
 if(MSVC)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /WX")
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /WX /wd4101")
 endif()
 
 if(WITH_BULLET)
@@ -170,13 +179,6 @@ endif()
 
 if(WITH_INTERNATIONAL)
 	add_definitions(-DWITH_INTERNATIONAL)
-endif()
-
-if(WITH_OPENNL)
-	add_definitions(-DWITH_OPENNL)
-	list(APPEND INC_SYS
-		../../../intern/opennl/extern
-	)
 endif()
 
 if(WITH_FREESTYLE)

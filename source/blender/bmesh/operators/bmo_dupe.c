@@ -44,9 +44,10 @@
  *
  * Copy an existing vertex from one bmesh to another.
  */
-static BMVert *bmo_vert_copy(BMOperator *op,
-                             BMOpSlot *slot_vertmap_out,
-                             BMesh *bm_dst, BMesh *bm_src, BMVert *v_src, GHash *vhash)
+static BMVert *bmo_vert_copy(
+        BMOperator *op,
+        BMOpSlot *slot_vertmap_out,
+        BMesh *bm_dst, BMesh *bm_src, BMVert *v_src, GHash *vhash)
 {
 	BMVert *v_dst;
 
@@ -62,7 +63,7 @@ static BMVert *bmo_vert_copy(BMOperator *op,
 	BM_elem_attrs_copy(bm_src, bm_dst, v_src, v_dst);
 
 	/* Mark the vert for output */
-	BMO_elem_flag_enable(bm_dst, v_dst, DUPE_NEW);
+	BMO_vert_flag_enable(bm_dst, v_dst, DUPE_NEW);
 	
 	return v_dst;
 }
@@ -72,16 +73,17 @@ static BMVert *bmo_vert_copy(BMOperator *op,
  *
  * Copy an existing edge from one bmesh to another.
  */
-static BMEdge *bmo_edge_copy(BMOperator *op,
-                             BMOpSlot *slot_edgemap_out,
-                             BMOpSlot *slot_boundarymap_out,
-                             BMesh *bm_dst, BMesh *bm_src,
-                             BMEdge *e_src,
-                             GHash *vhash, GHash *ehash)
+static BMEdge *bmo_edge_copy(
+        BMOperator *op,
+        BMOpSlot *slot_edgemap_out,
+        BMOpSlot *slot_boundarymap_out,
+        BMesh *bm_dst, BMesh *bm_src,
+        BMEdge *e_src,
+        GHash *vhash, GHash *ehash)
 {
 	BMEdge *e_dst;
 	BMVert *e_dst_v1, *e_dst_v2;
-	unsigned int rlen;
+	uint rlen;
 
 	/* see if any of the neighboring faces are
 	 * not being duplicated.  in that case,
@@ -92,7 +94,7 @@ static BMEdge *bmo_edge_copy(BMOperator *op,
 		BMLoop *l_iter_src, *l_first_src;
 		l_iter_src = l_first_src = e_src->l;
 		do {
-			if (BMO_elem_flag_test(bm_src, l_iter_src->f, DUPE_INPUT)) {
+			if (BMO_face_flag_test(bm_src, l_iter_src->f, DUPE_INPUT)) {
 				rlen++;
 			}
 		} while ((l_iter_src = l_iter_src->radial_next) != l_first_src);
@@ -121,7 +123,7 @@ static BMEdge *bmo_edge_copy(BMOperator *op,
 	BM_elem_attrs_copy(bm_src, bm_dst, e_src, e_dst);
 
 	/* Mark the edge for output */
-	BMO_elem_flag_enable(bm_dst, e_dst, DUPE_NEW);
+	BMO_edge_flag_enable(bm_dst, e_dst, DUPE_NEW);
 	
 	return e_dst;
 }
@@ -131,11 +133,12 @@ static BMEdge *bmo_edge_copy(BMOperator *op,
  *
  * Copy an existing face from one bmesh to another.
  */
-static BMFace *bmo_face_copy(BMOperator *op,
-                             BMOpSlot *slot_facemap_out,
-                             BMesh *bm_dst, BMesh *bm_src,
-                             BMFace *f_src,
-                             GHash *vhash, GHash *ehash)
+static BMFace *bmo_face_copy(
+        BMOperator *op,
+        BMOpSlot *slot_facemap_out,
+        BMesh *bm_dst, BMesh *bm_src,
+        BMFace *f_src,
+        GHash *vhash, GHash *ehash)
 {
 	BMFace *f_dst;
 	BMVert **vtar = BLI_array_alloca(vtar, f_src->len);
@@ -167,11 +170,12 @@ static BMFace *bmo_face_copy(BMOperator *op,
 	l_iter_dst = BM_FACE_FIRST_LOOP(f_dst);
 	do {
 		BM_elem_attrs_copy(bm_src, bm_dst, l_iter_src, l_iter_dst);
-	} while ((l_iter_dst = l_iter_dst->next),
+	} while ((void)
+	         (l_iter_dst = l_iter_dst->next),
 	         (l_iter_src = l_iter_src->next) != l_first_src);
 
 	/* Mark the face for output */
-	BMO_elem_flag_enable(bm_dst, f_dst, DUPE_NEW);
+	BMO_face_flag_enable(bm_dst, f_dst, DUPE_NEW);
 
 	return f_dst;
 }
@@ -205,8 +209,8 @@ static void bmo_mesh_copy(BMOperator *op, BMesh *bm_dst, BMesh *bm_src)
 
 	/* duplicate flagged vertices */
 	BM_ITER_MESH (v, &viter, bm_src, BM_VERTS_OF_MESH) {
-		if (BMO_elem_flag_test(bm_src, v, DUPE_INPUT) &&
-		    !BMO_elem_flag_test(bm_src, v, DUPE_DONE))
+		if (BMO_vert_flag_test(bm_src, v, DUPE_INPUT) &&
+		    BMO_vert_flag_test(bm_src, v, DUPE_DONE) == false)
 		{
 			BMIter iter;
 			bool isolated = true;
@@ -214,7 +218,7 @@ static void bmo_mesh_copy(BMOperator *op, BMesh *bm_dst, BMesh *bm_src)
 			v2 = bmo_vert_copy(op, slot_vert_map_out, bm_dst, bm_src, v, vhash);
 
 			BM_ITER_ELEM (f, &iter, v, BM_FACES_OF_VERT) {
-				if (BMO_elem_flag_test(bm_src, f, DUPE_INPUT)) {
+				if (BMO_face_flag_test(bm_src, f, DUPE_INPUT)) {
 					isolated = false;
 					break;
 				}
@@ -222,7 +226,7 @@ static void bmo_mesh_copy(BMOperator *op, BMesh *bm_dst, BMesh *bm_src)
 
 			if (isolated) {
 				BM_ITER_ELEM (e, &iter, v, BM_EDGES_OF_VERT) {
-					if (BMO_elem_flag_test(bm_src, e, DUPE_INPUT)) {
+					if (BMO_edge_flag_test(bm_src, e, DUPE_INPUT)) {
 						isolated = false;
 						break;
 					}
@@ -233,53 +237,53 @@ static void bmo_mesh_copy(BMOperator *op, BMesh *bm_dst, BMesh *bm_src)
 				BMO_slot_map_elem_insert(op, slot_isovert_map_out, v, v2);
 			}
 
-			BMO_elem_flag_enable(bm_src, v, DUPE_DONE);
+			BMO_vert_flag_enable(bm_src, v, DUPE_DONE);
 		}
 	}
 
 	/* now we dupe all the edges */
 	BM_ITER_MESH (e, &eiter, bm_src, BM_EDGES_OF_MESH) {
-		if (BMO_elem_flag_test(bm_src, e, DUPE_INPUT) &&
-		    !BMO_elem_flag_test(bm_src, e, DUPE_DONE))
+		if (BMO_edge_flag_test(bm_src, e, DUPE_INPUT) &&
+		    BMO_edge_flag_test(bm_src, e, DUPE_DONE) == false)
 		{
 			/* make sure that verts are copied */
-			if (!BMO_elem_flag_test(bm_src, e->v1, DUPE_DONE)) {
+			if (!BMO_vert_flag_test(bm_src, e->v1, DUPE_DONE)) {
 				bmo_vert_copy(op, slot_vert_map_out, bm_dst, bm_src, e->v1, vhash);
-				BMO_elem_flag_enable(bm_src, e->v1, DUPE_DONE);
+				BMO_vert_flag_enable(bm_src, e->v1, DUPE_DONE);
 			}
-			if (!BMO_elem_flag_test(bm_src, e->v2, DUPE_DONE)) {
+			if (!BMO_vert_flag_test(bm_src, e->v2, DUPE_DONE)) {
 				bmo_vert_copy(op, slot_vert_map_out, bm_dst, bm_src, e->v2, vhash);
-				BMO_elem_flag_enable(bm_src, e->v2, DUPE_DONE);
+				BMO_vert_flag_enable(bm_src, e->v2, DUPE_DONE);
 			}
 			/* now copy the actual edge */
 			bmo_edge_copy(op, slot_edge_map_out, slot_boundary_map_out,
 			              bm_dst, bm_src, e, vhash, ehash);
-			BMO_elem_flag_enable(bm_src, e, DUPE_DONE);
+			BMO_edge_flag_enable(bm_src, e, DUPE_DONE);
 		}
 	}
 
 	/* first we dupe all flagged faces and their elements from source */
 	BM_ITER_MESH (f, &fiter, bm_src, BM_FACES_OF_MESH) {
-		if (BMO_elem_flag_test(bm_src, f, DUPE_INPUT)) {
+		if (BMO_face_flag_test(bm_src, f, DUPE_INPUT)) {
 			/* vertex pass */
 			BM_ITER_ELEM (v, &viter, f, BM_VERTS_OF_FACE) {
-				if (!BMO_elem_flag_test(bm_src, v, DUPE_DONE)) {
+				if (!BMO_vert_flag_test(bm_src, v, DUPE_DONE)) {
 					bmo_vert_copy(op, slot_vert_map_out, bm_dst, bm_src, v, vhash);
-					BMO_elem_flag_enable(bm_src, v, DUPE_DONE);
+					BMO_vert_flag_enable(bm_src, v, DUPE_DONE);
 				}
 			}
 
 			/* edge pass */
 			BM_ITER_ELEM (e, &eiter, f, BM_EDGES_OF_FACE) {
-				if (!BMO_elem_flag_test(bm_src, e, DUPE_DONE)) {
+				if (!BMO_edge_flag_test(bm_src, e, DUPE_DONE)) {
 					bmo_edge_copy(op, slot_edge_map_out, slot_boundary_map_out,
 					              bm_dst, bm_src, e, vhash, ehash);
-					BMO_elem_flag_enable(bm_src, e, DUPE_DONE);
+					BMO_edge_flag_enable(bm_src, e, DUPE_DONE);
 				}
 			}
 
 			bmo_face_copy(op, slot_face_map_out, bm_dst, bm_src, f, vhash, ehash);
-			BMO_elem_flag_enable(bm_src, f, DUPE_DONE);
+			BMO_face_flag_enable(bm_src, f, DUPE_DONE);
 		}
 	}
 	
@@ -374,6 +378,10 @@ void BMO_dupe_from_flag(BMesh *bm, int htype, const char hflag)
  * BMOP_DUPE_VOUTPUT: Buffer containing pointers to the split mesh vertices
  * BMOP_DUPE_EOUTPUT: Buffer containing pointers to the split mesh edges
  * BMOP_DUPE_FOUTPUT: Buffer containing pointers to the split mesh faces
+ *
+ * \note Lower level uses of this operator may want to use #BM_mesh_separate_faces
+ * Since it's faster for the 'use_only_faces' case.
+ *
  */
 void bmo_split_exec(BMesh *bm, BMOperator *op)
 {
@@ -404,26 +412,26 @@ void bmo_split_exec(BMesh *bm, BMOperator *op)
 		BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
 			bool found = false;
 			BM_ITER_ELEM (f, &iter2, e, BM_FACES_OF_EDGE) {
-				if (!BMO_elem_flag_test(bm, f, SPLIT_INPUT)) {
+				if (!BMO_face_flag_test(bm, f, SPLIT_INPUT)) {
 					found = true;
 					break;
 				}
 			}
 			if (found == false) {
-				BMO_elem_flag_enable(bm, e, SPLIT_INPUT);
+				BMO_edge_flag_enable(bm, e, SPLIT_INPUT);
 			}
 		}
 
 		BM_ITER_MESH (v, &iter, bm,  BM_VERTS_OF_MESH) {
 			bool found = false;
 			BM_ITER_ELEM (e, &iter2, v, BM_EDGES_OF_VERT) {
-				if (!BMO_elem_flag_test(bm, e, SPLIT_INPUT)) {
+				if (!BMO_edge_flag_test(bm, e, SPLIT_INPUT)) {
 					found = true;
 					break;
 				}
 			}
 			if (found == false) {
-				BMO_elem_flag_enable(bm, v, SPLIT_INPUT);
+				BMO_vert_flag_enable(bm, v, SPLIT_INPUT);
 			}
 		}
 	}

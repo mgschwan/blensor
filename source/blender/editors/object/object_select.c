@@ -45,9 +45,10 @@
 #include "BLI_math.h"
 #include "BLI_listbase.h"
 #include "BLI_rand.h"
+#include "BLI_string_utils.h"
 #include "BLI_utildefines.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_group.h"
@@ -181,7 +182,7 @@ void OBJECT_OT_select_by_type(wmOperatorType *ot)
 	
 	/* properties */
 	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend selection instead of deselecting everything first");
-	ot->prop = RNA_def_enum(ot->srna, "type", object_type_items, 1, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_object_type_items, 1, "Type", "");
 }
 
 /*********************** Selection by Links *********************/
@@ -577,7 +578,6 @@ static bool select_grouped_parent(bContext *C) /* Makes parent active and de-sel
 
 	/* can be NULL if parent in other scene */
 	if (baspar && BASE_SELECTABLE(v3d, baspar)) {
-		ED_base_object_select(basact, BA_DESELECT);
 		ED_base_object_select(baspar, BA_SELECT);
 		ED_base_object_activate(C, baspar);
 		changed = true;
@@ -854,47 +854,47 @@ static int object_select_grouped_exec(bContext *C, wmOperator *op)
 
 	switch (type) {
 		case OBJECT_GRPSEL_CHILDREN_RECURSIVE:
-			changed = select_grouped_children(C, ob, true);
+			changed |= select_grouped_children(C, ob, true);
 			break;
 		case OBJECT_GRPSEL_CHILDREN:
-			changed = select_grouped_children(C, ob, false);
+			changed |= select_grouped_children(C, ob, false);
 			break;
 		case OBJECT_GRPSEL_PARENT:
-			changed = select_grouped_parent(C);
+			changed |= select_grouped_parent(C);
 			break;
 		case OBJECT_GRPSEL_SIBLINGS:
-			changed = select_grouped_siblings(C, ob);
+			changed |= select_grouped_siblings(C, ob);
 			break;
 		case OBJECT_GRPSEL_TYPE:
-			changed = select_grouped_type(C, ob);
+			changed |= select_grouped_type(C, ob);
 			break;
 		case OBJECT_GRPSEL_LAYER:
-			changed = select_grouped_layer(C, ob);
+			changed |= select_grouped_layer(C, ob);
 			break;
 		case OBJECT_GRPSEL_GROUP:
-			changed = select_grouped_group(C, ob);
+			changed |= select_grouped_group(C, ob);
 			break;
 		case OBJECT_GRPSEL_HOOK:
-			changed = select_grouped_object_hooks(C, ob);
+			changed |= select_grouped_object_hooks(C, ob);
 			break;
 		case OBJECT_GRPSEL_PASS:
-			changed = select_grouped_index_object(C, ob);
+			changed |= select_grouped_index_object(C, ob);
 			break;
 		case OBJECT_GRPSEL_COLOR:
-			changed = select_grouped_color(C, ob);
+			changed |= select_grouped_color(C, ob);
 			break;
 		case OBJECT_GRPSEL_PROPERTIES:
-			changed = select_grouped_gameprops(C, ob);
+			changed |= select_grouped_gameprops(C, ob);
 			break;
 		case OBJECT_GRPSEL_KEYINGSET:
-			changed = select_grouped_keyingset(C, ob, op->reports);
+			changed |= select_grouped_keyingset(C, ob, op->reports);
 			break;
 		case OBJECT_GRPSEL_LAMP_TYPE:
 			if (ob->type != OB_LAMP) {
 				BKE_report(op->reports, RPT_ERROR, "Active object must be a lamp");
 				break;
 			}
-			changed = select_grouped_lamptype(C, ob);
+			changed |= select_grouped_lamptype(C, ob);
 			break;
 		default:
 			break;
@@ -929,11 +929,16 @@ void OBJECT_OT_select_grouped(wmOperatorType *ot)
 }
 
 /************************* Select by Layer **********************/
+enum {
+	OB_SEL_LAYERMATCH_EXACT = 1,
+	OB_SEL_LAYERMATCH_SHARED = 2,
+};
 
 static int object_select_by_layer_exec(bContext *C, wmOperator *op)
 {
 	unsigned int layernum;
-	bool extend, match;
+	bool extend;
+	int match;
 	
 	extend = RNA_boolean_get(op->ptr, "extend");
 	layernum = RNA_int_get(op->ptr, "layers");
@@ -951,13 +956,21 @@ static int object_select_by_layer_exec(bContext *C, wmOperator *op)
 	{
 		bool ok = false;
 
-		if (match == true) /* exact */
-			ok = (base->lay == (1 << (layernum - 1)));
-		else /* shared layers */
-			ok = (base->lay & (1 << (layernum - 1))) != 0;
+		switch (match) {
+			case OB_SEL_LAYERMATCH_EXACT:
+				/* Mask out bits used for local view, only work on real layer ones, see T45783. */
+				ok = ((base->lay & ((1 << 20) - 1)) == (1 << (layernum - 1)));
+				break;
+			case OB_SEL_LAYERMATCH_SHARED:
+				ok = (base->lay & (1 << (layernum - 1))) != 0;
+				break;
+			default:
+				break;
+		}
 
-		if (ok)
+		if (ok) {
 			ED_base_object_select(base, BA_SELECT);
+		}
 	}
 	CTX_DATA_END;
 	
@@ -970,8 +983,8 @@ static int object_select_by_layer_exec(bContext *C, wmOperator *op)
 void OBJECT_OT_select_by_layer(wmOperatorType *ot)
 {
 	static EnumPropertyItem match_items[] = {
-		{1, "EXACT", 0, "Exact Match", ""},
-		{2, "SHARED", 0, "Shared Layers", ""},
+		{OB_SEL_LAYERMATCH_EXACT, "EXACT", 0, "Exact Match", ""},
+		{OB_SEL_LAYERMATCH_SHARED, "SHARED", 0, "Shared Layers", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -989,7 +1002,7 @@ void OBJECT_OT_select_by_layer(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	RNA_def_enum(ot->srna, "match", match_items, 0, "Match", "");
+	RNA_def_enum(ot->srna, "match", match_items, OB_SEL_LAYERMATCH_EXACT, "Match", "");
 	RNA_def_boolean(ot->srna, "extend", false, "Extend", "Extend selection instead of deselecting everything first");
 	RNA_def_int(ot->srna, "layers", 1, 1, 20, "Layer", "", 1, 20);
 }
@@ -1119,7 +1132,7 @@ static int object_select_mirror_exec(bContext *C, wmOperator *op)
 	{
 		char name_flip[MAXBONENAME];
 
-		BKE_deform_flip_side_name(name_flip, primbase->object->id.name + 2, true);
+		BLI_string_flip_side_name(name_flip, primbase->object->id.name + 2, true, sizeof(name_flip));
 		
 		if (!STREQ(name_flip, primbase->object->id.name + 2)) {
 			Object *ob = (Object *)BKE_libblock_find_name(ID_OB, name_flip);
@@ -1162,23 +1175,143 @@ void OBJECT_OT_select_mirror(wmOperatorType *ot)
 }
 
 
+/** \name Select More/Less
+ * \{ */
+
+static bool object_select_more_less(bContext *C, const bool select)
+{
+	Scene *scene = CTX_data_scene(C);
+
+	for (Base *base = scene->base.first; base; base = base->next) {
+		Object *ob = base->object;
+		ob->flag &= ~OB_DONE;
+		ob->id.tag &= ~LIB_TAG_DOIT;
+		/* parent may be in another scene */
+		if (ob->parent) {
+			ob->parent->flag &= ~OB_DONE;
+			ob->parent->id.tag &= ~LIB_TAG_DOIT;
+		}
+	}
+
+	ListBase ctx_base_list;
+	CollectionPointerLink *ctx_base;
+	CTX_data_selectable_bases(C, &ctx_base_list);
+
+	CTX_DATA_BEGIN (C, Object *, ob, selected_objects)
+	{
+		ob->flag |= OB_DONE;
+	}
+	CTX_DATA_END;
+
+
+
+	for (ctx_base = ctx_base_list.first; ctx_base; ctx_base = ctx_base->next) {
+		Object *ob = ((Base *)ctx_base->ptr.data)->object;
+		if (ob->parent) {
+			if ((ob->flag & OB_DONE) != (ob->parent->flag & OB_DONE)) {
+				ob->id.tag         |= LIB_TAG_DOIT;
+				ob->parent->id.tag |= LIB_TAG_DOIT;
+			}
+		}
+	}
+
+	bool changed = false;
+	const short select_mode = select ? BA_SELECT : BA_DESELECT;
+	const short select_flag = select ? SELECT : 0;
+
+	for (ctx_base = ctx_base_list.first; ctx_base; ctx_base = ctx_base->next) {
+		Base *base = ctx_base->ptr.data;
+		Object *ob = base->object;
+		if ((ob->id.tag & LIB_TAG_DOIT) && ((ob->flag & SELECT) != select_flag)) {
+			ED_base_object_select(base, select_mode);
+			changed = true;
+		}
+	}
+
+	BLI_freelistN(&ctx_base_list);
+
+	return changed;
+}
+
+static int object_select_more_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	bool changed = object_select_more_less(C, true);
+
+	if (changed) {
+		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
+		return OPERATOR_FINISHED;
+	}
+	else {
+		return OPERATOR_CANCELLED;
+	}
+}
+
+void OBJECT_OT_select_more(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Select More";
+	ot->idname = "OBJECT_OT_select_more";
+	ot->description = "Select connected parent/child objects";
+
+	/* api callbacks */
+	ot->exec = object_select_more_exec;
+	ot->poll = ED_operator_objectmode;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+static int object_select_less_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	bool changed = object_select_more_less(C, false);
+
+	if (changed) {
+		WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
+		return OPERATOR_FINISHED;
+	}
+	else {
+		return OPERATOR_CANCELLED;
+	}
+}
+
+void OBJECT_OT_select_less(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Select Less";
+	ot->idname = "OBJECT_OT_select_less";
+	ot->description = "Deselect objects at the boundaries of parent/child relationships";
+
+	/* api callbacks */
+	ot->exec = object_select_less_exec;
+	ot->poll = ED_operator_objectmode;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}
+
+/** \} */
+
+
 /**************************** Select Random ****************************/
 
 static int object_select_random_exec(bContext *C, wmOperator *op)
 {	
-	float percent;
+	const float randfac = RNA_float_get(op->ptr, "percent") / 100.0f;
+	const int seed = WM_operator_properties_select_random_seed_increment_get(op);
 	const bool select = (RNA_enum_get(op->ptr, "action") == SEL_SELECT);
 
-	percent = RNA_float_get(op->ptr, "percent") / 100.0f;
-		
+	RNG *rng = BLI_rng_new_srandom(seed);
+
 	CTX_DATA_BEGIN (C, Base *, base, selectable_bases)
 	{
-		if (BLI_frand() < percent) {
+		if (BLI_rng_get_float(rng) < randfac) {
 			ED_base_object_select(base, select);
 		}
 	}
 	CTX_DATA_END;
-	
+
+	BLI_rng_free(rng);
+
 	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, CTX_data_scene(C));
 	
 	return OPERATOR_FINISHED;
@@ -1200,6 +1333,5 @@ void OBJECT_OT_select_random(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	RNA_def_float_percentage(ot->srna, "percent", 50.f, 0.0f, 100.0f, "Percent", "Percentage of objects to select randomly", 0.f, 100.0f);
-	WM_operator_properties_select_action_simple(ot, SEL_SELECT);
+	WM_operator_properties_select_random(ot);
 }

@@ -73,14 +73,14 @@ void initNumInput(NumInput *n)
 {
 	n->idx_max = 0;
 	n->unit_sys = USER_UNIT_NONE;
-	fill_vn_i(n->unit_type, NUM_MAX_ELEMENTS, B_UNIT_NONE);
+	copy_vn_i(n->unit_type, NUM_MAX_ELEMENTS, B_UNIT_NONE);
 	n->unit_use_radians = false;
 
 	n->flag = 0;
-	fill_vn_short(n->val_flag, NUM_MAX_ELEMENTS, 0);
+	copy_vn_short(n->val_flag, NUM_MAX_ELEMENTS, 0);
 	zero_v3(n->val);
-	fill_vn_fl(n->val_org, NUM_MAX_ELEMENTS, 0.0f);
-	fill_vn_fl(n->val_inc, NUM_MAX_ELEMENTS, 1.0f);
+	copy_vn_fl(n->val_org, NUM_MAX_ELEMENTS, 0.0f);
+	copy_vn_fl(n->val_inc, NUM_MAX_ELEMENTS, 1.0f);
 
 	n->idx = 0;
 	n->str[0] = '\0';
@@ -296,7 +296,7 @@ bool handleNumInput(bContext *C, NumInput *n, const wmEvent *event)
 			}
 			/* Else, common behavior with DELKEY, only difference is remove char(s) before/after the cursor. */
 			dir = STRCUR_DIR_PREV;
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		case DELKEY:
 			if ((n->val_flag[idx] & NUM_EDITED) && n->str[0]) {
 				int t_cur = cur = n->str_cur;
@@ -322,7 +322,7 @@ bool handleNumInput(bContext *C, NumInput *n, const wmEvent *event)
 			break;
 		case LEFTARROWKEY:
 			dir = STRCUR_DIR_PREV;
-			/* fall-through */
+			ATTR_FALLTHROUGH;
 		case RIGHTARROWKEY:
 			cur = n->str_cur;
 			if (event->ctrl) {
@@ -365,9 +365,10 @@ bool handleNumInput(bContext *C, NumInput *n, const wmEvent *event)
 			ascii[0] = '.';
 			utf8_buf = ascii;
 			break;
-#if 0  /* Those keys are not directly accessible in all layouts, preventing to generate matching events.
-        * So we use a hack (ascii value) instead, see below.
-        */
+#if 0
+		/* Those keys are not directly accessible in all layouts, preventing to generate matching events.
+		 * So we use a hack (ascii value) instead, see below.
+		 */
 		case EQUALKEY:
 		case PADASTERKEY:
 			if (!(n->flag & NUM_EDIT_FULL)) {
@@ -476,6 +477,7 @@ bool handleNumInput(bContext *C, NumInput *n, const wmEvent *event)
 
 	/* At this point, our value has changed, try to interpret it with python (if str is not empty!). */
 	if (n->str[0]) {
+		const float val_prev = n->val[idx];
 #ifdef WITH_PYTHON
 		Scene *sce = CTX_data_scene(C);
 		double val;
@@ -495,7 +497,7 @@ bool handleNumInput(bContext *C, NumInput *n, const wmEvent *event)
 		                    n->unit_sys, n->unit_type[idx]);
 
 		/* Note: with angles, we always get values as radians here... */
-		if (BPY_button_exec(C, str_unit_convert, &val, false) != -1) {
+		if (BPY_execute_string_as_number(C, str_unit_convert, false, &val)) {
 			n->val[idx] = (float)val;
 			n->val_flag[idx] &= ~NUM_INVALID;
 		}
@@ -512,6 +514,11 @@ bool handleNumInput(bContext *C, NumInput *n, const wmEvent *event)
 		}
 		if (n->val_flag[idx] & NUM_INVERSE) {
 			n->val[idx] = 1.0f / n->val[idx];
+		}
+
+		if (UNLIKELY(!isfinite(n->val[idx]))) {
+			n->val[idx] = val_prev;
+			n->val_flag[idx] |= NUM_INVALID;
 		}
 	}
 

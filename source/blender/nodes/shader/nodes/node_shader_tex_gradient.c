@@ -43,8 +43,8 @@ static bNodeSocketTemplate sh_node_tex_gradient_out[] = {
 static void node_shader_init_tex_gradient(bNodeTree *UNUSED(ntree), bNode *node)
 {
 	NodeTexGradient *tex = MEM_callocN(sizeof(NodeTexGradient), "NodeTexGradient");
-	default_tex_mapping(&tex->base.tex_mapping, TEXMAP_TYPE_POINT);
-	default_color_mapping(&tex->base.color_mapping);
+	BKE_texture_mapping_default(&tex->base.tex_mapping, TEXMAP_TYPE_POINT);
+	BKE_texture_colormapping_default(&tex->base.color_mapping);
 	tex->gradient_type = SHD_BLEND_LINEAR;
 
 	node->storage = tex;
@@ -52,12 +52,16 @@ static void node_shader_init_tex_gradient(bNodeTree *UNUSED(ntree), bNode *node)
 
 static int node_shader_gpu_tex_gradient(GPUMaterial *mat, bNode *node, bNodeExecData *UNUSED(execdata), GPUNodeStack *in, GPUNodeStack *out)
 {
-	if (!in[0].link)
+	if (!in[0].link) {
 		in[0].link = GPU_attribute(CD_ORCO, "");
+		GPU_link(mat, "generated_from_orco", in[0].link, &in[0].link);
+	}
 
 	node_shader_gpu_tex_mapping(mat, node, in, out);
 
-	return GPU_stack_link(mat, "node_tex_gradient", in, out);
+	NodeTexGradient *tex = (NodeTexGradient *)node->storage;
+	float gradient_type = tex->gradient_type;
+	return GPU_stack_link(mat, "node_tex_gradient", in, out, GPU_uniform(&gradient_type));
 }
 
 /* node type definition */

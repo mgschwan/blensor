@@ -47,6 +47,7 @@ void ED_operatortypes_render(void)
 	WM_operatortype_append(OBJECT_OT_material_slot_select);
 	WM_operatortype_append(OBJECT_OT_material_slot_deselect);
 	WM_operatortype_append(OBJECT_OT_material_slot_copy);
+	WM_operatortype_append(OBJECT_OT_material_slot_move);
 
 	WM_operatortype_append(MATERIAL_OT_new);
 	WM_operatortype_append(TEXTURE_OT_new);
@@ -57,6 +58,9 @@ void ED_operatortypes_render(void)
 
 	WM_operatortype_append(SCENE_OT_render_layer_add);
 	WM_operatortype_append(SCENE_OT_render_layer_remove);
+
+	WM_operatortype_append(SCENE_OT_render_view_add);
+	WM_operatortype_append(SCENE_OT_render_view_remove);
 
 #ifdef WITH_FREESTYLE
 	WM_operatortype_append(SCENE_OT_freestyle_module_add);
@@ -89,6 +93,7 @@ void ED_operatortypes_render(void)
 	WM_operatortype_append(RENDER_OT_view_show);
 	WM_operatortype_append(RENDER_OT_render);
 	WM_operatortype_append(RENDER_OT_view_cancel);
+	WM_operatortype_append(RENDER_OT_shutter_curve_preset);
 
 	/* render_opengl.c */
 	WM_operatortype_append(RENDER_OT_opengl);

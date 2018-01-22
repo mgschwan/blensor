@@ -36,7 +36,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_node_types.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -226,12 +226,13 @@ void *COM_linker_hack = NULL;
 
 void ntreeCompositExecTree(Scene *scene, bNodeTree *ntree, RenderData *rd, int rendering, int do_preview,
                            const ColorManagedViewSettings *view_settings,
-                           const ColorManagedDisplaySettings *display_settings)
+                           const ColorManagedDisplaySettings *display_settings,
+                           const char *view_name)
 {
 #ifdef WITH_COMPOSITOR
-	COM_execute(rd, scene, ntree, rendering, view_settings, display_settings);
+	COM_execute(rd, scene, ntree, rendering, view_settings, display_settings, view_name);
 #else
-	UNUSED_VARS(scene, ntree, rd, rendering, view_settings, display_settings);
+	UNUSED_VARS(scene, ntree, rd, rendering, view_settings, display_settings, view_name);
 #endif
 
 	UNUSED_VARS(do_preview);
@@ -239,8 +240,15 @@ void ntreeCompositExecTree(Scene *scene, bNodeTree *ntree, RenderData *rd, int r
 
 /* *********************************************** */
 
-/* based on rules, force sockets hidden always */
-void ntreeCompositForceHidden(bNodeTree *ntree)
+/* Update the outputs of the render layer nodes.
+ * Since the outputs depend on the render engine, this part is a bit complex:
+ * - ntreeCompositUpdateRLayers is called and loops over all render layer nodes
+ * - Each render layer node calls the update function of the render engine that's used for its scene
+ * - The render engine calls RE_engine_register_pass for each pass
+ * - RE_engine_register_pass calls ntreeCompositRegisterPass,
+ *   which calls node_cmp_rlayers_register_pass for every render layer node
+ */
+void ntreeCompositUpdateRLayers(bNodeTree *ntree)
 {
 	bNode *node;
 
@@ -248,16 +256,20 @@ void ntreeCompositForceHidden(bNodeTree *ntree)
 
 	for (node = ntree->nodes.first; node; node = node->next) {
 		if (node->type == CMP_NODE_R_LAYERS)
-			node_cmp_rlayers_force_hidden_passes(node);
-		
-		/* XXX this stuff is called all the time, don't want that.
-		 * Updates should only happen when actually necessary.
-		 */
-#if 0
-		else if (node->type == CMP_NODE_IMAGE) {
-			nodeUpdate(ntree, node);
-		}
-#endif
+			node_cmp_rlayers_outputs(ntree, node);
+	}
+
+}
+
+void ntreeCompositRegisterPass(bNodeTree *ntree, Scene *scene, SceneRenderLayer *srl, const char *name, int type)
+{
+	bNode *node;
+
+	if (ntree == NULL) return;
+
+	for (node = ntree->nodes.first; node; node = node->next) {
+		if (node->type == CMP_NODE_R_LAYERS)
+			node_cmp_rlayers_register_pass(ntree, node, scene, srl, name, type);
 	}
 
 }

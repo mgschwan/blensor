@@ -42,7 +42,7 @@
 
 #include "BLI_blenlib.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_nla.h"
 #include "BKE_context.h"
@@ -131,6 +131,7 @@ bool nla_panel_context(const bContext *C, PointerRNA *adt_ptr, PointerRNA *nlt_p
 			case ANIMTYPE_DSMAT:    /* Datablock AnimData Expanders */
 			case ANIMTYPE_DSLAM:
 			case ANIMTYPE_DSCAM:
+			case ANIMTYPE_DSCACHEFILE:
 			case ANIMTYPE_DSCUR:
 			case ANIMTYPE_DSSKEY:
 			case ANIMTYPE_DSWOR:
@@ -159,7 +160,9 @@ bool nla_panel_context(const bContext *C, PointerRNA *adt_ptr, PointerRNA *nlt_p
 					}
 					
 					/* AnimData pointer */
-					RNA_pointer_create(id, &RNA_AnimData, ale->adt, adt_ptr);
+					if (adt_ptr) {
+						RNA_pointer_create(id, &RNA_AnimData, ale->adt, adt_ptr);
+					}
 					
 					/* set found status to -1, since setting to 1 would break the loop 
 					 * and potentially skip an active NLA-Track in some cases...
@@ -282,7 +285,7 @@ static void nla_panel_animdata(const bContext *C, Panel *pa)
 	/* Active Action Properties ------------------------------------- */
 	/* action */
 	row = uiLayoutRow(layout, true);
-	uiTemplateID(row, (bContext *)C, &adt_ptr, "action", "ACTION_OT_new", NULL, NULL /*"ACTION_OT_unlink"*/);     // XXX: need to make these operators
+	uiTemplateID(row, (bContext *)C, &adt_ptr, "action", "ACTION_OT_new", NULL, "NLA_OT_action_unlink");
 	
 	/* extrapolation */
 	row = uiLayoutRow(layout, true);
@@ -476,12 +479,10 @@ static void nla_panel_modifiers(const bContext *C, Panel *pa)
 		row = uiLayoutRow(pa->layout, false);
 		block = uiLayoutGetBlock(row);
 		
-		// XXX for now, this will be a operator button which calls a temporary 'add modifier' operator
 		// FIXME: we need to set the only-active property so that this will only add modifiers for the active strip (not all selected)
-		uiDefButO(block, UI_BTYPE_BUT, "NLA_OT_fmodifier_add", WM_OP_INVOKE_REGION_WIN, IFACE_("Add Modifier"), 10, 0, 150, 20,
-		          TIP_("Adds a new F-Modifier for the active NLA Strip"));
+		uiItemMenuEnumO(row, (bContext *)C, "NLA_OT_fmodifier_add", "type", IFACE_("Add Modifier"), ICON_NONE);
 		
-		/* copy/paste (as sub-row)*/
+		/* copy/paste (as sub-row) */
 		row = uiLayoutRow(row, true);
 		uiItemO(row, "", ICON_COPYDOWN, "NLA_OT_fmodifier_copy");
 		uiItemO(row, "", ICON_PASTEDOWN, "NLA_OT_fmodifier_paste");
@@ -501,52 +502,58 @@ static void nla_panel_modifiers(const bContext *C, Panel *pa)
 void nla_buttons_register(ARegionType *art)
 {
 	PanelType *pt;
-	
+
 	pt = MEM_callocN(sizeof(PanelType), "spacetype nla panel animdata");
 	strcpy(pt->idname, "NLA_PT_animdata");
 	strcpy(pt->label, N_("Animation Data"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->category, "Animations");
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = nla_panel_animdata;
 	pt->poll = nla_animdata_panel_poll;
 	pt->flag = PNL_DEFAULT_CLOSED;
 	BLI_addtail(&art->paneltypes, pt);
-	
+
 	pt = MEM_callocN(sizeof(PanelType), "spacetype nla panel track");
 	strcpy(pt->idname, "NLA_PT_track");
 	strcpy(pt->label, N_("Active Track"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->category, "Animations");
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = nla_panel_track;
 	pt->poll = nla_track_panel_poll;
 	BLI_addtail(&art->paneltypes, pt);
-	
+
 	pt = MEM_callocN(sizeof(PanelType), "spacetype nla panel properties");
 	strcpy(pt->idname, "NLA_PT_properties");
 	strcpy(pt->label, N_("Active Strip"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->category, "Animations");
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = nla_panel_properties;
 	pt->poll = nla_strip_panel_poll;
 	BLI_addtail(&art->paneltypes, pt);
-	
+
 	pt = MEM_callocN(sizeof(PanelType), "spacetype nla panel properties");
 	strcpy(pt->idname, "NLA_PT_actionclip");
 	strcpy(pt->label, N_("Action Clip"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->category, "Animations");
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = nla_panel_actclip;
 	pt->poll = nla_strip_actclip_panel_poll;
 	BLI_addtail(&art->paneltypes, pt);
-	
+
 	pt = MEM_callocN(sizeof(PanelType), "spacetype nla panel evaluation");
 	strcpy(pt->idname, "NLA_PT_evaluation");
 	strcpy(pt->label, N_("Evaluation"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->category, "Animations");
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = nla_panel_evaluation;
 	pt->poll = nla_strip_eval_panel_poll;
 	BLI_addtail(&art->paneltypes, pt);
-	
+
 	pt = MEM_callocN(sizeof(PanelType), "spacetype nla panel modifiers");
 	strcpy(pt->idname, "NLA_PT_modifiers");
 	strcpy(pt->label, N_("Modifiers"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->category, "Modifiers");
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = nla_panel_modifiers;
 	pt->poll = nla_strip_eval_panel_poll;
 	BLI_addtail(&art->paneltypes, pt);
@@ -567,7 +574,7 @@ void NLA_OT_properties(wmOperatorType *ot)
 {
 	ot->name = "Properties";
 	ot->idname = "NLA_OT_properties";
-	ot->description = "Toggle display properties panel";
+	ot->description = "Toggle the properties region visibility";
 	
 	ot->exec = nla_properties_toggle_exec;
 	ot->poll = ED_operator_nla_active;

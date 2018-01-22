@@ -90,6 +90,7 @@ getNumDisplaySettings(
 	numSettings = 1;
 #endif
 
+	(void) display;
 	return GHOST_kSuccess;
 }
 
@@ -115,6 +116,8 @@ getDisplaySetting(
 
 	if (dpy == NULL)
 		return GHOST_kFailure;
+
+	(void)display;
 
 #ifdef WITH_X11_XF86VMODE
 	int majorVersion, minorVersion;
@@ -146,6 +149,7 @@ getDisplaySetting(
 
 	GHOST_ASSERT(display < 1, "Only single display systems are currently supported.\n");
 	GHOST_ASSERT(index < 1, "Requested setting outside of valid range.\n");
+	(void)index;
 
 	setting.xPixels  = DisplayWidth(dpy, DefaultScreen(dpy));
 	setting.yPixels = DisplayHeight(dpy, DefaultScreen(dpy));
@@ -171,7 +175,7 @@ getCurrentDisplaySetting(
 GHOST_TSuccess
 GHOST_DisplayManagerX11::
 setCurrentDisplaySetting(
-		GHOST_TUns8 display,
+		GHOST_TUns8 /*display*/,
 		const GHOST_DisplaySetting& setting)
 {
 #ifdef WITH_X11_XF86VMODE
@@ -264,6 +268,8 @@ setCurrentDisplaySetting(
 	return GHOST_kSuccess;
 
 #else
+	(void)setting;
+
 	/* Just pretend the request was successful. */
 	return GHOST_kSuccess;
 #endif

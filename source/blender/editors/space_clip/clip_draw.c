@@ -43,6 +43,7 @@
 #include "BLI_math.h"
 #include "BLI_string.h"
 #include "BLI_math_base.h"
+#include "BLI_rect.h"
 
 #include "BKE_context.h"
 #include "BKE_image.h"
@@ -56,6 +57,8 @@
 
 #include "BIF_gl.h"
 #include "BIF_glutil.h"
+
+#include "GPU_basic_shader.h"
 
 #include "WM_types.h"
 
@@ -251,11 +254,11 @@ static void draw_movieclip_notes(SpaceClip *sc, ARegion *ar)
 	MovieClip *clip = ED_space_clip_get_clip(sc);
 	MovieTracking *tracking = &clip->tracking;
 	char str[256] = {0};
-	bool block = false;
+	bool full_redraw = false;
 
 	if (tracking->stats) {
 		BLI_strncpy(str, tracking->stats->message, sizeof(str));
-		block = true;
+		full_redraw = true;
 	}
 	else {
 		if (sc->flag & SC_LOCK_SELECTION)
@@ -264,7 +267,7 @@ static void draw_movieclip_notes(SpaceClip *sc, ARegion *ar)
 
 	if (str[0]) {
 		float fill_color[4] = {0.0f, 0.0f, 0.0f, 0.6f};
-		ED_region_info_draw(ar, str, block, fill_color);
+		ED_region_info_draw(ar, str, fill_color, full_redraw);
 	}
 }
 
@@ -308,9 +311,15 @@ static void draw_movieclip_buffer(const bContext *C, SpaceClip *sc, ARegion *ar,
 	glPixelZoom(zoomx * width / ibuf->x, zoomy * height / ibuf->y);
 
 	glaDrawImBuf_glsl_ctx(C, ibuf, x, y, filter);
-
 	/* reset zoom */
 	glPixelZoom(1.0f, 1.0f);
+
+
+	if (sc->flag & SC_SHOW_METADATA) {
+		rctf frame;
+		BLI_rctf_init(&frame, 0.0f, ibuf->x, 0.0f, ibuf->y);
+		ED_region_image_metadata_draw(x, y, ibuf, &frame, zoomx * width / ibuf->x, zoomy * height / ibuf->y);
+	}
 
 	if (ibuf->planes == 32)
 		glDisable(GL_BLEND);
@@ -327,8 +336,10 @@ static void draw_stabilization_border(SpaceClip *sc, ARegion *ar, int width, int
 	/* draw boundary border for frame if stabilization is enabled */
 	if (sc->flag & SC_SHOW_STABLE && clip->tracking.stabilization.flag & TRACKING_2D_STABILIZATION) {
 		glColor3f(0.0f, 0.0f, 0.0f);
-		glLineStipple(3, 0xaaaa);
-		glEnable(GL_LINE_STIPPLE);
+
+		GPU_basic_shader_bind_enable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
+		GPU_basic_shader_line_stipple(3, 0xAAAA);
+
 		glEnable(GL_COLOR_LOGIC_OP);
 		glLogicOp(GL_NOR);
 
@@ -348,7 +359,7 @@ static void draw_stabilization_border(SpaceClip *sc, ARegion *ar, int width, int
 		glPopMatrix();
 
 		glDisable(GL_COLOR_LOGIC_OP);
-		glDisable(GL_LINE_STIPPLE);
+		GPU_basic_shader_bind_disable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
 	}
 }
 
@@ -430,7 +441,6 @@ static void draw_track_path(SpaceClip *sc, MovieClip *UNUSED(clip), MovieTrackin
 		for (i = a; i < b; i++)
 			glVertex2f(path[i][0], path[i][1]);
 		glEnd();
-		glLineWidth(1.0f);
 	}
 
 	UI_ThemeColor(TH_PATH_BEFORE);
@@ -450,6 +460,8 @@ static void draw_track_path(SpaceClip *sc, MovieClip *UNUSED(clip), MovieTrackin
 
 	UI_ThemeColor(TH_PATH_BEFORE);
 
+	glLineWidth(1);
+
 	glBegin(GL_LINE_STRIP);
 	for (i = a; i < b; i++) {
 		if (i == count + 1)
@@ -458,7 +470,6 @@ static void draw_track_path(SpaceClip *sc, MovieClip *UNUSED(clip), MovieTrackin
 		glVertex2f(path[i][0], path[i][1]);
 	}
 	glEnd();
-	glPointSize(1.0f);
 }
 
 static void draw_marker_outline(SpaceClip *sc, MovieTrackingTrack *track, MovieTrackingMarker *marker,
@@ -473,6 +484,8 @@ static void draw_marker_outline(SpaceClip *sc, MovieTrackingTrack *track, MovieT
 	px[0] = 1.0f / width / sc->zoom;
 	px[1] = 1.0f / height / sc->zoom;
 
+	glLineWidth(tiny ? 1.0f : 3.0f);
+
 	if ((marker->flag & MARKER_DISABLED) == 0) {
 		float pos[2];
 		float p[2];
@@ -486,15 +499,12 @@ static void draw_marker_outline(SpaceClip *sc, MovieTrackingTrack *track, MovieT
 		if (isect_point_quad_v2(p, marker->pattern_corners[0], marker->pattern_corners[1],
 		                        marker->pattern_corners[2], marker->pattern_corners[3]))
 		{
-			if (tiny) glPointSize(3.0f);
-			else glPointSize(4.0f);
+			glPointSize(tiny ? 3.0f : 4.0f);
 			glBegin(GL_POINTS);
 			glVertex2f(pos[0], pos[1]);
 			glEnd();
-			glPointSize(1.0f);
 		}
 		else {
-			if (!tiny) glLineWidth(3.0f);
 			glBegin(GL_LINES);
 			glVertex2f(pos[0] + px[0] * 2, pos[1]);
 			glVertex2f(pos[0] + px[0] * 8, pos[1]);
@@ -508,16 +518,12 @@ static void draw_marker_outline(SpaceClip *sc, MovieTrackingTrack *track, MovieT
 			glVertex2f(pos[0], pos[1] + px[1] * 2);
 			glVertex2f(pos[0], pos[1] + px[1] * 8);
 			glEnd();
-			if (!tiny) glLineWidth(1.0f);
 		}
 	}
 
 	/* pattern and search outline */
 	glPushMatrix();
-	glTranslatef(marker_pos[0], marker_pos[1], 0);
-
-	if (!tiny)
-		glLineWidth(3.0f);
+	glTranslate2fv(marker_pos);
 
 	if (sc->flag & SC_SHOW_MARKER_PATTERN) {
 		glBegin(GL_LINE_LOOP);
@@ -539,9 +545,6 @@ static void draw_marker_outline(SpaceClip *sc, MovieTrackingTrack *track, MovieT
 		glEnd();
 	}
 	glPopMatrix();
-
-	if (!tiny)
-		glLineWidth(1.0f);
 }
 
 static void track_colors(MovieTrackingTrack *track, int act, float col[3], float scol[3])
@@ -576,6 +579,8 @@ static void draw_marker_areas(SpaceClip *sc, MovieTrackingTrack *track, MovieTra
 	px[0] = 1.0f / width / sc->zoom;
 	px[1] = 1.0f / height / sc->zoom;
 
+	glLineWidth(1.0f);
+
 	/* marker position and offset position */
 	if ((track->flag & SELECT) == sel && (marker->flag & MARKER_DISABLED) == 0) {
 		float pos[2], p[2];
@@ -603,15 +608,10 @@ static void draw_marker_areas(SpaceClip *sc, MovieTrackingTrack *track, MovieTra
 		if (isect_point_quad_v2(p, marker->pattern_corners[0], marker->pattern_corners[1],
 		                        marker->pattern_corners[2], marker->pattern_corners[3]))
 		{
-			if (!tiny)
-				glPointSize(2.0f);
-
+			glPointSize(tiny ? 1.0f : 2.0f);
 			glBegin(GL_POINTS);
 			glVertex2f(pos[0], pos[1]);
 			glEnd();
-
-			if (!tiny)
-				glPointSize(1.0f);
 		}
 		else {
 			glBegin(GL_LINES);
@@ -629,8 +629,8 @@ static void draw_marker_areas(SpaceClip *sc, MovieTrackingTrack *track, MovieTra
 			glEnd();
 
 			glColor3f(0.0f, 0.0f, 0.0f);
-			glLineStipple(3, 0xaaaa);
-			glEnable(GL_LINE_STIPPLE);
+			GPU_basic_shader_bind_enable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
+			GPU_basic_shader_line_stipple(3, 0xAAAA);
 			glEnable(GL_COLOR_LOGIC_OP);
 			glLogicOp(GL_NOR);
 
@@ -640,17 +640,20 @@ static void draw_marker_areas(SpaceClip *sc, MovieTrackingTrack *track, MovieTra
 			glEnd();
 
 			glDisable(GL_COLOR_LOGIC_OP);
-			glDisable(GL_LINE_STIPPLE);
+			GPU_basic_shader_bind_disable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
 		}
 	}
 
 	/* pattern */
 	glPushMatrix();
-	glTranslatef(marker_pos[0], marker_pos[1], 0);
+	glTranslate2fv(marker_pos);
 
 	if (tiny) {
-		glLineStipple(3, 0xaaaa);
-		glEnable(GL_LINE_STIPPLE);
+		GPU_basic_shader_bind_enable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
+		GPU_basic_shader_line_stipple(3, 0xAAAA);
+	}
+	else {
+		GPU_basic_shader_bind_enable(GPU_SHADER_LINE);
 	}
 
 	if ((track->pat_flag & SELECT) == sel && (sc->flag & SC_SHOW_MARKER_PATTERN)) {
@@ -715,8 +718,12 @@ static void draw_marker_areas(SpaceClip *sc, MovieTrackingTrack *track, MovieTra
 		glEnd();
 	}
 
-	if (tiny)
-		glDisable(GL_LINE_STIPPLE);
+	if (tiny) {
+		GPU_basic_shader_bind_disable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
+	}
+	else {
+		GPU_basic_shader_bind_disable(GPU_SHADER_LINE);
+	}
 
 	glPopMatrix();
 }
@@ -794,12 +801,11 @@ static void draw_marker_slide_zones(SpaceClip *sc, MovieTrackingTrack *track, Mo
 	track_colors(track, act, col, scol);
 
 	if (outline) {
-		glLineWidth(3.0f);
 		UI_ThemeColor(TH_MARKER_OUTLINE);
 	}
 
 	glPushMatrix();
-	glTranslatef(marker_pos[0], marker_pos[1], 0);
+	glTranslate2fv(marker_pos);
 
 	dx = 6.0f / width / sc->zoom;
 	dy = 6.0f / height / sc->zoom;
@@ -853,42 +859,20 @@ static void draw_marker_slide_zones(SpaceClip *sc, MovieTrackingTrack *track, Mo
 
 		BKE_tracking_marker_pattern_minmax(marker, pat_min, pat_max);
 
-		glEnable(GL_LINE_STIPPLE);
-		glLineStipple(3, 0xaaaa);
-
-#if 0
-		/* TODO: disable for now, needs better approach visualizing this */
-
-		glBegin(GL_LINE_LOOP);
-		glVertex2f(pat_min[0] - dx, pat_min[1] - dy);
-		glVertex2f(pat_max[0] + dx, pat_min[1] - dy);
-		glVertex2f(pat_max[0] + dx, pat_max[1] + dy);
-		glVertex2f(pat_min[0] - dx, pat_max[1] + dy);
-		glEnd();
-
-		/* marker's offset slider */
-		draw_marker_slide_square(pat_min[0] - dx, pat_max[1] + dy, patdx, patdy, outline, px);
-
-		/* pattern re-sizing triangle */
-		draw_marker_slide_triangle(pat_max[0] + dx, pat_min[1] - dy, patdx, patdy, outline, px);
-#endif
+		glLineWidth(outline ? 3.0f : 1.0f);
 
 		glBegin(GL_LINES);
 		glVertex2f(0.0f, 0.0f);
 		glVertex2fv(tilt_ctrl);
 		glEnd();
 
-		glDisable(GL_LINE_STIPPLE);
-
+		GPU_basic_shader_bind_disable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
 
 		/* slider to control pattern tilt */
 		draw_marker_slide_square(tilt_ctrl[0], tilt_ctrl[1], patdx, patdy, outline, px);
 	}
 
 	glPopMatrix();
-
-	if (outline)
-		glLineWidth(1.0f);
 }
 
 static void draw_marker_texts(SpaceClip *sc, MovieTrackingTrack *track, MovieTrackingMarker *marker,
@@ -1056,7 +1040,7 @@ static void draw_plane_marker_image(Scene *scene,
 		}
 
 		if (display_buffer) {
-			GLuint texid, last_texid;
+			GLuint texid;
 			float frame_corners[4][2] = {{0.0f, 0.0f},
 			                             {1.0f, 0.0f},
 			                             {1.0f, 1.0f},
@@ -1076,11 +1060,9 @@ static void draw_plane_marker_image(Scene *scene,
 				glBlendFunc(GL_SRC_ALPHA,  GL_ONE_MINUS_SRC_ALPHA);
 			}
 
-			glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 			glColor4f(1.0, 1.0, 1.0, plane_track->image_opacity);
 
-			last_texid = glaGetOneInteger(GL_TEXTURE_2D);
-			glEnable(GL_TEXTURE_2D);
+			GPU_basic_shader_bind(GPU_SHADER_TEXTURE_2D | GPU_SHADER_USE_COLOR);
 			glGenTextures(1, (GLuint *)&texid);
 
 			glBindTexture(GL_TEXTURE_2D, texid);
@@ -1103,8 +1085,8 @@ static void draw_plane_marker_image(Scene *scene,
 
 			glPopMatrix();
 
-			glBindTexture(GL_TEXTURE_2D, last_texid);
-			glDisable(GL_TEXTURE_2D);
+			glBindTexture(GL_TEXTURE_2D, 0);
+			GPU_basic_shader_bind(GPU_SHADER_USE_COLOR);
 
 			if (transparent) {
 				glDisable(GL_BLEND);
@@ -1123,7 +1105,9 @@ static void draw_plane_marker_ex(SpaceClip *sc, Scene *scene, MovieTrackingPlane
 {
 	bool tiny = (sc->flag & SC_SHOW_TINY_MARKER) != 0;
 	bool is_selected_track = (plane_track->flag & SELECT) != 0;
-	bool draw_plane_quad = plane_track->image == NULL || plane_track->image_opacity == 0.0f;
+	const bool has_image = plane_track->image != NULL &&
+	                       BKE_image_has_ibuf(plane_track->image, NULL);
+	const bool draw_plane_quad = !has_image || plane_track->image_opacity == 0.0f;
 	float px[2];
 
 	if (draw_outline) {
@@ -1148,17 +1132,21 @@ static void draw_plane_marker_ex(SpaceClip *sc, Scene *scene, MovieTrackingPlane
 		draw_plane_marker_image(scene, plane_track, plane_marker);
 	}
 
-	if (draw_outline) {
-		if (!tiny) {
-			glLineWidth(3.0f);
-		}
-	}
-	else if (tiny) {
-		glLineStipple(3, 0xaaaa);
-		glEnable(GL_LINE_STIPPLE);
-	}
-
 	if (draw_plane_quad) {
+
+		const bool stipple = !draw_outline && tiny;
+		const bool thick = draw_outline && !tiny;
+
+		if (stipple) {
+			GPU_basic_shader_bind_enable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
+			GPU_basic_shader_line_stipple(3, 0xAAAA);
+		}
+		else {
+			GPU_basic_shader_bind_enable(GPU_SHADER_LINE);
+		}
+
+		GPU_basic_shader_line_width(thick ? 3.0f : 1.0f);
+
 		/* Draw rectangle itself. */
 		glBegin(GL_LINE_LOOP);
 		glVertex2fv(plane_marker->corners[0]);
@@ -1172,21 +1160,28 @@ static void draw_plane_marker_ex(SpaceClip *sc, Scene *scene, MovieTrackingPlane
 			float end_point[2];
 			glPushAttrib(GL_COLOR_BUFFER_BIT | GL_CURRENT_BIT);
 
+			glBegin(GL_LINES);
+
 			getArrowEndPoint(width, height, sc->zoom, plane_marker->corners[0], plane_marker->corners[1], end_point);
 			glColor3f(1.0, 0.0, 0.0f);
-			glBegin(GL_LINES);
 			glVertex2fv(plane_marker->corners[0]);
 			glVertex2fv(end_point);
-			glEnd();
 
 			getArrowEndPoint(width, height, sc->zoom, plane_marker->corners[0], plane_marker->corners[3], end_point);
 			glColor3f(0.0, 1.0, 0.0f);
-			glBegin(GL_LINES);
 			glVertex2fv(plane_marker->corners[0]);
 			glVertex2fv(end_point);
+
 			glEnd();
 
 			glPopAttrib();
+		}
+
+		if (stipple) {
+			GPU_basic_shader_bind_disable(GPU_SHADER_LINE | GPU_SHADER_STIPPLE);
+		}
+		else {
+			GPU_basic_shader_bind_disable(GPU_SHADER_LINE);
 		}
 	}
 
@@ -1197,15 +1192,6 @@ static void draw_plane_marker_ex(SpaceClip *sc, Scene *scene, MovieTrackingPlane
 			draw_marker_slide_square(plane_marker->corners[i][0], plane_marker->corners[i][1],
 			                         3.0f * px[0], 3.0f * px[1], draw_outline, px);
 		}
-	}
-
-	if (draw_outline) {
-		if (!tiny) {
-			glLineWidth(1.0f);
-		}
-	}
-	else if (tiny) {
-		glDisable(GL_LINE_STIPPLE);
 	}
 }
 
@@ -1251,7 +1237,7 @@ static void draw_tracking_tracks(SpaceClip *sc, Scene *scene, ARegion *ar, Movie
 	/* ** find window pixel coordinates of origin ** */
 
 	/* UI_view2d_view_to_region_no_clip return integer values, this could
-	 * lead to 1px flickering when view is locked to selection during playbeck.
+	 * lead to 1px flickering when view is locked to selection during playback.
 	 * to avoid this flickering, calculate base point in the same way as it happens
 	 * in UI_view2d_view_to_region_no_clip, but do it in floats here */
 
@@ -1442,7 +1428,6 @@ static void draw_tracking_tracks(SpaceClip *sc, Scene *scene, ARegion *ar, Movie
 			track = track->next;
 		}
 
-		glPointSize(1.0f);
 		glDisable(GL_POINT_SMOOTH);
 	}
 
@@ -1666,9 +1651,6 @@ static void draw_distortion(SpaceClip *sc, ARegion *ar, MovieClip *clip,
 
 			layer = layer->next;
 		}
-
-		glLineWidth(1.0f);
-		glPointSize(1.0f);
 	}
 
 	glPopMatrix();
@@ -1692,29 +1674,29 @@ void clip_draw_main(const bContext *C, SpaceClip *sc, ARegion *ar)
 	}
 
 	if (sc->flag & SC_SHOW_STABLE) {
+		float translation[2];
+		float aspect = clip->tracking.camera.pixel_aspect;
 		float smat[4][4], ismat[4][4];
 
-		ibuf = ED_space_clip_get_stable_buffer(sc, sc->loc, &sc->scale, &sc->angle);
-
-		if (ibuf) {
-			float translation[2];
-			float aspect = clip->tracking.camera.pixel_aspect;
-
-			if (width != ibuf->x)
-				mul_v2_v2fl(translation, sc->loc, (float)width / ibuf->x);
-			else
-				copy_v2_v2(translation, sc->loc);
-
-			BKE_tracking_stabilization_data_to_mat4(width, height, aspect,
-			                                        translation, sc->scale, sc->angle, sc->stabmat);
-
-			unit_m4(smat);
-			smat[0][0] = 1.0f / width;
-			smat[1][1] = 1.0f / height;
-			invert_m4_m4(ismat, smat);
-
-			mul_m4_series(sc->unistabmat, smat, sc->stabmat, ismat);
+		if ((sc->flag & SC_MUTE_FOOTAGE) == 0) {
+			ibuf = ED_space_clip_get_stable_buffer(sc, sc->loc,
+			                                       &sc->scale, &sc->angle);
 		}
+
+		if (ibuf != NULL && width != ibuf->x)
+			mul_v2_v2fl(translation, sc->loc, (float)width / ibuf->x);
+		else
+			copy_v2_v2(translation, sc->loc);
+
+		BKE_tracking_stabilization_data_to_mat4(width, height, aspect, translation,
+		                                        sc->scale, sc->angle, sc->stabmat);
+
+		unit_m4(smat);
+		smat[0][0] = 1.0f / width;
+		smat[1][1] = 1.0f / height;
+		invert_m4_m4(ismat, smat);
+
+		mul_m4_series(sc->unistabmat, smat, sc->stabmat, ismat);
 	}
 	else if ((sc->flag & SC_MUTE_FOOTAGE) == 0) {
 		ibuf = ED_space_clip_get_buffer(sc);
@@ -1778,7 +1760,7 @@ void clip_draw_grease_pencil(bContext *C, int onlyv2d)
 					int framenr = ED_space_clip_get_clip_frame_number(sc);
 					MovieTrackingMarker *marker = BKE_tracking_marker_get(track, framenr);
 
-					glTranslatef(marker->pos[0], marker->pos[1], 0.0f);
+					glTranslate2fv(marker->pos);
 				}
 			}
 

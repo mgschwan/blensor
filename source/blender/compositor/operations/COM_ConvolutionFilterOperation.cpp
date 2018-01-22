@@ -33,7 +33,6 @@ ConvolutionFilterOperation::ConvolutionFilterOperation() : NodeOperation()
 	this->addOutputSocket(COM_DT_COLOR);
 	this->setResolutionInputSocketIndex(0);
 	this->m_inputOperation = NULL;
-	this->m_filter = NULL;
 	this->setComplex(true);
 }
 void ConvolutionFilterOperation::initExecution()
@@ -44,7 +43,6 @@ void ConvolutionFilterOperation::initExecution()
 
 void ConvolutionFilterOperation::set3x3Filter(float f1, float f2, float f3, float f4, float f5, float f6, float f7, float f8, float f9)
 {
-	this->m_filter = (float *)MEM_mallocN(sizeof(float) * 9, __func__);
 	this->m_filter[0] = f1;
 	this->m_filter[1] = f2;
 	this->m_filter[2] = f3;
@@ -62,14 +60,10 @@ void ConvolutionFilterOperation::deinitExecution()
 {
 	this->m_inputOperation = NULL;
 	this->m_inputValueOperation = NULL;
-	if (this->m_filter) {
-		MEM_freeN(this->m_filter);
-		this->m_filter = NULL;
-	}
 }
 
 
-void ConvolutionFilterOperation::executePixel(float output[4], int x, int y, void *data)
+void ConvolutionFilterOperation::executePixel(float output[4], int x, int y, void * /*data*/)
 {
 	float in1[4];
 	float in2[4];
@@ -113,6 +107,12 @@ void ConvolutionFilterOperation::executePixel(float output[4], int x, int y, voi
 	output[1] = output[1] * value[0] + in2[1] * mval;
 	output[2] = output[2] * value[0] + in2[2] * mval;
 	output[3] = output[3] * value[0] + in2[3] * mval;
+
+	/* Make sure we don't return negative color. */
+	output[0] = max(output[0], 0.0f);
+	output[1] = max(output[1], 0.0f);
+	output[2] = max(output[2], 0.0f);
+	output[3] = max(output[3], 0.0f);
 }
 
 bool ConvolutionFilterOperation::determineDependingAreaOfInterest(rcti *input, ReadBufferOperation *readOperation, rcti *output)

@@ -34,16 +34,27 @@
 #include "DNA_scene_types.h"
 #include "DNA_space_types.h"
 #include "DNA_userdef_types.h"
+#include "DNA_screen_types.h"
+#include "DNA_object_types.h"
+#include "DNA_gpencil_types.h"
+#include "DNA_mask_types.h"
 
 #include "BLI_math.h"
 #include "BLI_timecode.h"
+#include "BLI_utildefines.h"
+#include "BLI_rect.h"
+#include "BLI_dlrbTree.h"
 
 #include "BKE_context.h"
+#include "BKE_curve.h"
+#include "BKE_fcurve.h"
 #include "BKE_global.h"
 #include "BKE_nla.h"
+#include "BKE_mask.h"
 
 #include "ED_anim_api.h"
 #include "ED_keyframes_edit.h"
+#include "ED_keyframes_draw.h"
 
 #include "RNA_access.h"
 
@@ -77,7 +88,7 @@ static void draw_cfra_number(Scene *scene, View2D *v2d, const float cfra, const 
 		BLI_timecode_string_from_time(&numstr[4], sizeof(numstr) - 4, 0, FRA2TIME(cfra), FPS, U.timecode_style);
 	}
 	else {
-		BLI_timecode_string_from_time_simple(&numstr[4], sizeof(numstr) - 4, 1, cfra);
+		BLI_timecode_string_from_time_seconds(&numstr[4], sizeof(numstr) - 4, 1, cfra);
 	}
 
 	slen = UI_fontstyle_string_width(fstyle, numstr) - 1;
@@ -102,31 +113,24 @@ static void draw_cfra_number(Scene *scene, View2D *v2d, const float cfra, const 
 void ANIM_draw_cfra(const bContext *C, View2D *v2d, short flag)
 {
 	Scene *scene = CTX_data_scene(C);
-	float vec[2];
-	
+
 	/* Draw a light green line to indicate current frame */
-	vec[0] = (float)(scene->r.cfra * scene->r.framelen);
-	
 	UI_ThemeColor(TH_CFRAME);
-	if (flag & DRAWCFRA_WIDE)
-		glLineWidth(3.0);
-	else
-		glLineWidth(2.0);
-	
-	glBegin(GL_LINE_STRIP);
-	vec[1] = v2d->cur.ymin - 500.0f;    /* XXX arbitrary... want it go to bottom */
-	glVertex2fv(vec);
-		
-	vec[1] = v2d->cur.ymax;
-	glVertex2fv(vec);
+
+	const float time = scene->r.cfra + scene->r.subframe;
+	const float x = (float)(time * scene->r.framelen);
+
+	glLineWidth((flag & DRAWCFRA_WIDE) ? 3.0 : 2.0);
+
+	glBegin(GL_LINES);
+	glVertex2f(x, v2d->cur.ymin - 500.0f); /* XXX arbitrary... want it go to bottom */
+	glVertex2f(x, v2d->cur.ymax);
 	glEnd();
-	
-	glLineWidth(1.0);
-	
+
 	/* Draw current frame number in a little box */
 	if (flag & DRAWCFRA_SHOW_NUMBOX) {
 		UI_view2d_view_orthoSpecial(CTX_wm_region(C), v2d, 1);
-		draw_cfra_number(scene, v2d, vec[0], (flag & DRAWCFRA_UNIT_SECONDS) != 0);
+		draw_cfra_number(scene, v2d, x, (flag & DRAWCFRA_UNIT_SECONDS) != 0);
 	}
 }
 
@@ -172,11 +176,21 @@ AnimData *ANIM_nla_mapping_get(bAnimContext *ac, bAnimListElem *ale)
 	/* abort if rendering - we may get some race condition issues... */
 	if (G.is_rendering) return NULL;
 	
-	/* handling depends on the type of animation-context we've got */
-	if (ale)
-		return ale->adt;
-	else
-		return NULL;
+	/* apart from strictly keyframe-related contexts, this shouldn't even happen */
+	// XXX: nla and channel here may not be necessary...
+	if (ELEM(ac->datatype, ANIMCONT_ACTION, ANIMCONT_SHAPEKEY, ANIMCONT_DOPESHEET,
+	                       ANIMCONT_FCURVES, ANIMCONT_NLA, ANIMCONT_CHANNEL))
+	{
+		/* handling depends on the type of animation-context we've got */
+		if (ale) {
+			/* NLA Control Curves occur on NLA strips, and shouldn't be subjected to this kind of mapping */
+			if (ale->type != ANIMTYPE_NLACURVE)
+				return ale->adt;
+		}
+	}
+	
+	/* cannot handle... */
+	return NULL;
 }
 
 /* ------------------- */
@@ -262,52 +276,157 @@ short ANIM_get_normalization_flags(bAnimContext *ac)
 	return 0;
 }
 
-static float normalzation_factor_get(FCurve *fcu, short flag)
+static float normalization_factor_get(Scene *scene, FCurve *fcu, short flag, float *r_offset)
 {
-	float factor = 1.0f;
+	float factor = 1.0f, offset = 0.0f;
 
 	if (flag & ANIM_UNITCONV_RESTORE) {
+		if (r_offset)
+			*r_offset = fcu->prev_offset;
+
 		return 1.0f / fcu->prev_norm_factor;
 	}
 
 	if (flag & ANIM_UNITCONV_NORMALIZE_FREEZE) {
+		if (r_offset)
+			*r_offset = fcu->prev_offset;
+		if (fcu->prev_norm_factor == 0.0f) {
+			/* Happens when Auto Normalize was disabled before
+			 * any curves were displayed.
+			 */
+			return 1.0f;
+		}
 		return fcu->prev_norm_factor;
 	}
 
 	if (G.moving & G_TRANSFORM_FCURVES) {
+		if (r_offset)
+			*r_offset = fcu->prev_offset;
+		if (fcu->prev_norm_factor == 0.0f) {
+			/* Same as above. */
+			return 1.0f;
+		}
 		return fcu->prev_norm_factor;
 	}
 
 	fcu->prev_norm_factor = 1.0f;
 	if (fcu->bezt) {
-		BezTriple *bezt;
+		const bool use_preview_only = PRVRANGEON;
+		const BezTriple *bezt;
 		int i;
 		float max_coord = -FLT_MAX;
+		float min_coord = FLT_MAX;
+		float range;
 
 		if (fcu->totvert < 1) {
 			return 1.0f;
 		}
 
 		for (i = 0, bezt = fcu->bezt; i < fcu->totvert; i++, bezt++) {
-			max_coord = max_ff(max_coord, fabsf(bezt->vec[0][1]));
-			max_coord = max_ff(max_coord, fabsf(bezt->vec[1][1]));
-			max_coord = max_ff(max_coord, fabsf(bezt->vec[2][1]));
+			if (use_preview_only && !IN_RANGE_INCL(bezt->vec[1][0],
+			                                       scene->r.psfra,
+			                                       scene->r.pefra))
+			{
+				continue;
+			}
+
+			if (i == 0) {
+				/* We ignore extrapolation flags and handle here, and use the
+				 * control point position only. so we normalize "interesting"
+				 * part of the curve.
+				 *
+				 * Here we handle left extrapolation.
+				 */
+				max_coord = max_ff(max_coord, bezt->vec[1][1]);
+
+				min_coord = min_ff(min_coord, bezt->vec[1][1]);
+			}
+			else {
+				const BezTriple *prev_bezt = bezt - 1;
+				if (prev_bezt->ipo == BEZT_IPO_CONST) {
+					/* Constant interpolation: previous CV value is used up
+					 * to the current keyframe.
+					 */
+					max_coord = max_ff(max_coord, bezt->vec[1][1]);
+					min_coord = min_ff(min_coord, bezt->vec[1][1]);
+				}
+				else if (prev_bezt->ipo == BEZT_IPO_LIN) {
+					/* Linear interpolation: min/max using both previous and
+					 * and current CV.
+					 */
+					max_coord = max_ff(max_coord, bezt->vec[1][1]);
+					min_coord = min_ff(min_coord, bezt->vec[1][1]);
+					max_coord = max_ff(max_coord, prev_bezt->vec[1][1]);
+					min_coord = min_ff(min_coord, prev_bezt->vec[1][1]);
+				}
+				else if (prev_bezt->ipo == BEZT_IPO_BEZ) {
+					const int resol = fcu->driver
+					        ? 32
+					        : min_ii((int)(5.0f * len_v2v2(bezt->vec[1], prev_bezt->vec[1])), 32);
+					if (resol < 2) {
+						max_coord = max_ff(max_coord, prev_bezt->vec[1][1]);
+						min_coord = min_ff(min_coord, prev_bezt->vec[1][1]);
+					}
+					else {
+						float data[120];
+						float v1[2], v2[2], v3[2], v4[2];
+
+						v1[0] = prev_bezt->vec[1][0];
+						v1[1] = prev_bezt->vec[1][1];
+						v2[0] = prev_bezt->vec[2][0];
+						v2[1] = prev_bezt->vec[2][1];
+
+						v3[0] = bezt->vec[0][0];
+						v3[1] = bezt->vec[0][1];
+						v4[0] = bezt->vec[1][0];
+						v4[1] = bezt->vec[1][1];
+
+						correct_bezpart(v1, v2, v3, v4);
+
+						BKE_curve_forward_diff_bezier(v1[0], v2[0], v3[0], v4[0], data, resol, sizeof(float) * 3);
+						BKE_curve_forward_diff_bezier(v1[1], v2[1], v3[1], v4[1], data + 1, resol, sizeof(float) * 3);
+
+						for (int j = 0; j <= resol; ++j) {
+							const float *fp = &data[j * 3];
+							max_coord = max_ff(max_coord, fp[1]);
+							min_coord = min_ff(min_coord, fp[1]);
+						}
+					}
+				}
+			}
 		}
 
-		if (max_coord > FLT_EPSILON) {
-			factor = 1.0f / max_coord;
+		if (max_coord > min_coord) {
+			range = max_coord - min_coord;
+			if (range > FLT_EPSILON) {
+				factor = 2.0f / range;
+			}
+			offset = -min_coord - range / 2.0f;
+		}
+		else if (max_coord == min_coord) {
+			factor = 1.0f;
+			offset = -min_coord;
 		}
 	}
+	BLI_assert(factor != 0.0f);
+	if (r_offset) {
+		*r_offset = offset;
+	}
+
 	fcu->prev_norm_factor = factor;
+	fcu->prev_offset = offset;
 	return factor;
 }
 
 /* Get unit conversion factor for given ID + F-Curve */
-float ANIM_unit_mapping_get_factor(Scene *scene, ID *id, FCurve *fcu, short flag)
+float ANIM_unit_mapping_get_factor(Scene *scene, ID *id, FCurve *fcu, short flag, float *r_offset)
 {
 	if (flag & ANIM_UNITCONV_NORMALIZE) {
-		return normalzation_factor_get(fcu, flag);
+		return normalization_factor_get(scene, fcu, flag, r_offset);
 	}
+
+	if (r_offset)
+		*r_offset = 0.0f;
 
 	/* sanity checks */
 	if (id && fcu && fcu->rna_path) {
@@ -336,4 +455,141 @@ float ANIM_unit_mapping_get_factor(Scene *scene, ID *id, FCurve *fcu, short flag
 	return 1.0f;
 }
 
+static bool find_prev_next_keyframes(struct bContext *C, int *nextfra, int *prevfra)
+{
+	Scene *scene = CTX_data_scene(C);
+	Object *ob = CTX_data_active_object(C);
+	Mask *mask = CTX_data_edit_mask(C);
+	bDopeSheet ads = {NULL};
+	DLRBT_Tree keys;
+	ActKeyColumn *aknext, *akprev;
+	float cfranext, cfraprev;
+	bool donenext = false, doneprev = false;
+	int nextcount = 0, prevcount = 0;
+
+	cfranext = cfraprev = (float)(CFRA);
+
+	/* init binarytree-list for getting keyframes */
+	BLI_dlrbTree_init(&keys);
+
+	/* seed up dummy dopesheet context with flags to perform necessary filtering */
+	if ((scene->flag & SCE_KEYS_NO_SELONLY) == 0) {
+		/* only selected channels are included */
+		ads.filterflag |= ADS_FILTER_ONLYSEL;
+	}
+
+	/* populate tree with keyframe nodes */
+	scene_to_keylist(&ads, scene, &keys, NULL);
+	gpencil_to_keylist(&ads, scene->gpd, &keys);
+
+	if (ob) {
+		ob_to_keylist(&ads, ob, &keys, NULL);
+		gpencil_to_keylist(&ads, ob->gpd, &keys);
+	}
+
+	if (mask) {
+		MaskLayer *masklay = BKE_mask_layer_active(mask);
+		mask_to_keylist(&ads, masklay, &keys);
+	}
+
+	/* build linked-list for searching */
+	BLI_dlrbTree_linkedlist_sync(&keys);
+
+	/* find matching keyframe in the right direction */
+	do {
+		aknext = (ActKeyColumn *)BLI_dlrbTree_search_next(&keys, compare_ak_cfraPtr, &cfranext);
+
+		if (aknext) {
+			if (CFRA == (int)aknext->cfra) {
+				/* make this the new starting point for the search and ignore */
+				cfranext = aknext->cfra;
+			}
+			else {
+				/* this changes the frame, so set the frame and we're done */
+				if (++nextcount == U.view_frame_keyframes)
+					donenext = true;
+			}
+			cfranext = aknext->cfra;
+		}
+	} while ((aknext != NULL) && (donenext == false));
+
+	do {
+		akprev = (ActKeyColumn *)BLI_dlrbTree_search_prev(&keys, compare_ak_cfraPtr, &cfraprev);
+
+		if (akprev) {
+			if (CFRA == (int)akprev->cfra) {
+				/* make this the new starting point for the search */
+			}
+			else {
+				/* this changes the frame, so set the frame and we're done */
+				if (++prevcount == U.view_frame_keyframes)
+					doneprev = true;
+			}
+			cfraprev = akprev->cfra;
+		}
+	} while ((akprev != NULL) && (doneprev == false));
+
+	/* free temp stuff */
+	BLI_dlrbTree_free(&keys);
+
+	/* any success? */
+	if (doneprev || donenext) {
+		if (doneprev)
+			*prevfra = cfraprev;
+		else
+			*prevfra = CFRA - (cfranext - CFRA);
+
+		if (donenext)
+			*nextfra = cfranext;
+		else
+			*nextfra = CFRA + (CFRA - cfraprev);
+
+		return true;
+	}
+
+	return false;
+}
+
+void ANIM_center_frame(struct bContext *C, int smooth_viewtx)
+{
+	ARegion *ar = CTX_wm_region(C);
+	Scene *scene = CTX_data_scene(C);
+	float w = BLI_rctf_size_x(&ar->v2d.cur);
+	rctf newrct;
+	int nextfra, prevfra;
+
+	switch (U.view_frame_type) {
+		case ZOOM_FRAME_MODE_SECONDS:
+		{
+			const float fps = FPS;
+			newrct.xmax = scene->r.cfra + U.view_frame_seconds * fps + 1;
+			newrct.xmin = scene->r.cfra - U.view_frame_seconds * fps - 1;
+			newrct.ymax = ar->v2d.cur.ymax;
+			newrct.ymin = ar->v2d.cur.ymin;
+			break;
+		}
+
+		/* hardest case of all, look for all keyframes around frame and display those */
+		case ZOOM_FRAME_MODE_KEYFRAMES:
+			if (find_prev_next_keyframes(C, &nextfra, &prevfra)) {
+				newrct.xmax = nextfra;
+				newrct.xmin = prevfra;
+				newrct.ymax = ar->v2d.cur.ymax;
+				newrct.ymin = ar->v2d.cur.ymin;
+				break;
+			}
+			/* else drop through, keep range instead */
+			ATTR_FALLTHROUGH;
+
+		case ZOOM_FRAME_MODE_KEEP_RANGE:
+		default:
+			newrct.xmax = scene->r.cfra + (w / 2);
+			newrct.xmin = scene->r.cfra - (w / 2);
+			newrct.ymax = ar->v2d.cur.ymax;
+			newrct.ymin = ar->v2d.cur.ymin;
+			break;
+	}
+
+	UI_view2d_smooth_view(C, ar, &newrct, smooth_viewtx);
+}
 /* *************************************************** */

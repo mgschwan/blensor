@@ -4,7 +4,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version. 
+ * of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -69,6 +69,7 @@ typedef struct Brush {
 	char icon_filepath[1024]; /* 1024 = FILE_MAX */
 
 	float normal_weight;
+	float rake_factor;  /* rake actual data (not texture), used for sculpt */
 
 	short blend;        /* blend mode */
 	short ob_mode;      /* & with ob->mode to see if the brush is compatible, use for display only. */
@@ -93,7 +94,6 @@ typedef struct Brush {
 
 	float plane_offset;     /* offset for plane brushes (clay, flatten, fill, scrape) */
 
-	int flag2;
 	int gradient_spacing;
 	int gradient_stroke_mode; /* source for stroke color gradient application */
 	int gradient_fill_mode;   /* source for fill tool color gradient application */
@@ -102,7 +102,7 @@ typedef struct Brush {
 	char vertexpaint_tool;  /* active vertex/weight paint blend mode (poorly named) */
 	char imagepaint_tool;   /* active image paint tool */
 	char mask_tool;         /* enum BrushMaskTool, only used if sculpt_tool is SCULPT_TOOL_MASK */
-	
+
 	float autosmooth_factor;
 
 	float crease_pinch_factor;
@@ -137,16 +137,14 @@ typedef struct Brush {
 	float mask_stencil_dimension[2];
 } Brush;
 
-typedef struct PaletteColor
-{
+typedef struct PaletteColor {
 	struct PaletteColor *next, *prev;
 	/* two values, one to store rgb, other to store values for sculpt/weight */
 	float rgb[3];
 	float value;
 } PaletteColor;
 
-typedef struct Palette
-{
+typedef struct Palette {
 	ID id;
 
 	/* pointer to individual colours */
@@ -156,14 +154,12 @@ typedef struct Palette
 	int pad;
 } Palette;
 
-typedef struct PaintCurvePoint
-{
+typedef struct PaintCurvePoint {
 	BezTriple bez; /* bezier handle */
 	float pressure; /* pressure on that point */
 } PaintCurvePoint;
 
-typedef struct PaintCurve
-{
+typedef struct PaintCurve {
 	ID id;
 	PaintCurvePoint *points; /* points of curve */
 	int tot_points;
@@ -185,7 +181,7 @@ typedef enum BrushGradientSourceFill {
 /* Brush.flag */
 typedef enum BrushFlags {
 	BRUSH_AIRBRUSH = (1 << 0),
-	BRUSH_TORUS = (1 << 1),
+//	BRUSH_TORUS = (1 << 1), deprecated, use paint->symmetry_flags & PAINT_TILE_*
 	BRUSH_ALPHA_PRESSURE = (1 << 2),
 	BRUSH_SIZE_PRESSURE = (1 << 3),
 	BRUSH_JITTER_PRESSURE = (1 << 4),
@@ -214,7 +210,7 @@ typedef enum BrushFlags {
 	BRUSH_CUSTOM_ICON = (1 << 28),
 	BRUSH_LINE = (1 << 29),
 	BRUSH_ABSOLUTE_JITTER = (1 << 30),
-	BRUSH_CURVE = (1 << 31)
+	BRUSH_CURVE = (1u << 31)
 } BrushFlags;
 
 typedef enum {
@@ -259,6 +255,40 @@ typedef enum BrushSculptTool {
 	SCULPT_TOOL_MASK = 19
 } BrushSculptTool;
 
+/** When #BRUSH_ACCUMULATE is used */
+#define SCULPT_TOOL_HAS_ACCUMULATE(t) ELEM(t, \
+	SCULPT_TOOL_DRAW, \
+	SCULPT_TOOL_CREASE, \
+	SCULPT_TOOL_BLOB, \
+	SCULPT_TOOL_LAYER, \
+	SCULPT_TOOL_INFLATE, \
+	SCULPT_TOOL_CLAY, \
+	SCULPT_TOOL_CLAY_STRIPS, \
+	SCULPT_TOOL_ROTATE, \
+	SCULPT_TOOL_FLATTEN \
+	)
+
+#define SCULPT_TOOL_HAS_NORMAL_WEIGHT(t) ELEM(t, \
+	SCULPT_TOOL_GRAB, \
+	SCULPT_TOOL_SNAKE_HOOK \
+	)
+
+#define SCULPT_TOOL_HAS_RAKE(t) ELEM(t, \
+	SCULPT_TOOL_SNAKE_HOOK \
+	)
+
+#define SCULPT_TOOL_HAS_DYNTOPO(t) (ELEM(t, \
+	/* These brushes, as currently coded, cannot support dynamic topology */ \
+	SCULPT_TOOL_GRAB, \
+	SCULPT_TOOL_ROTATE, \
+	SCULPT_TOOL_THUMB, \
+	SCULPT_TOOL_LAYER, \
+	\
+	/* These brushes could handle dynamic topology, but user feedback indicates it's better not to */ \
+	SCULPT_TOOL_SMOOTH, \
+	SCULPT_TOOL_MASK \
+	) == 0)
+
 /* ImagePaintSettings.tool */
 typedef enum BrushImagePaintTool {
 	PAINT_TOOL_DRAW = 0,
@@ -299,7 +329,6 @@ typedef enum BlurKernelType {
 	KERNEL_BOX
 } BlurKernelType;
 
-#define MAX_BRUSH_PIXEL_RADIUS 200
+#define MAX_BRUSH_PIXEL_RADIUS 500
 
-#endif
-
+#endif  /* __DNA_BRUSH_TYPES_H__ */

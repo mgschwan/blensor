@@ -27,6 +27,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "BLI_utildefines.h"
+#include "BLI_string_utils.h"
+
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
 
@@ -39,32 +42,44 @@
 #include "WM_types.h"
 #include "WM_api.h"
 
-EnumPropertyItem linestyle_color_modifier_type_items[] = {
+EnumPropertyItem rna_enum_linestyle_color_modifier_type_items[] = {
 	{LS_MODIFIER_ALONG_STROKE, "ALONG_STROKE", ICON_MODIFIER, "Along Stroke", ""},
+	{LS_MODIFIER_CREASE_ANGLE, "CREASE_ANGLE", ICON_MODIFIER, "Crease Angle", ""},
+	{LS_MODIFIER_CURVATURE_3D, "CURVATURE_3D", ICON_MODIFIER, "Curvature 3D", ""},
 	{LS_MODIFIER_DISTANCE_FROM_CAMERA, "DISTANCE_FROM_CAMERA", ICON_MODIFIER, "Distance from Camera", ""},
 	{LS_MODIFIER_DISTANCE_FROM_OBJECT, "DISTANCE_FROM_OBJECT", ICON_MODIFIER, "Distance from Object", ""},
 	{LS_MODIFIER_MATERIAL, "MATERIAL", ICON_MODIFIER, "Material", ""},
+	{LS_MODIFIER_NOISE, "NOISE", ICON_MODIFIER, "Noise", ""},
+	{LS_MODIFIER_TANGENT, "TANGENT", ICON_MODIFIER, "Tangent", ""},
 	{0, NULL, 0, NULL, NULL}
 };
 
-EnumPropertyItem linestyle_alpha_modifier_type_items[] = {
+EnumPropertyItem rna_enum_linestyle_alpha_modifier_type_items[] = {
 	{LS_MODIFIER_ALONG_STROKE, "ALONG_STROKE", ICON_MODIFIER, "Along Stroke", ""},
+	{LS_MODIFIER_CREASE_ANGLE, "CREASE_ANGLE", ICON_MODIFIER, "Crease Angle", ""},
+	{LS_MODIFIER_CURVATURE_3D, "CURVATURE_3D", ICON_MODIFIER, "Curvature 3D", ""},
 	{LS_MODIFIER_DISTANCE_FROM_CAMERA, "DISTANCE_FROM_CAMERA", ICON_MODIFIER, "Distance from Camera", ""},
 	{LS_MODIFIER_DISTANCE_FROM_OBJECT, "DISTANCE_FROM_OBJECT", ICON_MODIFIER, "Distance from Object", ""},
 	{LS_MODIFIER_MATERIAL, "MATERIAL", ICON_MODIFIER, "Material", ""},
+	{LS_MODIFIER_NOISE, "NOISE", ICON_MODIFIER, "Noise", ""},
+	{LS_MODIFIER_TANGENT, "TANGENT", ICON_MODIFIER, "Tangent", ""},
 	{0, NULL, 0, NULL, NULL}
 };
 
-EnumPropertyItem linestyle_thickness_modifier_type_items[] = {
+EnumPropertyItem rna_enum_linestyle_thickness_modifier_type_items[] = {
 	{LS_MODIFIER_ALONG_STROKE, "ALONG_STROKE", ICON_MODIFIER, "Along Stroke", ""},
 	{LS_MODIFIER_CALLIGRAPHY, "CALLIGRAPHY", ICON_MODIFIER, "Calligraphy", ""},
+	{LS_MODIFIER_CREASE_ANGLE, "CREASE_ANGLE", ICON_MODIFIER, "Crease Angle", ""},
+	{LS_MODIFIER_CURVATURE_3D, "CURVATURE_3D", ICON_MODIFIER, "Curvature 3D", ""},
 	{LS_MODIFIER_DISTANCE_FROM_CAMERA, "DISTANCE_FROM_CAMERA", ICON_MODIFIER, "Distance from Camera", ""},
 	{LS_MODIFIER_DISTANCE_FROM_OBJECT, "DISTANCE_FROM_OBJECT", ICON_MODIFIER, "Distance from Object", ""},
 	{LS_MODIFIER_MATERIAL, "MATERIAL", ICON_MODIFIER, "Material", ""},
+	{LS_MODIFIER_NOISE, "NOISE", ICON_MODIFIER, "Noise", ""},
+	{LS_MODIFIER_TANGENT, "TANGENT", ICON_MODIFIER, "Tangent", ""},
 	{0, NULL, 0, NULL, NULL}
 };
 
-EnumPropertyItem linestyle_geometry_modifier_type_items[] = {
+EnumPropertyItem rna_enum_linestyle_geometry_modifier_type_items[] = {
 	{LS_MODIFIER_2D_OFFSET, "2D_OFFSET", ICON_MODIFIER, "2D Offset", ""},
 	{LS_MODIFIER_2D_TRANSFORM, "2D_TRANSFORM", ICON_MODIFIER, "2D Transform", ""},
 	{LS_MODIFIER_BACKBONE_STRETCHER, "BACKBONE_STRETCHER", ICON_MODIFIER, "Backbone Stretcher", ""},
@@ -75,6 +90,7 @@ EnumPropertyItem linestyle_geometry_modifier_type_items[] = {
 	{LS_MODIFIER_PERLIN_NOISE_2D, "PERLIN_NOISE_2D", ICON_MODIFIER, "Perlin Noise 2D", ""},
 	{LS_MODIFIER_POLYGONIZATION, "POLYGONIZATION", ICON_MODIFIER, "Polygonization", ""},
 	{LS_MODIFIER_SAMPLING, "SAMPLING", ICON_MODIFIER, "Sampling", ""},
+	{LS_MODIFIER_SIMPLIFICATION, "SIMPLIFICATION", ICON_MODIFIER, "Simplification", ""},
 	{LS_MODIFIER_SINUS_DISPLACEMENT, "SINUS_DISPLACEMENT", ICON_MODIFIER, "Sinus Displacement", ""},
 	{LS_MODIFIER_SPATIAL_NOISE, "SPATIAL_NOISE", ICON_MODIFIER, "Spatial Noise", ""},
 	{LS_MODIFIER_TIP_REMOVER, "TIP_REMOVER", ICON_MODIFIER, "Tip Remover", ""},
@@ -104,6 +120,14 @@ static StructRNA *rna_LineStyle_color_modifier_refine(struct PointerRNA *ptr)
 			return &RNA_LineStyleColorModifier_DistanceFromObject;
 		case LS_MODIFIER_MATERIAL:
 			return &RNA_LineStyleColorModifier_Material;
+		case LS_MODIFIER_TANGENT:
+			return &RNA_LineStyleColorModifier_Tangent;
+		case LS_MODIFIER_NOISE:
+			return &RNA_LineStyleColorModifier_Noise;
+		case LS_MODIFIER_CREASE_ANGLE:
+			return &RNA_LineStyleColorModifier_CreaseAngle;
+		case LS_MODIFIER_CURVATURE_3D:
+			return &RNA_LineStyleColorModifier_Curvature_3D;
 		default:
 			return &RNA_LineStyleColorModifier;
 	}
@@ -122,6 +146,14 @@ static StructRNA *rna_LineStyle_alpha_modifier_refine(struct PointerRNA *ptr)
 			return &RNA_LineStyleAlphaModifier_DistanceFromObject;
 		case LS_MODIFIER_MATERIAL:
 			return &RNA_LineStyleAlphaModifier_Material;
+		case LS_MODIFIER_TANGENT:
+			return &RNA_LineStyleAlphaModifier_Tangent;
+		case LS_MODIFIER_NOISE:
+			return &RNA_LineStyleAlphaModifier_Noise;
+		case LS_MODIFIER_CREASE_ANGLE:
+			return &RNA_LineStyleAlphaModifier_CreaseAngle;
+		case LS_MODIFIER_CURVATURE_3D:
+			return &RNA_LineStyleAlphaModifier_Curvature_3D;
 		default:
 			return &RNA_LineStyleAlphaModifier;
 	}
@@ -142,6 +174,14 @@ static StructRNA *rna_LineStyle_thickness_modifier_refine(struct PointerRNA *ptr
 			return &RNA_LineStyleThicknessModifier_Material;
 		case LS_MODIFIER_CALLIGRAPHY:
 			return &RNA_LineStyleThicknessModifier_Calligraphy;
+		case LS_MODIFIER_TANGENT:
+			return &RNA_LineStyleThicknessModifier_Tangent;
+		case LS_MODIFIER_NOISE:
+			return &RNA_LineStyleThicknessModifier_Noise;
+		case LS_MODIFIER_CREASE_ANGLE:
+			return &RNA_LineStyleThicknessModifier_CreaseAngle;
+		case LS_MODIFIER_CURVATURE_3D:
+			return &RNA_LineStyleThicknessModifier_Curvature_3D;
 		default:
 			return &RNA_LineStyleThicknessModifier;
 	}
@@ -178,6 +218,8 @@ static StructRNA *rna_LineStyle_geometry_modifier_refine(struct PointerRNA *ptr)
 			return &RNA_LineStyleGeometryModifier_2DOffset;
 		case LS_MODIFIER_2D_TRANSFORM:
 			return &RNA_LineStyleGeometryModifier_2DTransform;
+		case LS_MODIFIER_SIMPLIFICATION:
+			return &RNA_LineStyleGeometryModifier_Simplification;
 		default:
 			return &RNA_LineStyleGeometryModifier;
 	}
@@ -474,7 +516,7 @@ static void rna_def_linestyle_mtex(BlenderRNA *brna)
 
 	srna = RNA_def_struct(brna, "LineStyleTextureSlot", "TextureSlot");
 	RNA_def_struct_sdna(srna, "MTex");
-	RNA_def_struct_ui_text(srna, "LineStyle Texture Slot", "Texture slot for textures in a LineStyle datablock");
+	RNA_def_struct_ui_text(srna, "LineStyle Texture Slot", "Texture slot for textures in a LineStyle data-block");
 
 	prop = RNA_def_property(srna, "mapping_x", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_sdna(prop, NULL, "projx");
@@ -535,8 +577,9 @@ static void rna_def_linestyle_mtex(BlenderRNA *brna)
 	RNA_def_property_update(prop, 0, "rna_LineStyle_update");
 }
 
-static void rna_def_modifier_type_common(StructRNA *srna, EnumPropertyItem *modifier_type_items,
-                                         const char *set_name_func, const bool blend, const bool color)
+static void rna_def_modifier_type_common(
+        StructRNA *srna, EnumPropertyItem *modifier_type_items,
+        const char *set_name_func, const bool blend, const bool color)
 {
 	PropertyRNA *prop;
 
@@ -548,8 +591,8 @@ static void rna_def_modifier_type_common(StructRNA *srna, EnumPropertyItem *modi
 		{LS_VALUE_MULT, "MULTIPLY", 0, "Multiply", ""},
 		{LS_VALUE_DIV, "DIVIDE", 0, "Divide", ""},
 		{LS_VALUE_DIFF, "DIFFERENCE", 0, "Difference", ""},
-		{LS_VALUE_MIN, "MININUM", 0, "Minimum", ""}, 
-		{LS_VALUE_MAX, "MAXIMUM", 0, "Maximum", ""}, 
+		{LS_VALUE_MIN, "MININUM", 0, "Minimum", ""},
+		{LS_VALUE_MAX, "MAXIMUM", 0, "Maximum", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
@@ -569,7 +612,7 @@ static void rna_def_modifier_type_common(StructRNA *srna, EnumPropertyItem *modi
 	if (blend) {
 		prop = RNA_def_property(srna, "blend", PROP_ENUM, PROP_NONE);
 		RNA_def_property_enum_sdna(prop, NULL, "modifier.blend");
-		RNA_def_property_enum_items(prop, (color) ? ramp_blend_items : value_blend_items);
+		RNA_def_property_enum_items(prop, (color) ? rna_enum_ramp_blend_items : value_blend_items);
 		RNA_def_property_ui_text(prop, "Blend", "Specify how the modifier value is blended into the base value");
 		RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
 
@@ -592,25 +635,25 @@ static void rna_def_modifier_type_common(StructRNA *srna, EnumPropertyItem *modi
 
 static void rna_def_color_modifier(StructRNA *srna)
 {
-	rna_def_modifier_type_common(srna, linestyle_color_modifier_type_items,
+	rna_def_modifier_type_common(srna, rna_enum_linestyle_color_modifier_type_items,
 	                             "rna_LineStyleColorModifier_name_set", true, true);
 }
 
 static void rna_def_alpha_modifier(StructRNA *srna)
 {
-	rna_def_modifier_type_common(srna, linestyle_alpha_modifier_type_items,
+	rna_def_modifier_type_common(srna, rna_enum_linestyle_alpha_modifier_type_items,
 	                             "rna_LineStyleAlphaModifier_name_set", true, false);
 }
 
 static void rna_def_thickness_modifier(StructRNA *srna)
 {
-	rna_def_modifier_type_common(srna, linestyle_thickness_modifier_type_items,
+	rna_def_modifier_type_common(srna, rna_enum_linestyle_thickness_modifier_type_items,
 	                             "rna_LineStyleThicknessModifier_name_set", true, false);
 }
 
 static void rna_def_geometry_modifier(StructRNA *srna)
 {
-	rna_def_modifier_type_common(srna, linestyle_geometry_modifier_type_items,
+	rna_def_modifier_type_common(srna, rna_enum_linestyle_geometry_modifier_type_items,
 	                             "rna_LineStyleGeometryModifier_name_set", false, false);
 }
 
@@ -785,6 +828,62 @@ static void rna_def_linestyle_modifiers(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Ramp", "Use color ramp to map the BW average into an RGB color");
 	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
 
+	srna = RNA_def_struct(brna, "LineStyleColorModifier_Tangent", "LineStyleColorModifier");
+	RNA_def_struct_ui_text(srna, "Tangent", "Change line color based on the direction of a stroke");
+	rna_def_color_modifier(srna);
+	rna_def_modifier_color_ramp_common(srna, false);
+
+	srna = RNA_def_struct(brna, "LineStyleColorModifier_Noise", "LineStyleColorModifier");
+	RNA_def_struct_ui_text(srna, "Noise", "Change line color based on random noise");
+	rna_def_color_modifier(srna);
+	rna_def_modifier_color_ramp_common(srna, false);
+
+	prop = RNA_def_property(srna, "amplitude", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "amplitude");
+	RNA_def_property_ui_text(prop, "Amplitude", "Amplitude of the noise");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "period", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "period");
+	RNA_def_property_ui_text(prop, "Period", "Period of the noise");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "seed", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "seed");
+	RNA_def_property_ui_text(prop, "Seed", "Seed for the noise generation");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	srna = RNA_def_struct(brna, "LineStyleColorModifier_CreaseAngle", "LineStyleColorModifier");
+	RNA_def_struct_ui_text(srna, "Crease Angle", "Change line color based on the underlying crease angle");
+	rna_def_color_modifier(srna);
+	rna_def_modifier_color_ramp_common(srna, false);
+
+	prop = RNA_def_property(srna, "angle_min", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "min_angle");
+	RNA_def_property_ui_text(prop, "Min Angle", "Minimum angle to modify thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "angle_max", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "max_angle");
+	RNA_def_property_ui_text(prop, "Max Angle", "Maximum angle to modify thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	srna = RNA_def_struct(brna, "LineStyleColorModifier_Curvature_3D", "LineStyleColorModifier");
+	RNA_def_struct_ui_text(srna, "Curvature 3D",
+	                       "Change line color based on the radial curvature of 3D mesh surfaces");
+	rna_def_color_modifier(srna);
+	rna_def_modifier_color_ramp_common(srna, false);
+
+	prop = RNA_def_property(srna, "curvature_min", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "min_curvature");
+	RNA_def_property_ui_text(prop, "Min Curvature", "Minimum Curvature");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "curvature_max", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "max_curvature");
+	RNA_def_property_ui_text(prop, "Max Curvature", "Maximum Curvature");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
 	/* alpha transparency modifiers */
 
 	srna = RNA_def_struct(brna, "LineStyleAlphaModifier", "LineStyleModifier");
@@ -823,13 +922,89 @@ static void rna_def_linestyle_modifiers(BlenderRNA *brna)
 	rna_def_modifier_material_common(srna);
 	rna_def_modifier_curve_common(srna, false, false);
 
-	/* line thickness modifiers */
+	srna = RNA_def_struct(brna, "LineStyleAlphaModifier_Tangent", "LineStyleAlphaModifier");
+	RNA_def_struct_ui_text(srna, "Tangent", "Alpha transparency based on the direction of the stroke");
+	rna_def_alpha_modifier(srna);
+	rna_def_modifier_curve_common(srna, false, false);
 
+	srna = RNA_def_struct(brna, "LineStyleAlphaModifier_Noise", "LineStyleAlphaModifier");
+	RNA_def_struct_ui_text(srna, "Noise", "Alpha transparency based on random noise");
+	rna_def_alpha_modifier(srna);
+	rna_def_modifier_curve_common(srna, false, false);
+
+	prop = RNA_def_property(srna, "amplitude", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "amplitude");
+	RNA_def_property_ui_text(prop, "Amplitude", "Amplitude of the noise");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "period", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "period");
+	RNA_def_property_ui_text(prop, "Period", "Period of the noise");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "seed", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "seed");
+	RNA_def_property_ui_text(prop, "Seed", "Seed for the noise generation");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	srna = RNA_def_struct(brna, "LineStyleAlphaModifier_CreaseAngle", "LineStyleAlphaModifier");
+	RNA_def_struct_ui_text(srna, "Crease Angle",
+	                       "Alpha transparency based on the angle between two adjacent faces");
+	rna_def_alpha_modifier(srna);
+	rna_def_modifier_curve_common(srna, false, false);
+
+	prop = RNA_def_property(srna, "angle_min", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "min_angle");
+	RNA_def_property_ui_text(prop, "Min Angle", "Minimum angle to modify thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "angle_max", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "max_angle");
+	RNA_def_property_ui_text(prop, "Max Angle", "Maximum angle to modify thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	srna = RNA_def_struct(brna, "LineStyleAlphaModifier_Curvature_3D", "LineStyleAlphaModifier");
+	RNA_def_struct_ui_text(srna, "Curvature 3D",
+	                       "Alpha transparency based on the radial curvature of 3D mesh surfaces");
+	rna_def_alpha_modifier(srna);
+	rna_def_modifier_curve_common(srna, false, false);
+
+	prop = RNA_def_property(srna, "curvature_min", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "min_curvature");
+	RNA_def_property_range(prop, 0.0f, 10000.0f);
+	RNA_def_property_ui_text(prop, "Min Curvature", "Minimum Curvature");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "curvature_max", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "max_curvature");
+	RNA_def_property_range(prop, 0.0f, 10000.0f);
+	RNA_def_property_ui_text(prop, "Max Curvature", "Maximum Curvature");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	/* line thickness modifiers */
 	srna = RNA_def_struct(brna, "LineStyleThicknessModifier", "LineStyleModifier");
 	RNA_def_struct_sdna(srna, "LineStyleModifier");
 	RNA_def_struct_refine_func(srna, "rna_LineStyle_thickness_modifier_refine");
 	RNA_def_struct_path_func(srna, "rna_LineStyle_thickness_modifier_path");
 	RNA_def_struct_ui_text(srna, "Line Style Thickness Modifier", "Base type to define line thickness modifiers");
+
+	srna = RNA_def_struct(brna, "LineStyleThicknessModifier_Tangent", "LineStyleThicknessModifier");
+	RNA_def_struct_ui_text(srna, "Tangent", "Thickness based on the direction of the stroke");
+	rna_def_thickness_modifier(srna);
+	rna_def_modifier_curve_common(srna, false, false);
+
+	prop = RNA_def_property(srna, "thickness_min", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "min_thickness");
+	RNA_def_property_range(prop, 0.0f, 10000.0f);
+	RNA_def_property_ui_text(prop, "Min Thickness",
+	                         "Minimum thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "thickness_max", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "max_thickness");
+	RNA_def_property_range(prop, 0.0f, 10000.0f);
+	RNA_def_property_ui_text(prop, "Max Thickness", "Maximum thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
 
 	srna = RNA_def_struct(brna, "LineStyleThicknessModifier_AlongStroke", "LineStyleThicknessModifier");
 	RNA_def_struct_ui_text(srna, "Along Stroke", "Change line thickness along stroke");
@@ -880,6 +1055,88 @@ static void rna_def_linestyle_modifiers(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "max_thickness");
 	RNA_def_property_range(prop, 0.0f, 10000.0f);
 	RNA_def_property_ui_text(prop, "Max Thickness", "Maximum thickness in the main direction");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	srna = RNA_def_struct(brna, "LineStyleThicknessModifier_Noise", "LineStyleThicknessModifier");
+	RNA_def_struct_ui_text(srna, "Noise", "Line thickness based on random noise");
+	rna_def_thickness_modifier(srna);
+
+	prop = RNA_def_property(srna, "amplitude", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "amplitude");
+	RNA_def_property_ui_text(prop, "Amplitude", "Amplitude of the noise");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "period", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "period");
+	RNA_def_property_ui_text(prop, "Period", "Period of the noise");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "seed", PROP_INT, PROP_NONE);
+	RNA_def_property_int_sdna(prop, NULL, "seed");
+	RNA_def_property_ui_text(prop, "Seed", "Seed for the noise generation");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "use_asymmetric", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_sdna(prop, NULL, "flags", LS_THICKNESS_ASYMMETRIC);
+	RNA_def_property_ui_text(prop, "Asymmetric", "Allow thickness to be assigned asymmetrically");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	srna = RNA_def_struct(brna, "LineStyleThicknessModifier_Curvature_3D", "LineStyleThicknessModifier");
+	RNA_def_struct_ui_text(srna, "Curvature 3D",
+	                       "Line thickness based on the radial curvature of 3D mesh surfaces");
+	rna_def_thickness_modifier(srna);
+	rna_def_modifier_curve_common(srna, false, false);
+
+	prop = RNA_def_property(srna, "thickness_min", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "min_thickness");
+	RNA_def_property_range(prop, 0.0f, 10000.0f);
+	RNA_def_property_ui_text(prop, "Min Thickness", "Minimum thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "thickness_max", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "max_thickness");
+	RNA_def_property_range(prop, 0.0f, 10000.0f);
+	RNA_def_property_ui_text(prop, "Max Thickness", "Maximum thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "curvature_min", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "min_curvature");
+	RNA_def_property_range(prop, 0.0f, 10000.0f);
+	RNA_def_property_ui_text(prop, "Min Curvature", "Minimum Curvature");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "curvature_max", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "max_curvature");
+	RNA_def_property_range(prop, 0.0f, 10000.0f);
+	RNA_def_property_ui_text(prop, "Max Curvature", "Maximum Curvature");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	srna = RNA_def_struct(brna, "LineStyleThicknessModifier_CreaseAngle", "LineStyleThicknessModifier");
+	RNA_def_struct_ui_text(srna, "Crease Angle",
+	                       "Line thickness based on the angle between two adjacent faces");
+	rna_def_thickness_modifier(srna);
+	rna_def_modifier_curve_common(srna, false, false);
+
+	prop = RNA_def_property(srna, "angle_min", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "min_angle");
+	RNA_def_property_ui_text(prop, "Min Angle", "Minimum angle to modify thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "angle_max", PROP_FLOAT, PROP_ANGLE);
+	RNA_def_property_float_sdna(prop, NULL, "max_angle");
+	RNA_def_property_ui_text(prop, "Max Angle", "Maximum angle to modify thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "thickness_min", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "min_thickness");
+	RNA_def_property_range(prop, 0.0f, 10000.0f);
+	RNA_def_property_ui_text(prop, "Min Thickness", "Minimum thickness");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	prop = RNA_def_property(srna, "thickness_max", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "max_thickness");
+	RNA_def_property_range(prop, 0.0f, 10000.0f);
+	RNA_def_property_ui_text(prop, "Max Thickness", "Maximum thickness");
 	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
 
 	/* geometry modifiers */
@@ -1167,6 +1424,15 @@ static void rna_def_linestyle_modifiers(BlenderRNA *brna)
 	RNA_def_property_float_sdna(prop, NULL, "pivot_y");
 	RNA_def_property_ui_text(prop, "Pivot Y", "2D Y coordinate of the absolute pivot");
 	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	srna = RNA_def_struct(brna, "LineStyleGeometryModifier_Simplification", "LineStyleGeometryModifier");
+	RNA_def_struct_ui_text(srna, "Simplification", "Simplify the stroke set");
+	rna_def_geometry_modifier(srna);
+
+	prop = RNA_def_property(srna, "tolerance", PROP_FLOAT, PROP_NONE);
+	RNA_def_property_float_sdna(prop, NULL, "tolerance");
+	RNA_def_property_ui_text(prop, "Tolerance", "Distance below which segments will be merged");
+	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
 }
 
 static void rna_def_freestyle_color_modifiers(BlenderRNA *brna, PropertyRNA *cprop)
@@ -1184,9 +1450,9 @@ static void rna_def_freestyle_color_modifiers(BlenderRNA *brna, PropertyRNA *cpr
 	RNA_def_function_ui_description(func, "Add a color modifier to line style");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	parm = RNA_def_string(func, "name", "ColorModifier", 0, "", "New name for the color modifier (not unique)");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_enum(func, "type", linestyle_color_modifier_type_items, 0, "", "Color modifier type to add");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+	parm = RNA_def_enum(func, "type", rna_enum_linestyle_color_modifier_type_items, 0, "", "Color modifier type to add");
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	parm = RNA_def_pointer(func, "modifier", "LineStyleColorModifier", "", "Newly added color modifier");
 	RNA_def_function_return(func, parm);
 
@@ -1194,8 +1460,8 @@ static void rna_def_freestyle_color_modifiers(BlenderRNA *brna, PropertyRNA *cpr
 	RNA_def_function_ui_description(func, "Remove a color modifier from line style");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	parm = RNA_def_pointer(func, "modifier", "LineStyleColorModifier", "", "Color modifier to remove");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
-	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
+	RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
+	RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, 0);
 }
 
 static void rna_def_freestyle_alpha_modifiers(BlenderRNA *brna, PropertyRNA *cprop)
@@ -1213,9 +1479,9 @@ static void rna_def_freestyle_alpha_modifiers(BlenderRNA *brna, PropertyRNA *cpr
 	RNA_def_function_ui_description(func, "Add a alpha modifier to line style");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	parm = RNA_def_string(func, "name", "AlphaModifier", 0, "", "New name for the alpha modifier (not unique)");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_enum(func, "type", linestyle_alpha_modifier_type_items, 0, "", "Alpha modifier type to add");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+	parm = RNA_def_enum(func, "type", rna_enum_linestyle_alpha_modifier_type_items, 0, "", "Alpha modifier type to add");
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	parm = RNA_def_pointer(func, "modifier", "LineStyleAlphaModifier", "", "Newly added alpha modifier");
 	RNA_def_function_return(func, parm);
 
@@ -1223,8 +1489,8 @@ static void rna_def_freestyle_alpha_modifiers(BlenderRNA *brna, PropertyRNA *cpr
 	RNA_def_function_ui_description(func, "Remove a alpha modifier from line style");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	parm = RNA_def_pointer(func, "modifier", "LineStyleAlphaModifier", "", "Alpha modifier to remove");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
-	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
+	RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
+	RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, 0);
 }
 
 static void rna_def_freestyle_thickness_modifiers(BlenderRNA *brna, PropertyRNA *cprop)
@@ -1236,15 +1502,16 @@ static void rna_def_freestyle_thickness_modifiers(BlenderRNA *brna, PropertyRNA 
 	RNA_def_property_srna(cprop, "LineStyleThicknessModifiers");
 	srna = RNA_def_struct(brna, "LineStyleThicknessModifiers", NULL);
 	RNA_def_struct_sdna(srna, "FreestyleLineStyle");
-	RNA_def_struct_ui_text(srna, "Thickness Modifiers", "Thickness modifiers for changing line thicknesss");
+	RNA_def_struct_ui_text(srna, "Thickness Modifiers", "Thickness modifiers for changing line thickness");
 
 	func = RNA_def_function(srna, "new", "rna_LineStyle_thickness_modifier_add");
 	RNA_def_function_ui_description(func, "Add a thickness modifier to line style");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	parm = RNA_def_string(func, "name", "ThicknessModifier", 0, "", "New name for the thickness modifier (not unique)");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_enum(func, "type", linestyle_thickness_modifier_type_items, 0, "", "Thickness modifier type to add");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+	parm = RNA_def_enum(func, "type", rna_enum_linestyle_thickness_modifier_type_items, 0,
+	                    "", "Thickness modifier type to add");
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	parm = RNA_def_pointer(func, "modifier", "LineStyleThicknessModifier", "", "Newly added thickness modifier");
 	RNA_def_function_return(func, parm);
 
@@ -1252,8 +1519,8 @@ static void rna_def_freestyle_thickness_modifiers(BlenderRNA *brna, PropertyRNA 
 	RNA_def_function_ui_description(func, "Remove a thickness modifier from line style");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	parm = RNA_def_pointer(func, "modifier", "LineStyleThicknessModifier", "", "Thickness modifier to remove");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
-	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
+	RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
+	RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, 0);
 }
 
 static void rna_def_freestyle_geometry_modifiers(BlenderRNA *brna, PropertyRNA *cprop)
@@ -1265,15 +1532,16 @@ static void rna_def_freestyle_geometry_modifiers(BlenderRNA *brna, PropertyRNA *
 	RNA_def_property_srna(cprop, "LineStyleGeometryModifiers");
 	srna = RNA_def_struct(brna, "LineStyleGeometryModifiers", NULL);
 	RNA_def_struct_sdna(srna, "FreestyleLineStyle");
-	RNA_def_struct_ui_text(srna, "Geometry Modifiers", "Geometry modifiers for changing line geometrys");
+	RNA_def_struct_ui_text(srna, "Geometry Modifiers", "Geometry modifiers for changing line geometries");
 
 	func = RNA_def_function(srna, "new", "rna_LineStyle_geometry_modifier_add");
 	RNA_def_function_ui_description(func, "Add a geometry modifier to line style");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	parm = RNA_def_string(func, "name", "GeometryModifier", 0, "", "New name for the geometry modifier (not unique)");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
-	parm = RNA_def_enum(func, "type", linestyle_geometry_modifier_type_items, 0, "", "Geometry modifier type to add");
-	RNA_def_property_flag(parm, PROP_REQUIRED);
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+	parm = RNA_def_enum(func, "type", rna_enum_linestyle_geometry_modifier_type_items, 0,
+	                    "", "Geometry modifier type to add");
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	parm = RNA_def_pointer(func, "modifier", "LineStyleGeometryModifier", "", "Newly added geometry modifier");
 	RNA_def_function_return(func, parm);
 
@@ -1281,8 +1549,8 @@ static void rna_def_freestyle_geometry_modifiers(BlenderRNA *brna, PropertyRNA *
 	RNA_def_function_ui_description(func, "Remove a geometry modifier from line style");
 	RNA_def_function_flag(func, FUNC_USE_REPORTS);
 	parm = RNA_def_pointer(func, "modifier", "LineStyleGeometryModifier", "", "Geometry modifier to remove");
-	RNA_def_property_flag(parm, PROP_REQUIRED | PROP_NEVER_NULL | PROP_RNAPTR);
-	RNA_def_property_clear_flag(parm, PROP_THICK_WRAP);
+	RNA_def_parameter_flags(parm, PROP_NEVER_NULL, PARM_REQUIRED | PARM_RNAPTR);
+	RNA_def_parameter_clear_flags(parm, PROP_THICK_WRAP, 0);
 }
 
 static void rna_def_linestyle(BlenderRNA *brna)
@@ -1352,6 +1620,7 @@ static void rna_def_linestyle(BlenderRNA *brna)
 	prop = RNA_def_property(srna, "panel", PROP_ENUM, PROP_NONE);
 	RNA_def_property_enum_bitflag_sdna(prop, NULL, "panel");
 	RNA_def_property_enum_items(prop, panel_items);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_ui_text(prop, "Panel", "Select the property panel to be shown");
 
 	prop = RNA_def_property(srna, "color", PROP_FLOAT, PROP_COLOR);
@@ -1627,6 +1896,9 @@ static void rna_def_linestyle(BlenderRNA *brna)
 	RNA_def_property_range(prop, 0.01f, 100.0f);
 	RNA_def_property_ui_text(prop, "Texture spacing", "Spacing for textures along stroke length");
 	RNA_def_property_update(prop, NC_LINESTYLE, "rna_LineStyle_update");
+
+	/* anim */
+	rna_def_animdata_common(srna);
 
 	/* nodes */
 	prop = RNA_def_property(srna, "node_tree", PROP_POINTER, PROP_NONE);

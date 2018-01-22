@@ -21,8 +21,8 @@
 bl_info = {
     "name": "STL format",
     "author": "Guillaume Bouchard (Guillaum)",
-    "version": (1, 1, 1),
-    "blender": (2, 73, 0),
+    "version": (1, 1, 2),
+    "blender": (2, 74, 0),
     "location": "File > Import-Export > Stl",
     "description": "Import-Export STL files",
     "warning": "",
@@ -57,21 +57,29 @@ if "bpy" in locals():
 import os
 
 import bpy
-from bpy.props import (StringProperty,
-                       BoolProperty,
-                       CollectionProperty,
-                       EnumProperty,
-                       FloatProperty,
-                       )
-from bpy_extras.io_utils import (ImportHelper,
-                                 ExportHelper,
-                                 OrientationHelper,
-                                 axis_conversion,
-                                 )
-from bpy.types import Operator, OperatorFileListElement
+from bpy.props import (
+        StringProperty,
+        BoolProperty,
+        CollectionProperty,
+        EnumProperty,
+        FloatProperty,
+        )
+from bpy_extras.io_utils import (
+        ImportHelper,
+        ExportHelper,
+        orientation_helper_factory,
+        axis_conversion,
+        )
+from bpy.types import (
+        Operator,
+        OperatorFileListElement,
+        )
 
 
-class ImportSTL(Operator, ImportHelper, OrientationHelper):
+IOSTLOrientationHelper = orientation_helper_factory("IOSTLOrientationHelper", axis_forward='Y', axis_up='Z')
+
+
+class ImportSTL(Operator, ImportHelper, IOSTLOrientationHelper):
     """Load STL triangle mesh data"""
     bl_idname = "import_mesh.stl"
     bl_label = "Import STL"
@@ -101,6 +109,12 @@ class ImportSTL(Operator, ImportHelper, OrientationHelper):
     use_scene_unit = BoolProperty(
             name="Scene Unit",
             description="Apply current scene's unit (as defined by unit scale) to imported data",
+            default=False,
+            )
+
+    use_facet_normal = BoolProperty(
+            name="Facet Normals",
+            description="Use (import) facet normals (note that this will still give flat shading)",
             default=False,
             )
 
@@ -134,13 +148,14 @@ class ImportSTL(Operator, ImportHelper, OrientationHelper):
 
         for path in paths:
             objName = bpy.path.display_name(os.path.basename(path))
-            tris, pts = stl_utils.read_stl(path)
-            blender_utils.create_and_link_mesh(objName, tris, pts, global_matrix)
+            tris, tri_nors, pts = stl_utils.read_stl(path)
+            tri_nors = tri_nors if self.use_facet_normal else None
+            blender_utils.create_and_link_mesh(objName, tris, tri_nors, pts, global_matrix)
 
         return {'FINISHED'}
 
 
-class ExportSTL(Operator, ExportHelper, OrientationHelper):
+class ExportSTL(Operator, ExportHelper, IOSTLOrientationHelper):
     """Save STL triangle mesh data from the active object"""
     bl_idname = "export_mesh.stl"
     bl_label = "Export STL"
@@ -148,6 +163,11 @@ class ExportSTL(Operator, ExportHelper, OrientationHelper):
     filename_ext = ".stl"
     filter_glob = StringProperty(default="*.stl", options={'HIDDEN'})
 
+    use_selection = BoolProperty(
+            name="Selection Only",
+            description="Export selected objects only",
+            default=False,
+            )
     global_scale = FloatProperty(
             name="Scale",
             min=0.01, max=1000.0,
@@ -157,7 +177,7 @@ class ExportSTL(Operator, ExportHelper, OrientationHelper):
     use_scene_unit = BoolProperty(
             name="Scene Unit",
             description="Apply current scene's unit (as defined by unit scale) to exported data",
-            default=True,
+            default=False,
             )
     ascii = BoolProperty(
             name="Ascii",
@@ -167,9 +187,17 @@ class ExportSTL(Operator, ExportHelper, OrientationHelper):
     use_mesh_modifiers = BoolProperty(
             name="Apply Modifiers",
             description="Apply the modifiers before saving",
-            default=False,
+            default=True,
             )
+    batch_mode = EnumProperty(
+            name="Batch Mode",
+            items=(('OFF', "Off", "All data in one file"),
+                   ('OBJECT', "Object", "Each object as a file"),
+                   ))
 
+    @property
+    def check_extension(self):
+        return self.batch_mode == 'OFF'
 
     def execute(self, context):
         from . import stl_utils
@@ -178,14 +206,20 @@ class ExportSTL(Operator, ExportHelper, OrientationHelper):
         from mathutils import Matrix
         keywords = self.as_keywords(ignore=("axis_forward",
                                             "axis_up",
+                                            "use_selection",
                                             "global_scale",
                                             "check_existing",
                                             "filter_glob",
                                             "use_scene_unit",
                                             "use_mesh_modifiers",
+                                            "batch_mode"
                                             ))
 
         scene = context.scene
+        if self.use_selection:
+            data_seq = context.selected_objects
+        else:
+            data_seq = scene.objects
 
         # Take into account scene's unit scale, so that 1 inch in Blender gives 1 inch elsewhere! See T42000.
         global_scale = self.global_scale
@@ -196,11 +230,19 @@ class ExportSTL(Operator, ExportHelper, OrientationHelper):
                                         to_up=self.axis_up,
                                         ).to_4x4() * Matrix.Scale(global_scale, 4)
 
-        faces = itertools.chain.from_iterable(
-            blender_utils.faces_from_mesh(ob, global_matrix, self.use_mesh_modifiers)
-            for ob in context.selected_objects)
+        if self.batch_mode == 'OFF':
+            faces = itertools.chain.from_iterable(
+                    blender_utils.faces_from_mesh(ob, global_matrix, self.use_mesh_modifiers)
+                    for ob in data_seq)
 
-        stl_utils.write_stl(faces=faces, **keywords)
+            stl_utils.write_stl(faces=faces, **keywords)
+        elif self.batch_mode == 'OBJECT':
+            prefix = os.path.splitext(self.filepath)[0]
+            keywords_temp = keywords.copy()
+            for ob in data_seq:
+                faces = blender_utils.faces_from_mesh(ob, global_matrix, self.use_mesh_modifiers)
+                keywords_temp["filepath"] = prefix + bpy.path.clean_name(ob.name) + ".stl"
+                stl_utils.write_stl(faces=faces, **keywords_temp)
 
         return {'FINISHED'}
 

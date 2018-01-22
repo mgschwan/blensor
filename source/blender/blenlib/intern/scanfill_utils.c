@@ -112,11 +112,13 @@ void BLI_scanfill_view3d_dump(ScanFillContext *sf_ctx)
 static ListBase *edge_isect_ls_ensure(GHash *isect_hash, ScanFillEdge *eed)
 {
 	ListBase *e_ls;
-	e_ls = BLI_ghash_lookup(isect_hash, eed);
-	if (e_ls == NULL) {
-		e_ls = MEM_callocN(sizeof(ListBase), __func__);
-		BLI_ghash_insert(isect_hash, eed, e_ls);
+	void **val_p;
+
+	if (!BLI_ghash_ensure_p(isect_hash, eed, &val_p)) {
+		*val_p = MEM_callocN(sizeof(ListBase), __func__);
 	}
+	e_ls = *val_p;
+
 	return e_ls;
 }
 
@@ -255,7 +257,7 @@ static bool scanfill_preprocess_self_isect(
 
 				if (UNLIKELY(e_ls == NULL)) {
 					/* only happens in very rare cases (entirely overlapping splines).
-					 * in this case se can't do much useful. but at least don't crash */
+					 * in this case we can't do much useful. but at least don't crash */
 					continue;
 				}
 
@@ -265,7 +267,7 @@ static bool scanfill_preprocess_self_isect(
 				}
 
 				if (BLI_listbase_is_single(e_ls) == false) {
-					BLI_listbase_sort_r(e_ls, eed->v2->co, edge_isect_ls_sort_cb);
+					BLI_listbase_sort_r(e_ls, edge_isect_ls_sort_cb, eed->v2->co);
 				}
 
 				/* move original edge to filledgebase and add replacement

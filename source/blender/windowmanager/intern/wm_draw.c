@@ -43,20 +43,22 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
-#include "BLI_math_base.h"
 
 #include "BIF_gl.h"
 
 #include "BKE_context.h"
+#include "BKE_image.h"
 
 #include "GHOST_C-api.h"
 
+#include "ED_node.h"
 #include "ED_view3d.h"
 #include "ED_screen.h"
 
 #include "GPU_draw.h"
 #include "GPU_extensions.h"
 #include "GPU_glew.h"
+#include "GPU_basic_shader.h"
 
 #include "RE_engine.h"
 
@@ -66,6 +68,10 @@
 #include "wm_draw.h"
 #include "wm_window.h"
 #include "wm_event_system.h"
+
+#ifdef WITH_OPENSUBDIV
+#  include "BKE_subsurf.h"
+#endif
 
 /* swap */
 #define WIN_NONE_OK     0
@@ -165,6 +171,7 @@ static void wm_method_draw_full(bContext *C, wmWindow *win)
 			if (ar->swinid) {
 				CTX_wm_region_set(C, ar);
 				ED_region_do_draw(C, ar);
+				ar->do_draw = false;
 				wm_paintcursor_draw(C, ar);
 				CTX_wm_region_set(C, NULL);
 			}
@@ -175,12 +182,14 @@ static void wm_method_draw_full(bContext *C, wmWindow *win)
 	}
 
 	ED_screen_draw(win);
+	win->screen->do_draw = false;
 
 	/* draw overlapping regions */
 	for (ar = screen->regionbase.first; ar; ar = ar->next) {
 		if (ar->swinid) {
 			CTX_wm_menu_set(C, ar);
 			ED_region_do_draw(C, ar);
+			ar->do_draw = false;
 			CTX_wm_menu_set(C, NULL);
 		}
 	}
@@ -278,6 +287,7 @@ static void wm_method_draw_overlap_all(bContext *C, wmWindow *win, int exchange)
 				if (ar->do_draw) {
 					CTX_wm_region_set(C, ar);
 					ED_region_do_draw(C, ar);
+					ar->do_draw = false;
 					wm_paintcursor_draw(C, ar);
 					CTX_wm_region_set(C, NULL);
 
@@ -288,6 +298,7 @@ static void wm_method_draw_overlap_all(bContext *C, wmWindow *win, int exchange)
 					if (ar->swap == WIN_FRONT_OK) {
 						CTX_wm_region_set(C, ar);
 						ED_region_do_draw(C, ar);
+						ar->do_draw = false;
 						wm_paintcursor_draw(C, ar);
 						CTX_wm_region_set(C, NULL);
 
@@ -300,7 +311,7 @@ static void wm_method_draw_overlap_all(bContext *C, wmWindow *win, int exchange)
 				}
 			}
 		}
-		
+
 		wm_area_mark_invalid_backbuf(sa);
 		CTX_wm_area_set(C, NULL);
 	}
@@ -308,6 +319,7 @@ static void wm_method_draw_overlap_all(bContext *C, wmWindow *win, int exchange)
 	/* after area regions so we can do area 'overlay' drawing */
 	if (screen->do_draw) {
 		ED_screen_draw(win);
+		win->screen->do_draw = false;
 
 		if (exchange)
 			screen->swap = WIN_FRONT_OK;
@@ -315,6 +327,7 @@ static void wm_method_draw_overlap_all(bContext *C, wmWindow *win, int exchange)
 	else if (exchange) {
 		if (screen->swap == WIN_FRONT_OK) {
 			ED_screen_draw(win);
+			win->screen->do_draw = false;
 			screen->swap = WIN_BOTH_OK;
 		}
 		else if (screen->swap == WIN_BACK_OK)
@@ -328,6 +341,7 @@ static void wm_method_draw_overlap_all(bContext *C, wmWindow *win, int exchange)
 		if (ar->swinid && ar->do_draw) {
 			CTX_wm_menu_set(C, ar);
 			ED_region_do_draw(C, ar);
+			ar->do_draw = false;
 			CTX_wm_menu_set(C, NULL);
 		}
 	}
@@ -341,80 +355,16 @@ static void wm_method_draw_overlap_all(bContext *C, wmWindow *win, int exchange)
 	}
 }
 
-#if 0
-/******************** draw damage ************************/
-/* - not implemented                                      */
-
-static void wm_method_draw_damage(bContext *C, wmWindow *win)
-{
-	wm_method_draw_all(C, win);
-}
-#endif
-
 /****************** draw triple buffer ********************/
 /* - area regions are written into a texture, without any */
 /*   of the overlapping menus, brushes, gestures. these   */
 /*   are redrawn each time.                               */
-/*                                                        */
-/* - if non-power of two textures are supported, that is  */
-/*   used. if not, multiple smaller ones are used, with   */
-/*   worst case wasted space being 23.4% for 3x3 textures */
 
-#define MAX_N_TEX 3
-
-typedef struct wmDrawTriple {
-	GLuint bind[MAX_N_TEX * MAX_N_TEX];
-	int x[MAX_N_TEX], y[MAX_N_TEX];
-	int nx, ny;
-	GLenum target;
-} wmDrawTriple;
-
-static void split_width(int x, int n, int *splitx, int *nx)
+static void wm_draw_triple_free(wmDrawTriple *triple)
 {
-	int a, newnx, waste;
-
-	/* if already power of two just use it */
-	if (is_power_of_2_i(x)) {
-		splitx[0] = x;
-		(*nx)++;
-		return;
-	}
-
-	if (n == 1) {
-		/* last part, we have to go larger */
-		splitx[0] = power_of_2_max_i(x);
-		(*nx)++;
-	}
-	else {
-		/* two or more parts to go, use smaller part */
-		splitx[0] = power_of_2_min_i(x);
-		newnx = ++(*nx);
-		split_width(x - splitx[0], n - 1, splitx + 1, &newnx);
-
-		for (waste = 0, a = 0; a < n; a++)
-			waste += splitx[a];
-
-		/* if we waste more space or use the same amount,
-		 * revert deeper splits and just use larger */
-		if (waste >= power_of_2_max_i(x)) {
-			splitx[0] = power_of_2_max_i(x);
-			memset(splitx + 1, 0, sizeof(int) * (n - 1));
-		}
-		else
-			*nx = newnx;
-	}
-}
-
-static void wm_draw_triple_free(wmWindow *win)
-{
-	if (win->drawdata) {
-		wmDrawTriple *triple = win->drawdata;
-
-		glDeleteTextures(triple->nx * triple->ny, triple->bind);
-
+	if (triple) {
+		glDeleteTextures(1, &triple->bind);
 		MEM_freeN(triple);
-
-		win->drawdata = NULL;
 	}
 }
 
@@ -432,146 +382,122 @@ static int wm_triple_gen_textures(wmWindow *win, wmDrawTriple *triple)
 	const int winsize_y = WM_window_pixels_y(win);
 
 	GLint maxsize;
-	int x, y;
 
 	/* compute texture sizes */
 	if (GLEW_ARB_texture_rectangle || GLEW_NV_texture_rectangle || GLEW_EXT_texture_rectangle) {
 		triple->target = GL_TEXTURE_RECTANGLE_ARB;
-		triple->nx = 1;
-		triple->ny = 1;
-		triple->x[0] = winsize_x;
-		triple->y[0] = winsize_y;
-	}
-	else if (GPU_non_power_of_two_support()) {
-		triple->target = GL_TEXTURE_2D;
-		triple->nx = 1;
-		triple->ny = 1;
-		triple->x[0] = winsize_x;
-		triple->y[0] = winsize_y;
 	}
 	else {
 		triple->target = GL_TEXTURE_2D;
-		triple->nx = 0;
-		triple->ny = 0;
-		split_width(winsize_x, MAX_N_TEX, triple->x, &triple->nx);
-		split_width(winsize_y, MAX_N_TEX, triple->y, &triple->ny);
 	}
 
-	/* generate texture names */
-	glGenTextures(triple->nx * triple->ny, triple->bind);
+	triple->x = winsize_x;
+	triple->y = winsize_y;
 
-	if (!triple->bind[0]) {
+	/* generate texture names */
+	glGenTextures(1, &triple->bind);
+
+	if (!triple->bind) {
 		/* not the typical failure case but we handle it anyway */
 		printf("WM: failed to allocate texture for triple buffer drawing (glGenTextures).\n");
 		return 0;
 	}
 
-	for (y = 0; y < triple->ny; y++) {
-		for (x = 0; x < triple->nx; x++) {
-			/* proxy texture is only guaranteed to test for the cases that
-			 * there is only one texture in use, which may not be the case */
-			maxsize = GPU_max_texture_size();
+	/* proxy texture is only guaranteed to test for the cases that
+	 * there is only one texture in use, which may not be the case */
+	maxsize = GPU_max_texture_size();
 
-			if (triple->x[x] > maxsize || triple->y[y] > maxsize) {
-				glBindTexture(triple->target, 0);
-				printf("WM: failed to allocate texture for triple buffer drawing "
-				       "(texture too large for graphics card).\n");
-				return 0;
-			}
+	if (triple->x > maxsize || triple->y > maxsize) {
+		glBindTexture(triple->target, 0);
+		printf("WM: failed to allocate texture for triple buffer drawing "
+			   "(texture too large for graphics card).\n");
+		return 0;
+	}
 
-			/* setup actual texture */
-			glBindTexture(triple->target, triple->bind[x + y * triple->nx]);
-			glTexImage2D(triple->target, 0, GL_RGB8, triple->x[x], triple->y[y], 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-			glTexParameteri(triple->target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(triple->target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			/* The current color is ignored if the GL_REPLACE texture environment is used. */
-			// glTexEnvi(triple->target, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-			glBindTexture(triple->target, 0);
+	/* setup actual texture */
+	glBindTexture(triple->target, triple->bind);
+	glTexImage2D(triple->target, 0, GL_RGB8, triple->x, triple->y, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(triple->target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(triple->target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glBindTexture(triple->target, 0);
 
-			/* not sure if this works everywhere .. */
-			if (glGetError() == GL_OUT_OF_MEMORY) {
-				printf("WM: failed to allocate texture for triple buffer drawing (out of memory).\n");
-				return 0;
-			}
-		}
+	/* not sure if this works everywhere .. */
+	if (glGetError() == GL_OUT_OF_MEMORY) {
+		printf("WM: failed to allocate texture for triple buffer drawing (out of memory).\n");
+		return 0;
 	}
 
 	return 1;
 }
 
-static void wm_triple_draw_textures(wmWindow *win, wmDrawTriple *triple, float alpha)
+void wm_triple_draw_textures(wmWindow *win, wmDrawTriple *triple, float alpha, bool is_interlace)
 {
-	const int winsize_x = WM_window_pixels_x(win);
-	const int winsize_y = WM_window_pixels_y(win);
+	const int sizex = WM_window_pixels_x(win);
+	const int sizey = WM_window_pixels_y(win);
 
 	float halfx, halfy, ratiox, ratioy;
-	int x, y, sizex, sizey, offx, offy;
 
-	glEnable(triple->target);
+	/* wmOrtho for the screen has this same offset */
+	ratiox = sizex;
+	ratioy = sizey;
+	halfx = GLA_PIXEL_OFS;
+	halfy = GLA_PIXEL_OFS;
 
-	for (y = 0, offy = 0; y < triple->ny; offy += triple->y[y], y++) {
-		for (x = 0, offx = 0; x < triple->nx; offx += triple->x[x], x++) {
-			sizex = (x == triple->nx - 1) ? winsize_x - offx : triple->x[x];
-			sizey = (y == triple->ny - 1) ? winsize_y - offy : triple->y[y];
-
-			/* wmOrtho for the screen has this same offset */
-			ratiox = sizex;
-			ratioy = sizey;
-			halfx = GLA_PIXEL_OFS;
-			halfy = GLA_PIXEL_OFS;
-
-			/* texture rectangle has unnormalized coordinates */
-			if (triple->target == GL_TEXTURE_2D) {
-				ratiox /= triple->x[x];
-				ratioy /= triple->y[y];
-				halfx /= triple->x[x];
-				halfy /= triple->y[y];
-			}
-
-			glBindTexture(triple->target, triple->bind[x + y * triple->nx]);
-
-			glColor4f(1.0f, 1.0f, 1.0f, alpha);
-			glBegin(GL_QUADS);
-			glTexCoord2f(halfx, halfy);
-			glVertex2f(offx, offy);
-
-			glTexCoord2f(ratiox + halfx, halfy);
-			glVertex2f(offx + sizex, offy);
-
-			glTexCoord2f(ratiox + halfx, ratioy + halfy);
-			glVertex2f(offx + sizex, offy + sizey);
-
-			glTexCoord2f(halfx, ratioy + halfy);
-			glVertex2f(offx, offy + sizey);
-			glEnd();
-		}
+	/* texture rectangle has unnormalized coordinates */
+	if (triple->target == GL_TEXTURE_2D) {
+		ratiox /= triple->x;
+		ratioy /= triple->y;
+		halfx /= triple->x;
+		halfy /= triple->y;
 	}
 
+	/* interlace stereo buffer bind the shader before calling wm_triple_draw_textures */
+	if (is_interlace) {
+		glEnable(triple->target);
+	}
+	else {
+		GPU_basic_shader_bind((triple->target == GL_TEXTURE_2D) ? GPU_SHADER_TEXTURE_2D : GPU_SHADER_TEXTURE_RECT);
+	}
+
+	glBindTexture(triple->target, triple->bind);
+
+	glColor4f(1.0f, 1.0f, 1.0f, alpha);
+	glBegin(GL_QUADS);
+	glTexCoord2f(halfx, halfy);
+	glVertex2f(0, 0);
+
+	glTexCoord2f(ratiox + halfx, halfy);
+	glVertex2f(sizex, 0);
+
+	glTexCoord2f(ratiox + halfx, ratioy + halfy);
+	glVertex2f(sizex, sizey);
+
+	glTexCoord2f(halfx, ratioy + halfy);
+	glVertex2f(0, sizey);
+	glEnd();
+
 	glBindTexture(triple->target, 0);
-	glDisable(triple->target);
+
+	if (is_interlace) {
+		glDisable(triple->target);
+	}
+	else {
+		GPU_basic_shader_bind(GPU_SHADER_USE_COLOR);
+	}
 }
 
 static void wm_triple_copy_textures(wmWindow *win, wmDrawTriple *triple)
 {
-	const int winsize_x = WM_window_pixels_x(win);
-	const int winsize_y = WM_window_pixels_y(win);
+	const int sizex = WM_window_pixels_x(win);
+	const int sizey = WM_window_pixels_y(win);
 
-	int x, y, sizex, sizey, offx, offy;
-
-	for (y = 0, offy = 0; y < triple->ny; offy += triple->y[y], y++) {
-		for (x = 0, offx = 0; x < triple->nx; offx += triple->x[x], x++) {
-			sizex = (x == triple->nx - 1) ? winsize_x - offx : triple->x[x];
-			sizey = (y == triple->ny - 1) ? winsize_y - offy : triple->y[y];
-
-			glBindTexture(triple->target, triple->bind[x + y * triple->nx]);
-			glCopyTexSubImage2D(triple->target, 0, 0, 0, offx, offy, sizex, sizey);
-		}
-	}
+	glBindTexture(triple->target, triple->bind);
+	glCopyTexSubImage2D(triple->target, 0, 0, 0, 0, 0, sizex, sizey);
 
 	glBindTexture(triple->target, 0);
 }
 
-static void wm_draw_region_blend(wmWindow *win, ARegion *ar)
+static void wm_draw_region_blend(wmWindow *win, ARegion *ar, wmDrawTriple *triple)
 {
 	float fac = ED_region_blend_factor(ar);
 	
@@ -580,7 +506,7 @@ static void wm_draw_region_blend(wmWindow *win, ARegion *ar)
 		wmSubWindowScissorSet(win, win->screen->mainwin, &ar->winrct, true);
 
 		glEnable(GL_BLEND);
-		wm_triple_draw_textures(win, win->drawdata, 1.0f - fac);
+		wm_triple_draw_textures(win, triple, 1.0f - fac, false);
 		glDisable(GL_BLEND);
 	}
 }
@@ -589,29 +515,46 @@ static void wm_method_draw_triple(bContext *C, wmWindow *win)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
 	wmDrawTriple *triple;
+	wmDrawData *dd, *dd_next, *drawdata = win->drawdata.first;
 	bScreen *screen = win->screen;
 	ScrArea *sa;
 	ARegion *ar;
-	int copytex = 0;
+	int copytex = false;
 
-	if (win->drawdata) {
+	if (drawdata && drawdata->triple) {
 		glClearColor(0, 0, 0, 0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		wmSubWindowSet(win, screen->mainwin);
 
-		wm_triple_draw_textures(win, win->drawdata, 1.0f);
+		wm_triple_draw_textures(win, drawdata->triple, 1.0f, false);
 	}
 	else {
-		win->drawdata = MEM_callocN(sizeof(wmDrawTriple), "wmDrawTriple");
+		/* we run it when we start OR when we turn stereo on */
+		if (drawdata == NULL) {
+			drawdata = MEM_callocN(sizeof(wmDrawData), "wmDrawData");
+			BLI_addhead(&win->drawdata, drawdata);
+		}
 
-		if (!wm_triple_gen_textures(win, win->drawdata)) {
+		drawdata->triple = MEM_callocN(sizeof(wmDrawTriple), "wmDrawTriple");
+
+		if (!wm_triple_gen_textures(win, drawdata->triple)) {
 			wm_draw_triple_fail(C, win);
 			return;
 		}
 	}
 
-	triple = win->drawdata;
+	/* it means stereo was just turned off */
+	/* note: we are removing all drawdatas that are not the first */
+	for (dd = drawdata->next; dd; dd = dd_next) {
+		dd_next = dd->next;
+
+		BLI_remlink(&win->drawdata, dd);
+		wm_draw_triple_free(dd->triple);
+		MEM_freeN(dd);
+	}
+
+	triple = drawdata->triple;
 
 	/* draw marked area regions */
 	for (sa = screen->areabase.first; sa; sa = sa->next) {
@@ -619,16 +562,17 @@ static void wm_method_draw_triple(bContext *C, wmWindow *win)
 
 		for (ar = sa->regionbase.first; ar; ar = ar->next) {
 			if (ar->swinid && ar->do_draw) {
-				
-				if (ar->overlap == 0) {
+
+				if (ar->overlap == false) {
 					CTX_wm_region_set(C, ar);
 					ED_region_do_draw(C, ar);
+					ar->do_draw = false;
 					CTX_wm_region_set(C, NULL);
-					copytex = 1;
+					copytex = true;
 				}
 			}
 		}
-		
+
 		wm_area_mark_invalid_backbuf(sa);
 		CTX_wm_area_set(C, NULL);
 	}
@@ -662,14 +606,15 @@ static void wm_method_draw_triple(bContext *C, wmWindow *win)
 	/* draw overlapping area regions (always like popups) */
 	for (sa = screen->areabase.first; sa; sa = sa->next) {
 		CTX_wm_area_set(C, sa);
-		
+
 		for (ar = sa->regionbase.first; ar; ar = ar->next) {
 			if (ar->swinid && ar->overlap) {
 				CTX_wm_region_set(C, ar);
 				ED_region_do_draw(C, ar);
+				ar->do_draw = false;
 				CTX_wm_region_set(C, NULL);
-				
-				wm_draw_region_blend(win, ar);
+
+				wm_draw_region_blend(win, ar, triple);
 			}
 		}
 
@@ -678,12 +623,14 @@ static void wm_method_draw_triple(bContext *C, wmWindow *win)
 
 	/* after area regions so we can do area 'overlay' drawing */
 	ED_screen_draw(win);
+	win->screen->do_draw = false;
 
 	/* draw floating regions (menus) */
 	for (ar = screen->regionbase.first; ar; ar = ar->next) {
 		if (ar->swinid) {
 			CTX_wm_menu_set(C, ar);
 			ED_region_do_draw(C, ar);
+			ar->do_draw = false;
 			CTX_wm_menu_set(C, NULL);
 		}
 	}
@@ -691,13 +638,188 @@ static void wm_method_draw_triple(bContext *C, wmWindow *win)
 	/* always draw, not only when screen tagged */
 	if (win->gesture.first)
 		wm_gesture_draw(win);
-	
+
 	/* needs pixel coords in screen */
 	if (wm->drags.first) {
 		wm_drags_draw(C, win, NULL);
 	}
 }
 
+static void wm_method_draw_triple_multiview(bContext *C, wmWindow *win, StereoViews sview)
+{
+	wmWindowManager *wm = CTX_wm_manager(C);
+	wmDrawData *drawdata;
+	wmDrawTriple *triple_data, *triple_all;
+	bScreen *screen = win->screen;
+	ScrArea *sa;
+	ARegion *ar;
+	int copytex = false;
+	int id;
+
+	/* we store the triple_data in sequence to triple_all */
+	for (id = 0; id < 2; id++) {
+		drawdata = BLI_findlink(&win->drawdata, (sview * 2) + id);
+
+		if (drawdata && drawdata->triple) {
+			if (id == 0) {
+				glClearColor(0, 0, 0, 0);
+				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+				wmSubWindowSet(win, screen->mainwin);
+
+				wm_triple_draw_textures(win, drawdata->triple, 1.0f, false);
+			}
+		}
+		else {
+			/* we run it when we start OR when we turn stereo on */
+			if (drawdata == NULL) {
+				drawdata = MEM_callocN(sizeof(wmDrawData), "wmDrawData");
+				BLI_addtail(&win->drawdata, drawdata);
+			}
+
+			drawdata->triple = MEM_callocN(sizeof(wmDrawTriple), "wmDrawTriple");
+
+			if (!wm_triple_gen_textures(win, drawdata->triple)) {
+				wm_draw_triple_fail(C, win);
+				return;
+			}
+		}
+	}
+
+	triple_data = ((wmDrawData *) BLI_findlink(&win->drawdata, sview * 2))->triple;
+	triple_all  = ((wmDrawData *) BLI_findlink(&win->drawdata, (sview * 2) + 1))->triple;
+
+	/* draw marked area regions */
+	for (sa = screen->areabase.first; sa; sa = sa->next) {
+		CTX_wm_area_set(C, sa);
+
+		switch (sa->spacetype) {
+			case SPACE_IMAGE:
+			{
+				SpaceImage *sima = sa->spacedata.first;
+				sima->iuser.multiview_eye = sview;
+				break;
+			}
+			case SPACE_VIEW3D:
+			{
+				View3D *v3d = sa->spacedata.first;
+				BGpic *bgpic = v3d->bgpicbase.first;
+				v3d->multiview_eye = sview;
+				if (bgpic) bgpic->iuser.multiview_eye = sview;
+				break;
+			}
+			case SPACE_NODE:
+			{
+				SpaceNode *snode = sa->spacedata.first;
+				if ((snode->flag & SNODE_BACKDRAW) && ED_node_is_compositor(snode)) {
+					Image *ima = BKE_image_verify_viewer(IMA_TYPE_COMPOSITE, "Viewer Node");
+					ima->eye = sview;
+				}
+				break;
+			}
+			case SPACE_SEQ:
+			{
+				SpaceSeq *sseq = sa->spacedata.first;
+				sseq->multiview_eye = sview;
+				break;
+			}
+		}
+
+		/* draw marked area regions */
+		for (ar = sa->regionbase.first; ar; ar = ar->next) {
+			if (ar->swinid && ar->do_draw) {
+
+				if (ar->overlap == false) {
+					CTX_wm_region_set(C, ar);
+					ED_region_do_draw(C, ar);
+
+					if (sview == STEREO_RIGHT_ID)
+						ar->do_draw = false;
+
+					CTX_wm_region_set(C, NULL);
+					copytex = true;
+				}
+			}
+		}
+
+		wm_area_mark_invalid_backbuf(sa);
+		CTX_wm_area_set(C, NULL);
+	}
+
+	if (copytex) {
+		wmSubWindowSet(win, screen->mainwin);
+
+		wm_triple_copy_textures(win, triple_data);
+	}
+
+	if (wm->paintcursors.first) {
+		for (sa = screen->areabase.first; sa; sa = sa->next) {
+			for (ar = sa->regionbase.first; ar; ar = ar->next) {
+				if (ar->swinid && ar->swinid == screen->subwinactive) {
+					CTX_wm_area_set(C, sa);
+					CTX_wm_region_set(C, ar);
+
+					/* make region ready for draw, scissor, pixelspace */
+					ED_region_set(C, ar);
+					wm_paintcursor_draw(C, ar);
+
+					CTX_wm_region_set(C, NULL);
+					CTX_wm_area_set(C, NULL);
+				}
+			}
+		}
+
+		wmSubWindowSet(win, screen->mainwin);
+	}
+
+	/* draw overlapping area regions (always like popups) */
+	for (sa = screen->areabase.first; sa; sa = sa->next) {
+		CTX_wm_area_set(C, sa);
+
+		for (ar = sa->regionbase.first; ar; ar = ar->next) {
+			if (ar->swinid && ar->overlap) {
+				CTX_wm_region_set(C, ar);
+				ED_region_do_draw(C, ar);
+				if (sview == STEREO_RIGHT_ID)
+					ar->do_draw = false;
+				CTX_wm_region_set(C, NULL);
+
+				wm_draw_region_blend(win, ar, triple_data);
+			}
+		}
+
+		CTX_wm_area_set(C, NULL);
+	}
+
+	/* after area regions so we can do area 'overlay' drawing */
+	ED_screen_draw(win);
+	if (sview == STEREO_RIGHT_ID)
+		win->screen->do_draw = false;
+
+	/* draw floating regions (menus) */
+	for (ar = screen->regionbase.first; ar; ar = ar->next) {
+		if (ar->swinid) {
+			CTX_wm_menu_set(C, ar);
+			ED_region_do_draw(C, ar);
+			if (sview == STEREO_RIGHT_ID)
+				ar->do_draw = false;
+			CTX_wm_menu_set(C, NULL);
+		}
+	}
+
+	/* always draw, not only when screen tagged */
+	if (win->gesture.first)
+		wm_gesture_draw(win);
+
+	/* needs pixel coords in screen */
+	if (wm->drags.first) {
+		wm_drags_draw(C, win, NULL);
+	}
+
+	/* copy the ui + overlays */
+	wmSubWindowSet(win, screen->mainwin);
+	wm_triple_copy_textures(win, triple_all);
+}
 
 /****************** main update call **********************/
 
@@ -751,20 +873,8 @@ static int wm_automatic_draw_method(wmWindow *win)
 	 * copy to texture is slow though and so we use overlap instead there. */
 
 	if (win->drawmethod == USER_DRAW_AUTOMATIC) {
-		/* ATI opensource driver is known to be very slow at this */
-		if (GPU_type_matches(GPU_DEVICE_ATI, GPU_OS_UNIX, GPU_DRIVER_OPENSOURCE))
-			return USER_DRAW_OVERLAP;
-		/* also Intel drivers are slow */
-#if 0	/* 2.64 BCon3 period, let's try if intel now works... */
-		else if (GPU_type_matches(GPU_DEVICE_INTEL, GPU_OS_UNIX, GPU_DRIVER_ANY))
-			return USER_DRAW_OVERLAP;
-		else if (GPU_type_matches(GPU_DEVICE_INTEL, GPU_OS_WIN, GPU_DRIVER_ANY))
-			return USER_DRAW_OVERLAP_FLIP;
-		else if (GPU_type_matches(GPU_DEVICE_INTEL, GPU_OS_MAC, GPU_DRIVER_ANY))
-			return USER_DRAW_OVERLAP_FLIP;
-#endif
 		/* Windows software driver darkens color on each redraw */
-		else if (GPU_type_matches(GPU_DEVICE_SOFTWARE, GPU_OS_WIN, GPU_DRIVER_SOFTWARE))
+		if (GPU_type_matches(GPU_DEVICE_SOFTWARE, GPU_OS_WIN, GPU_DRIVER_SOFTWARE))
 			return USER_DRAW_OVERLAP_FLIP;
 		else if (GPU_type_matches(GPU_DEVICE_SOFTWARE, GPU_OS_UNIX, GPU_DRIVER_SOFTWARE))
 			return USER_DRAW_OVERLAP;
@@ -808,19 +918,22 @@ void wm_draw_update(bContext *C)
 	wmWindow *win;
 	int drawmethod;
 
+#ifdef WITH_OPENSUBDIV
+	BKE_subsurf_free_unused_buffers();
+#endif
+
 	GPU_free_unused_buffers();
 	
 	for (win = wm->windows.first; win; win = win->next) {
 #ifdef WIN32
-		if (GPU_type_matches(GPU_DEVICE_INTEL, GPU_OS_ANY, GPU_DRIVER_ANY)) {
-			GHOST_TWindowState state = GHOST_GetWindowState(win->ghostwin);
+		GHOST_TWindowState state = GHOST_GetWindowState(win->ghostwin);
 
-			if (state == GHOST_kWindowStateMinimized) {
-				/* do not update minimized windows, it gives issues on intel drivers (see [#33223])
-				 * anyway, it seems logical to skip update for invisible windows
-				 */
-				continue;
-			}
+		if (state == GHOST_kWindowStateMinimized) {
+			/* do not update minimized windows, gives issues on Intel (see T33223)
+			 * and AMD (see T50856). it seems logical to skip update for invisible
+			 * window anyway.
+			 */
+			continue;
 		}
 #endif
 		if (win->drawmethod != U.wmdrawmethod) {
@@ -848,8 +961,16 @@ void wm_draw_update(bContext *C)
 				wm_method_draw_overlap_all(C, win, 0);
 			else if (drawmethod == USER_DRAW_OVERLAP_FLIP)
 				wm_method_draw_overlap_all(C, win, 1);
-			else // if (drawmethod == USER_DRAW_TRIPLE)
-				wm_method_draw_triple(C, win);
+			else { /* USER_DRAW_TRIPLE */
+				if ((WM_stereo3d_enabled(win, false)) == false) {
+					wm_method_draw_triple(C, win);
+				}
+				else {
+					wm_method_draw_triple_multiview(C, win, STEREO_LEFT_ID);
+					wm_method_draw_triple_multiview(C, win, STEREO_RIGHT_ID);
+					wm_method_draw_stereo3d(C, win);
+				}
+			}
 
 			win->screen->do_draw_gesture = false;
 			win->screen->do_draw_paintcursor = false;
@@ -862,15 +983,23 @@ void wm_draw_update(bContext *C)
 	}
 }
 
+void wm_draw_data_free(wmWindow *win)
+{
+	wmDrawData *dd;
+
+	for (dd = win->drawdata.first; dd; dd = dd->next) {
+		wm_draw_triple_free(dd->triple);
+	}
+	BLI_freelistN(&win->drawdata);
+}
+
 void wm_draw_window_clear(wmWindow *win)
 {
 	bScreen *screen = win->screen;
 	ScrArea *sa;
 	ARegion *ar;
-	int drawmethod = wm_automatic_draw_method(win);
 
-	if (drawmethod == USER_DRAW_TRIPLE)
-		wm_draw_triple_free(win);
+	wm_draw_data_free(win);
 
 	/* clear screen swap flags */
 	if (screen) {

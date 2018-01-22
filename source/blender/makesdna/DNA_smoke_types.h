@@ -38,14 +38,12 @@ enum {
 	MOD_SMOKE_DISSOLVE = (1 << 2),  /* let smoke dissolve */
 	MOD_SMOKE_DISSOLVE_LOG = (1 << 3),  /* using 1/x for dissolve */
 
+#ifdef DNA_DEPRECATED
 	MOD_SMOKE_HIGH_SMOOTH = (1 << 5),  /* -- Deprecated -- */
+#endif
 	MOD_SMOKE_FILE_LOAD = (1 << 6),  /* flag for file load */
 	MOD_SMOKE_ADAPTIVE_DOMAIN = (1 << 7),
 };
-
-#if (DNA_DEPRECATED_GCC_POISON == 1)
-#pragma GCC poison MOD_SMOKE_HIGH_SMOOTH
-#endif
 
 /* noise */
 #define MOD_SMOKE_NOISEWAVE (1<<0)
@@ -53,6 +51,48 @@ enum {
 #define MOD_SMOKE_NOISECURL (1<<2)
 /* viewsettings */
 #define MOD_SMOKE_VIEW_SHOWBIG (1<<0)
+
+/* slice method */
+enum {
+	MOD_SMOKE_SLICE_VIEW_ALIGNED = 0,
+	MOD_SMOKE_SLICE_AXIS_ALIGNED = 1,
+};
+
+/* axis aligned method */
+enum {
+	AXIS_SLICE_FULL   = 0,
+	AXIS_SLICE_SINGLE = 1,
+};
+
+/* single slice direction */
+enum {
+	SLICE_AXIS_AUTO = 0,
+	SLICE_AXIS_X    = 1,
+	SLICE_AXIS_Y    = 2,
+	SLICE_AXIS_Z    = 3,
+};
+
+enum {
+	VECTOR_DRAW_NEEDLE     = 0,
+	VECTOR_DRAW_STREAMLINE = 1,
+};
+
+enum {
+	FLUID_FIELD_DENSITY    = 0,
+	FLUID_FIELD_HEAT       = 1,
+	FLUID_FIELD_FUEL       = 2,
+	FLUID_FIELD_REACT      = 3,
+	FLUID_FIELD_FLAME      = 4,
+	FLUID_FIELD_VELOCITY_X = 5,
+	FLUID_FIELD_VELOCITY_Y = 6,
+	FLUID_FIELD_VELOCITY_Z = 7,
+	FLUID_FIELD_COLOR_R    = 8,
+	FLUID_FIELD_COLOR_G    = 9,
+	FLUID_FIELD_COLOR_B    = 10,
+	FLUID_FIELD_FORCE_X    = 11,
+	FLUID_FIELD_FORCE_Y    = 12,
+	FLUID_FIELD_FORCE_Z    = 13,
+};
 
 /* cache compression */
 #define SM_CACHE_LIGHT		0
@@ -78,6 +118,12 @@ enum {
 #define SM_ACTIVE_FIRE		(1<<1)
 #define SM_ACTIVE_COLORS	(1<<2)
 #define SM_ACTIVE_COLOR_SET	(1<<3)
+
+enum {
+	VDB_COMPRESSION_BLOSC = 0,
+	VDB_COMPRESSION_ZIP   = 1,
+	VDB_COMPRESSION_NONE  = 2,
+};
 
 typedef struct SmokeDomainSettings {
 	struct SmokeModifierData *smd; /* for fast RNA access */
@@ -105,6 +151,8 @@ typedef struct SmokeDomainSettings {
 	float obj_shift_f[3]; /* how much object has shifted since previous smoke frame (used to "lock" domain while drawing) */
 	float imat[4][4]; /* domain object imat */
 	float obmat[4][4]; /* domain obmat */
+	float fluidmat[4][4]; /* low res fluid matrix */
+	float fluidmat_wt[4][4]; /* high res fluid matrix */
 
 	int base_res[3]; /* initial "non-adapted" resolution */
 	int res_min[3]; /* cell min */
@@ -131,8 +179,14 @@ typedef struct SmokeDomainSettings {
 	float strength;
 	int res_wt[3];
 	float dx_wt;
+	/* point cache options */
 	int cache_comp;
 	int cache_high_comp;
+	/* OpenVDB cache options */
+	int openvdb_comp;
+	char cache_file_format;
+	char data_depth;
+	char pad[2];
 
 	/* Smoke uses only one cache from now on (index [0]), but keeping the array for now for reading old files. */
 	struct PointCache *point_cache[2];	/* definition is in DNA_object_force.h */
@@ -149,6 +203,20 @@ typedef struct SmokeDomainSettings {
 	float burning_rate, flame_smoke, flame_vorticity;
 	float flame_ignition, flame_max_temp;
 	float flame_smoke_color[3];
+
+	/* Display settings */
+	char slice_method, axis_slice_method;
+	char slice_axis, draw_velocity;
+	float slice_per_voxel;
+	float slice_depth;
+	float display_thickness;
+
+	struct ColorBand *coba;
+	float vector_scale;
+	char vector_draw_type;
+	char use_coba;
+	char coba_field;  /* simulation field used for the color mapping */
+	char pad2;
 } SmokeDomainSettings;
 
 

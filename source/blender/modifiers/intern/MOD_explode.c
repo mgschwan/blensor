@@ -51,9 +51,9 @@
 #include "BKE_particle.h"
 #include "BKE_scene.h"
 
-
 #include "MEM_guardedalloc.h"
 
+#include "MOD_modifiertypes.h"
 
 static void initData(ModifierData *md)
 {
@@ -634,7 +634,9 @@ static DerivedMesh *cutEdges(ExplodeModifierData *emd, DerivedMesh *dm)
 	for (i = 0, fs = facesplit; i < totface; i++, fs++)
 		totfsplit += add_faces[*fs];
 	
-	splitdm = CDDM_from_template(dm, totesplit, 0, totface + totfsplit, 0, 0);
+	splitdm = CDDM_from_template_ex(
+	        dm, totesplit, 0, totface + totfsplit, 0, 0,
+	        CD_MASK_DERIVEDMESH | CD_MASK_FACECORNERS);
 	numlayer = CustomData_number_of_layers(&splitdm->faceData, CD_MTFACE);
 
 	/* copy new faces & verts (is it really this painful with custom data??) */
@@ -771,7 +773,7 @@ static DerivedMesh *cutEdges(ExplodeModifierData *emd, DerivedMesh *dm)
 
 	for (i = 0; i < curdupface; i++) {
 		mf = CDDM_get_tessface(splitdm, i);
-		test_index_face(mf, &splitdm->faceData, i, (mf->flag & ME_FACE_SEL ? 4 : 3));
+		test_index_face(mf, &splitdm->faceData, i, ((mf->flag & ME_FACE_SEL) ? 4 : 3));
 	}
 
 	BLI_edgehash_free(edgehash, NULL);
@@ -861,7 +863,7 @@ static DerivedMesh *explodeMesh(ExplodeModifierData *emd,
 	BLI_edgehashIterator_free(ehi);
 
 	/* the final duplicated vertices */
-	explode = CDDM_from_template(dm, totdup, 0, totface - delface, 0, 0);
+	explode = CDDM_from_template_ex(dm, totdup, 0, totface - delface, 0, 0, CD_MASK_DERIVEDMESH | CD_MASK_FACECORNERS);
 	mtface = CustomData_get_layer_named(&explode->faceData, CD_MTFACE, emd->uvname);
 	/*dupvert = CDDM_get_verts(explode);*/
 
@@ -999,14 +1001,14 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	ExplodeModifierData *emd = (ExplodeModifierData *) md;
 	ParticleSystemModifierData *psmd = findPrecedingParticlesystem(ob, md);
 
-	DM_ensure_tessface(dm); /* BMESH - UNTIL MODIFIER IS UPDATED FOR MPoly */
-
 	if (psmd) {
 		ParticleSystem *psys = psmd->psys;
 
 		if (psys == NULL || psys->totpart == 0) return derivedData;
 		if (psys->part == NULL || psys->particles == NULL) return derivedData;
-		if (psmd->dm == NULL) return derivedData;
+		if (psmd->dm_final == NULL) return derivedData;
+
+		DM_ensure_tessface(dm); /* BMESH - UNTIL MODIFIER IS UPDATED FOR MPoly */
 
 		/* 1. find faces to be exploded if needed */
 		if (emd->facepa == NULL ||
@@ -1058,6 +1060,7 @@ ModifierTypeInfo modifierType_Explode = {
 	/* freeData */          freeData,
 	/* isDisabled */        NULL,
 	/* updateDepgraph */    NULL,
+	/* updateDepsgraph */   NULL,
 	/* dependsOnTime */     dependsOnTime,
 	/* dependsOnNormals */  NULL,
 	/* foreachObjectLink */ NULL,

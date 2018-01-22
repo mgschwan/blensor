@@ -107,6 +107,17 @@ void WM_operator_free(wmOperator *op)
 	MEM_freeN(op);
 }
 
+void WM_operator_free_all_after(wmWindowManager *wm, struct wmOperator *op)
+{
+	op = op->next;
+	while (op != NULL) {
+		wmOperator *op_next = op->next;
+		BLI_remlink(&wm->operators, op);
+		WM_operator_free(op);
+		op = op_next;
+	}
+}
+
 /**
  * Use with extreme care!,
  * properties, customdata etc - must be compatible.
@@ -149,18 +160,23 @@ static void wm_reports_free(wmWindowManager *wm)
 void wm_operator_register(bContext *C, wmOperator *op)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
-	int tot;
+	int tot = 0;
 
 	BLI_addtail(&wm->operators, op);
-	tot = BLI_listbase_count(&wm->operators);
-	
-	while (tot > MAX_OP_REGISTERED) {
-		wmOperator *opt = wm->operators.first;
-		BLI_remlink(&wm->operators, opt);
-		WM_operator_free(opt);
-		tot--;
+
+	/* only count registered operators */
+	while (op) {
+		wmOperator *op_prev = op->prev;
+		if (op->type->flag & OPTYPE_REGISTER) {
+			tot += 1;
+		}
+		if (tot > MAX_OP_REGISTERED) {
+			BLI_remlink(&wm->operators, op);
+			WM_operator_free(op);
+		}
+		op = op_prev;
 	}
-	
+
 	/* so the console is redrawn */
 	WM_event_add_notifier(C, NC_SPACE | ND_SPACE_INFO_REPORT, NULL);
 	WM_event_add_notifier(C, NC_WM | ND_HISTORY, NULL);
@@ -228,7 +244,7 @@ uiListType *WM_uilisttype_find(const char *idname, bool quiet)
 
 bool WM_uilisttype_add(uiListType *ult)
 {
-	BLI_ghash_insert(uilisttypes_hash, (void *)ult->idname, ult);
+	BLI_ghash_insert(uilisttypes_hash, ult->idname, ult);
 	return 1;
 }
 
@@ -285,7 +301,7 @@ MenuType *WM_menutype_find(const char *idname, bool quiet)
 
 bool WM_menutype_add(MenuType *mt)
 {
-	BLI_ghash_insert(menutypes_hash, (void *)mt->idname, mt);
+	BLI_ghash_insert(menutypes_hash, mt->idname, mt);
 	return true;
 }
 
@@ -376,7 +392,7 @@ void WM_check(bContext *C)
 		}
 
 		/* case: no open windows at all, for old file reads */
-		wm_window_add_ghostwindows(wm);
+		wm_window_ghostwindows_ensure(wm);
 	}
 
 	/* case: fileread */
@@ -468,10 +484,11 @@ void wm_close_and_free(bContext *C, wmWindowManager *wm)
 void wm_close_and_free_all(bContext *C, ListBase *wmlist)
 {
 	wmWindowManager *wm;
-	
+
 	while ((wm = wmlist->first)) {
 		wm_close_and_free(C, wm);
 		BLI_remlink(wmlist, wm);
+		BKE_libblock_free_data(&wm->id, true);
 		MEM_freeN(wm);
 	}
 }

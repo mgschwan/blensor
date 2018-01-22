@@ -164,6 +164,27 @@ void interp_v2_v2v2_slerp_safe(float target[2], const float a[2], const float b[
 	}
 }
 
+/** \name Cubic curve interpolation (bezier spline).
+ * \{ */
+
+void interp_v2_v2v2v2v2_cubic(
+        float p[2], const float v1[2], const float v2[2], const float v3[2], const float v4[2],
+        const float u)
+{
+	float q0[2], q1[2], q2[2], r0[2], r1[2];
+
+	interp_v2_v2v2(q0, v1, v2, u);
+	interp_v2_v2v2(q1, v2, v3, u);
+	interp_v2_v2v2(q2, v3, v4, u);
+
+	interp_v2_v2v2(r0, q0, q1, u);
+	interp_v2_v2v2(r1, q1, q2, u);
+
+	interp_v2_v2v2(p, r0, r1, u);
+}
+
+/** \} */
+
 /* weight 3 vectors,
  * 'w' must be unit length but is not a vector, just 3 weights */
 void interp_v3_v3v3v3(float p[3], const float v1[3], const float v2[3], const float v3[3], const float w[3])
@@ -259,6 +280,16 @@ void mid_v3_v3v3v3v3(float v[3], const float v1[3], const float v2[3], const flo
 	v[2] = (v1[2] + v2[2] + v3[2] + v4[2]) / 4.0f;
 }
 
+void mid_v3_v3_array(float r[3], const float (*vec_arr)[3], const unsigned int nbr)
+{
+	const float factor = 1.0f / (float)nbr;
+	zero_v3(r);
+
+	for (unsigned int i = 0; i < nbr; i++) {
+		madd_v3_v3fl(r, vec_arr[i], factor);
+	}
+}
+
 /**
  * Specialized function for calculating normals.
  * fastpath for:
@@ -336,6 +367,25 @@ void flip_v2_v2v2(float v[2], const float v1[2], const float v2[2])
 	v[1] = v1[1] + (v1[1] - v2[1]);
 }
 
+
+/********************************* Comparison ********************************/
+
+bool is_finite_v2(const float v[2])
+{
+	return (isfinite(v[0]) && isfinite(v[1]));
+}
+
+bool is_finite_v3(const float v[3])
+{
+	return (isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]));
+}
+
+bool is_finite_v4(const float v[4])
+{
+	return (isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]) && isfinite(v[3]));
+}
+
+
 /********************************** Angles ***********************************/
 
 /* Return the angle in radians between vecs 1-2 and 2-3 in radians
@@ -397,6 +447,19 @@ float angle_v2v2v2(const float v1[2], const float v2[2], const float v3[2])
 	return angle_normalized_v2v2(vec1, vec2);
 }
 
+/* Quicker than full angle computation */
+float cos_v2v2v2(const float p1[2], const float p2[2], const float p3[2])
+{
+	float vec1[2], vec2[2];
+
+	sub_v2_v2v2(vec1, p2, p1);
+	sub_v2_v2v2(vec2, p2, p3);
+	normalize_v2(vec1);
+	normalize_v2(vec2);
+
+	return dot_v2v2(vec1, vec2);
+}
+
 /* Return the shortest angle in radians between the 2 vectors */
 float angle_v2v2(const float v1[2], const float v2[2])
 {
@@ -455,38 +518,27 @@ float angle_normalized_v2v2(const float v1[2], const float v2[2])
 }
 
 /**
- * angle between 2 vectors defined by 3 coords, about an axis. */
-float angle_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const float v3[3], const float axis[3])
+ * Angle between 2 vectors, about an axis (axis can be considered a plane).
+ */
+float angle_on_axis_v3v3_v3(const float v1[3], const float v2[3], const float axis[3])
 {
-	float v1_proj[3], v2_proj[3], tproj[3];
-
-	sub_v3_v3v3(v1_proj, v1, v2);
-	sub_v3_v3v3(v2_proj, v3, v2);
+	float v1_proj[3], v2_proj[3];
 
 	/* project the vectors onto the axis */
-	project_v3_v3v3(tproj, v1_proj, axis);
-	sub_v3_v3(v1_proj, tproj);
-
-	project_v3_v3v3(tproj, v2_proj, axis);
-	sub_v3_v3(v2_proj, tproj);
+	project_plane_normalized_v3_v3v3(v1_proj, v1, axis);
+	project_plane_normalized_v3_v3v3(v2_proj, v2, axis);
 
 	return angle_v3v3(v1_proj, v2_proj);
 }
 
-float angle_signed_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const float v3[3], const float axis[3])
+float angle_signed_on_axis_v3v3_v3(const float v1[3], const float v2[3], const float axis[3])
 {
 	float v1_proj[3], v2_proj[3], tproj[3];
 	float angle;
 
-	sub_v3_v3v3(v1_proj, v1, v2);
-	sub_v3_v3v3(v2_proj, v3, v2);
-
 	/* project the vectors onto the axis */
-	project_v3_v3v3(tproj, v1_proj, axis);
-	sub_v3_v3(v1_proj, tproj);
-
-	project_v3_v3v3(tproj, v2_proj, axis);
-	sub_v3_v3(v2_proj, tproj);
+	project_plane_normalized_v3_v3v3(v1_proj, v1, axis);
+	project_plane_normalized_v3_v3v3(v2_proj, v2, axis);
 
 	angle = angle_v3v3(v1_proj, v2_proj);
 
@@ -497,6 +549,29 @@ float angle_signed_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const
 	}
 
 	return angle;
+}
+
+/**
+ * Angle between 2 vectors defined by 3 coords, about an axis (axis can be considered a plane).
+ */
+float angle_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const float v3[3], const float axis[3])
+{
+	float vec1[3], vec2[3];
+
+	sub_v3_v3v3(vec1, v1, v2);
+	sub_v3_v3v3(vec2, v3, v2);
+
+	return angle_on_axis_v3v3_v3(vec1, vec2, axis);
+}
+
+float angle_signed_on_axis_v3v3v3_v3(const float v1[3], const float v2[3], const float v3[3], const float axis[3])
+{
+	float vec1[3], vec2[3];
+
+	sub_v3_v3v3(vec1, v1, v2);
+	sub_v3_v3v3(vec2, v3, v2);
+
+	return angle_signed_on_axis_v3v3_v3(vec1, vec2, axis);
 }
 
 void angle_tri_v3(float angles[3], const float v1[3], const float v2[3], const float v3[3])
@@ -553,37 +628,115 @@ void angle_poly_v3(float *angles, const float *verts[3], int len)
 
 /********************************* Geometry **********************************/
 
-/* Project v1 on v2 */
-void project_v2_v2v2(float c[2], const float v1[2], const float v2[2])
+/**
+ * Project \a p onto \a v_proj
+ */
+void project_v2_v2v2(float out[2], const float p[2], const float v_proj[2])
 {
-	const float mul = dot_v2v2(v1, v2) / dot_v2v2(v2, v2);
+	const float mul = dot_v2v2(p, v_proj) / dot_v2v2(v_proj, v_proj);
 
-	c[0] = mul * v2[0];
-	c[1] = mul * v2[1];
+	out[0] = mul * v_proj[0];
+	out[1] = mul * v_proj[1];
 }
 
-/* Project v1 on v2 */
-void project_v3_v3v3(float c[3], const float v1[3], const float v2[3])
+/**
+ * Project \a p onto \a v_proj
+ */
+void project_v3_v3v3(float out[3], const float p[3], const float v_proj[3])
 {
-	const float mul = dot_v3v3(v1, v2) / dot_v3v3(v2, v2);
+	const float mul = dot_v3v3(p, v_proj) / dot_v3v3(v_proj, v_proj);
 
-	c[0] = mul * v2[0];
-	c[1] = mul * v2[1];
-	c[2] = mul * v2[2];
+	out[0] = mul * v_proj[0];
+	out[1] = mul * v_proj[1];
+	out[2] = mul * v_proj[2];
+}
+
+/**
+ * Project \a p onto a unit length \a v_proj
+ */
+void project_v2_v2v2_normalized(float out[2], const float p[2], const float v_proj[2])
+{
+	BLI_ASSERT_UNIT_V2(v_proj);
+	const float mul = dot_v2v2(p, v_proj);
+
+	out[0] = mul * v_proj[0];
+	out[1] = mul * v_proj[1];
+}
+
+/**
+ * Project \a p onto a unit length \a v_proj
+ */
+void project_v3_v3v3_normalized(float out[3], const float p[3], const float v_proj[3])
+{
+	BLI_ASSERT_UNIT_V3(v_proj);
+	const float mul = dot_v3v3(p, v_proj);
+
+	out[0] = mul * v_proj[0];
+	out[1] = mul * v_proj[1];
+	out[2] = mul * v_proj[2];
+}
+
+/**
+ * In this case plane is a 3D vector only (no 4th component).
+ *
+ * Projecting will make \a c a copy of \a v orthogonal to \a v_plane.
+ *
+ * \note If \a v is exactly perpendicular to \a v_plane, \a c will just be a copy of \a v.
+ *
+ * \note This function is a convenience to call:
+ * \code{.c}
+ * project_v3_v3v3(c, v, v_plane);
+ * sub_v3_v3v3(c, v, c);
+ * \endcode
+ */
+void project_plane_v3_v3v3(float out[3], const float p[3], const float v_plane[3])
+{
+	const float mul = dot_v3v3(p, v_plane) / dot_v3v3(v_plane, v_plane);
+
+	out[0] = p[0] - (mul * v_plane[0]);
+	out[1] = p[1] - (mul * v_plane[1]);
+	out[2] = p[2] - (mul * v_plane[2]);
+}
+
+void project_plane_v2_v2v2(float out[2], const float p[2], const float v_plane[2])
+{
+	const float mul = dot_v2v2(p, v_plane) / dot_v2v2(v_plane, v_plane);
+
+	out[0] = p[0] - (mul * v_plane[0]);
+	out[1] = p[1] - (mul * v_plane[1]);
+}
+
+void project_plane_normalized_v3_v3v3(float out[3], const float p[3], const float v_plane[3])
+{
+	BLI_ASSERT_UNIT_V3(v_plane);
+	const float mul = dot_v3v3(p, v_plane);
+
+	out[0] = p[0] - (mul * v_plane[0]);
+	out[1] = p[1] - (mul * v_plane[1]);
+	out[2] = p[2] - (mul * v_plane[2]);
+}
+
+void project_plane_normalized_v2_v2v2(float out[2], const float p[2], const float v_plane[2])
+{
+	BLI_ASSERT_UNIT_V2(v_plane);
+	const float mul = dot_v2v2(p, v_plane);
+
+	out[0] = p[0] - (mul * v_plane[0]);
+	out[1] = p[1] - (mul * v_plane[1]);
 }
 
 /* project a vector on a plane defined by normal and a plane point p */
-void project_v3_plane(float v[3], const float n[3], const float p[3])
+void project_v3_plane(float out[3], const float plane_no[3], const float plane_co[3])
 {
 	float vector[3];
 	float mul;
 
-	sub_v3_v3v3(vector, v, p);
-	mul = dot_v3v3(vector, n) / len_squared_v3(n);
+	sub_v3_v3v3(vector, out, plane_co);
+	mul = dot_v3v3(vector, plane_no) / len_squared_v3(plane_no);
 
-	mul_v3_v3fl(vector, n, mul);
+	mul_v3_v3fl(vector, plane_no, mul);
 
-	sub_v3_v3(v, vector);
+	sub_v3_v3(out, vector);
 }
 
 /* Returns a vector bisecting the angle at v2 formed by v1, v2 and v3 */
@@ -600,17 +753,29 @@ void bisect_v3_v3v3v3(float out[3], const float v1[3], const float v2[3], const 
 
 /**
  * Returns a reflection vector from a vector and a normal vector
- * reflect = vec - ((2 * DotVecs(vec, mirror)) * mirror)
+ * reflect = vec - ((2 * dot(vec, mirror)) * mirror).
+ *
+ * <pre>
+ * v
+ * +  ^
+ *  \ |
+ *   \|
+ *    + normal: axis of reflection
+ *   /
+ *  /
+ * +
+ * out: result (negate for a 'bounce').
+ * </pre>
  */
-void reflect_v3_v3v3(float out[3], const float vec[3], const float normal[3])
+void reflect_v3_v3v3(float out[3], const float v[3], const float normal[3])
 {
-	const float dot2 = 2.0f * dot_v3v3(vec, normal);
+	const float dot2 = 2.0f * dot_v3v3(v, normal);
 
 	BLI_ASSERT_UNIT_V3(normal);
 
-	out[0] = vec[0] - (dot2 * normal[0]);
-	out[1] = vec[1] - (dot2 * normal[1]);
-	out[2] = vec[2] - (dot2 * normal[2]);
+	out[0] = v[0] - (dot2 * normal[0]);
+	out[1] = v[1] - (dot2 * normal[1]);
+	out[2] = v[2] - (dot2 * normal[2]);
 }
 
 /**
@@ -626,7 +791,7 @@ void ortho_basis_v3v3_v3(float r_n1[3], float r_n2[3], const float n[3])
 	if (f > eps) {
 		const float d = 1.0f / sqrtf(f);
 
-		BLI_assert(finite(d));
+		BLI_assert(isfinite(d));
 
 		r_n1[0] =  n[1] * d;
 		r_n1[1] = -n[0] * d;
@@ -648,27 +813,27 @@ void ortho_basis_v3v3_v3(float r_n1[3], float r_n2[3], const float n[3])
  *
  * \note return vector won't maintain same length.
  */
-void ortho_v3_v3(float p[3], const float v[3])
+void ortho_v3_v3(float out[3], const float v[3])
 {
 	const int axis = axis_dominant_v3_single(v);
 
-	BLI_assert(p != v);
+	BLI_assert(out != v);
 
 	switch (axis) {
 		case 0:
-			p[0] = -v[1] - v[2];
-			p[1] =  v[0];
-			p[2] =  v[0];
+			out[0] = -v[1] - v[2];
+			out[1] =  v[0];
+			out[2] =  v[0];
 			break;
 		case 1:
-			p[0] =  v[1];
-			p[1] = -v[0] - v[2];
-			p[2] =  v[1];
+			out[0] =  v[1];
+			out[1] = -v[0] - v[2];
+			out[2] =  v[1];
 			break;
 		case 2:
-			p[0] =  v[2];
-			p[1] =  v[2];
-			p[2] = -v[0] - v[1];
+			out[0] =  v[2];
+			out[1] =  v[2];
+			out[2] = -v[0] - v[1];
 			break;
 	}
 }
@@ -676,18 +841,19 @@ void ortho_v3_v3(float p[3], const float v[3])
 /**
  * no brainer compared to v3, just have for consistency.
  */
-void ortho_v2_v2(float p[2], const float v[2])
+void ortho_v2_v2(float out[2], const float v[2])
 {
-	BLI_assert(p != v);
+	BLI_assert(out != v);
 
-	p[0] = -v[1];
-	p[1] =  v[0];
+	out[0] = -v[1];
+	out[1] =  v[0];
 }
 
-/* Rotate a point p by angle theta around an arbitrary axis r
+/**
+ * Rotate a point \a p by \a angle around an arbitrary unit length \a axis.
  * http://local.wasp.uwa.edu.au/~pbourke/geometry/
  */
-void rotate_normalized_v3_v3v3fl(float r[3], const float p[3], const float axis[3], const float angle)
+void rotate_normalized_v3_v3v3fl(float out[3], const float p[3], const float axis[3], const float angle)
 {
 	const float costheta = cosf(angle);
 	const float sintheta = sinf(angle);
@@ -695,17 +861,17 @@ void rotate_normalized_v3_v3v3fl(float r[3], const float p[3], const float axis[
 	/* double check they are normalized */
 	BLI_ASSERT_UNIT_V3(axis);
 
-	r[0] = ((costheta + (1 - costheta) * axis[0] * axis[0]) * p[0]) +
-	       (((1 - costheta) * axis[0] * axis[1] - axis[2] * sintheta) * p[1]) +
-	       (((1 - costheta) * axis[0] * axis[2] + axis[1] * sintheta) * p[2]);
+	out[0] = ((costheta + (1 - costheta) * axis[0] * axis[0]) * p[0]) +
+	         (((1 - costheta) * axis[0] * axis[1] - axis[2] * sintheta) * p[1]) +
+	         (((1 - costheta) * axis[0] * axis[2] + axis[1] * sintheta) * p[2]);
 
-	r[1] = (((1 - costheta) * axis[0] * axis[1] + axis[2] * sintheta) * p[0]) +
-	       ((costheta + (1 - costheta) * axis[1] * axis[1]) * p[1]) +
-	       (((1 - costheta) * axis[1] * axis[2] - axis[0] * sintheta) * p[2]);
+	out[1] = (((1 - costheta) * axis[0] * axis[1] + axis[2] * sintheta) * p[0]) +
+	         ((costheta + (1 - costheta) * axis[1] * axis[1]) * p[1]) +
+	         (((1 - costheta) * axis[1] * axis[2] - axis[0] * sintheta) * p[2]);
 
-	r[2] = (((1 - costheta) * axis[0] * axis[2] - axis[1] * sintheta) * p[0]) +
-	       (((1 - costheta) * axis[1] * axis[2] + axis[0] * sintheta) * p[1]) +
-	       ((costheta + (1 - costheta) * axis[2] * axis[2]) * p[2]);
+	out[2] = (((1 - costheta) * axis[0] * axis[2] - axis[1] * sintheta) * p[0]) +
+	         (((1 - costheta) * axis[1] * axis[2] + axis[0] * sintheta) * p[1]) +
+	         ((costheta + (1 - costheta) * axis[2] * axis[2]) * p[2]);
 }
 
 void rotate_v3_v3v3fl(float r[3], const float p[3], const float axis[3], const float angle)
@@ -764,7 +930,7 @@ void minmax_v2v2_v2(float min[2], float max[2], const float vec[2])
 	if (max[1] < vec[1]) max[1] = vec[1];
 }
 
-void minmax_v3v3_v3_array(float r_min[3], float r_max[3], float (*vec_arr)[3], int nbr)
+void minmax_v3v3_v3_array(float r_min[3], float r_max[3], const float (*vec_arr)[3], int nbr)
 {
 	while (nbr--) {
 		minmax_v3v3_v3(r_min, r_max, *vec_arr++);
@@ -855,7 +1021,7 @@ float normalize_vn_vn(float *array_tar, const float *array_src, const int size)
 		mul_vn_vn_fl(array_tar, array_src, size, 1.0f / d_sqrt);
 	}
 	else {
-		fill_vn_fl(array_tar, size, 0.0f);
+		copy_vn_fl(array_tar, size, 0.0f);
 		d_sqrt = 0.0f;
 	}
 	return d_sqrt;
@@ -870,6 +1036,16 @@ void range_vn_i(int *array_tar, const int size, const int start)
 {
 	int *array_pt = array_tar + (size - 1);
 	int j = start + (size - 1);
+	int i = size;
+	while (i--) {
+		*(array_pt--) = j--;
+	}
+}
+
+void range_vn_u(unsigned int *array_tar, const int size, const unsigned int start)
+{
+	unsigned int *array_pt = array_tar + (size - 1);
+	unsigned int j = start + (unsigned int)(size - 1);
 	int i = size;
 	while (i--) {
 		*(array_pt--) = j--;
@@ -1020,7 +1196,7 @@ void interp_vn_vn(float *array_tar, const float *array_src, const float t, const
 	}
 }
 
-void fill_vn_i(int *array_tar, const int size, const int val)
+void copy_vn_i(int *array_tar, const int size, const int val)
 {
 	int *tar = array_tar + (size - 1);
 	int i = size;
@@ -1029,7 +1205,7 @@ void fill_vn_i(int *array_tar, const int size, const int val)
 	}
 }
 
-void fill_vn_short(short *array_tar, const int size, const short val)
+void copy_vn_short(short *array_tar, const int size, const short val)
 {
 	short *tar = array_tar + (size - 1);
 	int i = size;
@@ -1038,7 +1214,7 @@ void fill_vn_short(short *array_tar, const int size, const short val)
 	}
 }
 
-void fill_vn_ushort(unsigned short *array_tar, const int size, const unsigned short val)
+void copy_vn_ushort(unsigned short *array_tar, const int size, const unsigned short val)
 {
 	unsigned short *tar = array_tar + (size - 1);
 	int i = size;
@@ -1047,7 +1223,7 @@ void fill_vn_ushort(unsigned short *array_tar, const int size, const unsigned sh
 	}
 }
 
-void fill_vn_uchar(unsigned char *array_tar, const int size, const unsigned char val)
+void copy_vn_uchar(unsigned char *array_tar, const int size, const unsigned char val)
 {
 	unsigned char *tar = array_tar + (size - 1);
 	int i = size;
@@ -1056,7 +1232,7 @@ void fill_vn_uchar(unsigned char *array_tar, const int size, const unsigned char
 	}
 }
 
-void fill_vn_fl(float *array_tar, const int size, const float val)
+void copy_vn_fl(float *array_tar, const int size, const float val)
 {
 	float *tar = array_tar + (size - 1);
 	int i = size;
@@ -1064,3 +1240,38 @@ void fill_vn_fl(float *array_tar, const int size, const float val)
 		*(tar--) = val;
 	}
 }
+
+/** \name Double precision versions 'db'.
+ * \{ */
+
+void add_vn_vn_d(double *array_tar, const double *array_src, const int size)
+{
+	double *tar = array_tar + (size - 1);
+	const double *src = array_src + (size - 1);
+	int i = size;
+	while (i--) {
+		*(tar--) += *(src--);
+	}
+}
+
+void add_vn_vnvn_d(double *array_tar, const double *array_src_a, const double *array_src_b, const int size)
+{
+	double *tar = array_tar + (size - 1);
+	const double *src_a = array_src_a + (size - 1);
+	const double *src_b = array_src_b + (size - 1);
+	int i = size;
+	while (i--) {
+		*(tar--) = *(src_a--) + *(src_b--);
+	}
+}
+
+void mul_vn_db(double *array_tar, const int size, const double f)
+{
+	double *array_pt = array_tar + (size - 1);
+	int i = size;
+	while (i--) {
+		*(array_pt--) *= f;
+	}
+}
+
+/** \} */

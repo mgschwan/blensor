@@ -45,7 +45,7 @@
 
 #include "bmesh.h"
 #include "bmesh_log.h"
-#include "range_tree_c_api.h"
+#include "range_tree.h"
 
 #include "BLI_strict_flags.h"
 
@@ -88,7 +88,7 @@ struct BMLog {
 
 	/* Mapping from unique IDs to vertices and faces
 	 *
-	 * Each vertex and face in the log gets a unique unsigned integer
+	 * Each vertex and face in the log gets a unique uinteger
 	 * assigned. That ID is taken from the set managed by the
 	 * unused_ids range tree.
 	 *
@@ -115,26 +115,30 @@ struct BMLog {
 typedef struct {
 	float co[3];
 	short no[3];
-	float mask;
 	char hflag;
+	float mask;
 } BMLogVert;
 
 typedef struct {
-	unsigned int v_ids[3];
+	uint v_ids[3];
 	char hflag;
 } BMLogFace;
 
 /************************* Get/set element IDs ************************/
 
+/* bypass actual hashing, the keys don't overlap */
+#define logkey_hash BLI_ghashutil_inthash_p_simple
+#define logkey_cmp BLI_ghashutil_intcmp
+
 /* Get the vertex's unique ID from the log */
-static unsigned int bm_log_vert_id_get(BMLog *log, BMVert *v)
+static uint bm_log_vert_id_get(BMLog *log, BMVert *v)
 {
 	BLI_assert(BLI_ghash_haskey(log->elem_to_id, v));
 	return GET_UINT_FROM_POINTER(BLI_ghash_lookup(log->elem_to_id, v));
 }
 
 /* Set the vertex's unique ID in the log */
-static void bm_log_vert_id_set(BMLog *log, BMVert *v, unsigned int id)
+static void bm_log_vert_id_set(BMLog *log, BMVert *v, uint id)
 {
 	void *vid = SET_UINT_IN_POINTER(id);
 	
@@ -143,7 +147,7 @@ static void bm_log_vert_id_set(BMLog *log, BMVert *v, unsigned int id)
 }
 
 /* Get a vertex from its unique ID */
-static BMVert *bm_log_vert_from_id(BMLog *log, unsigned int id)
+static BMVert *bm_log_vert_from_id(BMLog *log, uint id)
 {
 	void *key = SET_UINT_IN_POINTER(id);
 	BLI_assert(BLI_ghash_haskey(log->id_to_elem, key));
@@ -151,14 +155,14 @@ static BMVert *bm_log_vert_from_id(BMLog *log, unsigned int id)
 }
 
 /* Get the face's unique ID from the log */
-static unsigned int bm_log_face_id_get(BMLog *log, BMFace *f)
+static uint bm_log_face_id_get(BMLog *log, BMFace *f)
 {
 	BLI_assert(BLI_ghash_haskey(log->elem_to_id, f));
 	return GET_UINT_FROM_POINTER(BLI_ghash_lookup(log->elem_to_id, f));
 }
 
 /* Set the face's unique ID in the log */
-static void bm_log_face_id_set(BMLog *log, BMFace *f, unsigned int id)
+static void bm_log_face_id_set(BMLog *log, BMFace *f, uint id)
 {
 	void *fid = SET_UINT_IN_POINTER(id);
 
@@ -167,7 +171,7 @@ static void bm_log_face_id_set(BMLog *log, BMFace *f, unsigned int id)
 }
 
 /* Get a face from its unique ID */
-static BMFace *bm_log_face_from_id(BMLog *log, unsigned int id)
+static BMFace *bm_log_face_from_id(BMLog *log, uint id)
 {
 	void *key = SET_UINT_IN_POINTER(id);
 	BLI_assert(BLI_ghash_haskey(log->id_to_elem, key));
@@ -251,7 +255,7 @@ static void bm_log_verts_unmake(BMesh *bm, BMLog *log, GHash *verts)
 	GHASH_ITER (gh_iter, verts) {
 		void *key = BLI_ghashIterator_getKey(&gh_iter);
 		BMLogVert *lv = BLI_ghashIterator_getValue(&gh_iter);
-		unsigned int id = GET_UINT_FROM_POINTER(key);
+		uint id = GET_UINT_FROM_POINTER(key);
 		BMVert *v = bm_log_vert_from_id(log, id);
 
 		/* Ensure the log has the final values of the vertex before
@@ -267,7 +271,7 @@ static void bm_log_faces_unmake(BMesh *bm, BMLog *log, GHash *faces)
 	GHashIterator gh_iter;
 	GHASH_ITER (gh_iter, faces) {
 		void *key = BLI_ghashIterator_getKey(&gh_iter);
-		unsigned int id = GET_UINT_FROM_POINTER(key);
+		uint id = GET_UINT_FROM_POINTER(key);
 		BMFace *f = bm_log_face_from_id(log, id);
 		BMEdge *e_tri[3];
 		BMLoop *l_iter;
@@ -329,7 +333,7 @@ static void bm_log_vert_values_swap(BMesh *bm, BMLog *log, GHash *verts)
 	GHASH_ITER (gh_iter, verts) {
 		void *key = BLI_ghashIterator_getKey(&gh_iter);
 		BMLogVert *lv = BLI_ghashIterator_getValue(&gh_iter);
-		unsigned int id = GET_UINT_FROM_POINTER(key);
+		uint id = GET_UINT_FROM_POINTER(key);
 		BMVert *v = bm_log_vert_from_id(log, id);
 		float mask;
 		short normal[3];
@@ -351,7 +355,7 @@ static void bm_log_face_values_swap(BMLog *log, GHash *faces)
 	GHASH_ITER (gh_iter, faces) {
 		void *key = BLI_ghashIterator_getKey(&gh_iter);
 		BMLogFace *lf = BLI_ghashIterator_getValue(&gh_iter);
-		unsigned int id = GET_UINT_FROM_POINTER(key);
+		uint id = GET_UINT_FROM_POINTER(key);
 		BMFace *f = bm_log_face_from_id(log, id);
 
 		SWAP(char, f->head.hflag, lf->hflag);
@@ -370,13 +374,13 @@ static void bm_log_assign_ids(BMesh *bm, BMLog *log)
 
 	/* Generate vertex IDs */
 	BM_ITER_MESH (v, &iter, bm, BM_VERTS_OF_MESH) {
-		unsigned int id = range_tree_uint_take_any(log->unused_ids);
+		uint id = range_tree_uint_take_any(log->unused_ids);
 		bm_log_vert_id_set(log, v, id);
 	}
 
 	/* Generate face IDs */
 	BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
-		unsigned int id = range_tree_uint_take_any(log->unused_ids);
+		uint id = range_tree_uint_take_any(log->unused_ids);
 		bm_log_face_id_set(log, f, id);
 	}
 }
@@ -386,12 +390,12 @@ static BMLogEntry *bm_log_entry_create(void)
 {
 	BMLogEntry *entry = MEM_callocN(sizeof(BMLogEntry), __func__);
 
-	entry->deleted_verts = BLI_ghash_ptr_new(__func__);
-	entry->deleted_faces = BLI_ghash_ptr_new(__func__);
-	entry->added_verts = BLI_ghash_ptr_new(__func__);
-	entry->added_faces = BLI_ghash_ptr_new(__func__);
-	entry->modified_verts = BLI_ghash_ptr_new(__func__);
-	entry->modified_faces = BLI_ghash_ptr_new(__func__);
+	entry->deleted_verts = BLI_ghash_new(logkey_hash, logkey_cmp, __func__);
+	entry->deleted_faces = BLI_ghash_new(logkey_hash, logkey_cmp, __func__);
+	entry->added_verts = BLI_ghash_new(logkey_hash, logkey_cmp, __func__);
+	entry->added_faces = BLI_ghash_new(logkey_hash, logkey_cmp, __func__);
+	entry->modified_verts = BLI_ghash_new(logkey_hash, logkey_cmp, __func__);
+	entry->modified_faces = BLI_ghash_new(logkey_hash, logkey_cmp, __func__);
 
 	entry->pool_verts = BLI_mempool_create(sizeof(BMLogVert), 0, 64, BLI_MEMPOOL_NOP);
 	entry->pool_faces = BLI_mempool_create(sizeof(BMLogFace), 0, 64, BLI_MEMPOOL_NOP);
@@ -421,7 +425,7 @@ static void bm_log_id_ghash_retake(RangeTreeUInt *unused_ids, GHash *id_ghash)
 
 	GHASH_ITER (gh_iter, id_ghash) {
 		void *key = BLI_ghashIterator_getKey(&gh_iter);
-		unsigned int id = GET_UINT_FROM_POINTER(key);
+		uint id = GET_UINT_FROM_POINTER(key);
 
 		range_tree_uint_retake(unused_ids, id);
 	}
@@ -429,8 +433,8 @@ static void bm_log_id_ghash_retake(RangeTreeUInt *unused_ids, GHash *id_ghash)
 
 static int uint_compare(const void *a_v, const void *b_v)
 {
-	const unsigned int *a = a_v;
-	const unsigned int *b = b_v;
+	const uint *a = a_v;
+	const uint *b = b_v;
 	return (*a) < (*b);
 }
 
@@ -442,10 +446,10 @@ static int uint_compare(const void *a_v, const void *b_v)
  *   10 -> 3
  *    3 -> 1
  */
-static GHash *bm_log_compress_ids_to_indices(unsigned int *ids, unsigned int totid)
+static GHash *bm_log_compress_ids_to_indices(uint *ids, uint totid)
 {
 	GHash *map = BLI_ghash_int_new_ex(__func__, totid);
-	unsigned int i;
+	uint i;
 
 	qsort(ids, totid, sizeof(*ids), uint_compare);
 
@@ -465,7 +469,7 @@ static void bm_log_id_ghash_release(BMLog *log, GHash *id_ghash)
 
 	GHASH_ITER (gh_iter, id_ghash) {
 		void *key = BLI_ghashIterator_getKey(&gh_iter);
-		unsigned int id = GET_UINT_FROM_POINTER(key);
+		uint id = GET_UINT_FROM_POINTER(key);
 		range_tree_uint_release(log->unused_ids, id);
 	}
 }
@@ -476,10 +480,11 @@ static void bm_log_id_ghash_release(BMLog *log, GHash *id_ghash)
 BMLog *BM_log_create(BMesh *bm)
 {
 	BMLog *log = MEM_callocN(sizeof(*log), __func__);
+	const uint reserve_num = (uint)(bm->totvert + bm->totface);
 
 	log->unused_ids = range_tree_uint_alloc(0, (unsigned)-1);
-	log->id_to_elem = BLI_ghash_ptr_new_ex(__func__, (unsigned int)(bm->totvert + bm->totface));
-	log->elem_to_id = BLI_ghash_ptr_new_ex(__func__, (unsigned int)(bm->totvert + bm->totface));
+	log->id_to_elem = BLI_ghash_new_ex(logkey_hash, logkey_cmp, __func__, reserve_num);
+	log->elem_to_id = BLI_ghash_ptr_new_ex(__func__, reserve_num);
 
 	/* Assign IDs to all existing vertices and faces */
 	bm_log_assign_ids(bm, log);
@@ -588,8 +593,8 @@ int BM_log_length(const BMLog *log)
 /* Apply a consistent ordering to BMesh vertices */
 void BM_log_mesh_elems_reorder(BMesh *bm, BMLog *log)
 {
-	void *varr;
-	void *farr;
+	uint *varr;
+	uint *farr;
 
 	GHash *id_to_idx;
 
@@ -597,41 +602,37 @@ void BM_log_mesh_elems_reorder(BMesh *bm, BMLog *log)
 	BMVert *v;
 	BMFace *f;
 
-	int i;
+	uint i;
 
 	/* Put all vertex IDs into an array */
-	i = 0;
 	varr = MEM_mallocN(sizeof(int) * (size_t)bm->totvert, __func__);
-	BM_ITER_MESH (v, &bm_iter, bm, BM_VERTS_OF_MESH) {
-		((unsigned int *)varr)[i++] = bm_log_vert_id_get(log, v);
+	BM_ITER_MESH_INDEX (v, &bm_iter, bm, BM_VERTS_OF_MESH, i) {
+		varr[i] = bm_log_vert_id_get(log, v);
 	}
 
 	/* Put all face IDs into an array */
-	i = 0;
 	farr = MEM_mallocN(sizeof(int) * (size_t)bm->totface, __func__);
-	BM_ITER_MESH (f, &bm_iter, bm, BM_FACES_OF_MESH) {
-		((unsigned int *)farr)[i++] = bm_log_face_id_get(log, f);
+	BM_ITER_MESH_INDEX (f, &bm_iter, bm, BM_FACES_OF_MESH, i) {
+		farr[i] = bm_log_face_id_get(log, f);
 	}
 
 	/* Create BMVert index remap array */
-	id_to_idx = bm_log_compress_ids_to_indices(varr, (unsigned int)bm->totvert);
-	i = 0;
-	BM_ITER_MESH (v, &bm_iter, bm, BM_VERTS_OF_MESH) {
+	id_to_idx = bm_log_compress_ids_to_indices(varr, (uint)bm->totvert);
+	BM_ITER_MESH_INDEX (v, &bm_iter, bm, BM_VERTS_OF_MESH, i) {
 		const unsigned id = bm_log_vert_id_get(log, v);
 		const void *key = SET_UINT_IN_POINTER(id);
 		const void *val = BLI_ghash_lookup(id_to_idx, key);
-		((unsigned int *)varr)[i++] = GET_UINT_FROM_POINTER(val);
+		varr[i] = GET_UINT_FROM_POINTER(val);
 	}
 	BLI_ghash_free(id_to_idx, NULL, NULL);
 
 	/* Create BMFace index remap array */
-	id_to_idx = bm_log_compress_ids_to_indices(farr, (unsigned int)bm->totface);
-	i = 0;
-	BM_ITER_MESH (f, &bm_iter, bm, BM_FACES_OF_MESH) {
+	id_to_idx = bm_log_compress_ids_to_indices(farr, (uint)bm->totface);
+	BM_ITER_MESH_INDEX (f, &bm_iter, bm, BM_FACES_OF_MESH, i) {
 		const unsigned id = bm_log_face_id_get(log, f);
 		const void *key = SET_UINT_IN_POINTER(id);
 		const void *val = BLI_ghash_lookup(id_to_idx, key);
-		((unsigned int *)farr)[i++] = GET_UINT_FROM_POINTER(val);
+		farr[i] = GET_UINT_FROM_POINTER(val);
 	}
 	BLI_ghash_free(id_to_idx, NULL, NULL);
 
@@ -834,16 +835,17 @@ void BM_log_vert_before_modified(BMLog *log, BMVert *v, const int cd_vert_mask_o
 {
 	BMLogEntry *entry = log->current_entry;
 	BMLogVert *lv;
-	unsigned int v_id = bm_log_vert_id_get(log, v);
+	uint v_id = bm_log_vert_id_get(log, v);
 	void *key = SET_UINT_IN_POINTER(v_id);
+	void **val_p;
 
 	/* Find or create the BMLogVert entry */
 	if ((lv = BLI_ghash_lookup(entry->added_verts, key))) {
 		bm_log_vert_bmvert_copy(lv, v, cd_vert_mask_offset);
 	}
-	else if (!BLI_ghash_haskey(entry->modified_verts, key)) {
+	else if (!BLI_ghash_ensure_p(entry->modified_verts, key, &val_p)) {
 		lv = bm_log_vert_alloc(log, v, cd_vert_mask_offset);
-		BLI_ghash_insert(entry->modified_verts, key, lv);
+		*val_p = lv;
 	}
 }
 
@@ -857,7 +859,7 @@ void BM_log_vert_before_modified(BMLog *log, BMVert *v, const int cd_vert_mask_o
 void BM_log_vert_added(BMLog *log, BMVert *v, const int cd_vert_mask_offset)
 {
 	BMLogVert *lv;
-	unsigned int v_id = range_tree_uint_take_any(log->unused_ids);
+	uint v_id = range_tree_uint_take_any(log->unused_ids);
 	void *key = SET_UINT_IN_POINTER(v_id);
 
 	bm_log_vert_id_set(log, v, v_id);
@@ -874,7 +876,7 @@ void BM_log_vert_added(BMLog *log, BMVert *v, const int cd_vert_mask_offset)
 void BM_log_face_modified(BMLog *log, BMFace *f)
 {
 	BMLogFace *lf;
-	unsigned int f_id = bm_log_face_id_get(log, f);
+	uint f_id = bm_log_face_id_get(log, f);
 	void *key = SET_UINT_IN_POINTER(f_id);
 
 	lf = bm_log_face_alloc(log, f);
@@ -890,7 +892,7 @@ void BM_log_face_modified(BMLog *log, BMFace *f)
 void BM_log_face_added(BMLog *log, BMFace *f)
 {
 	BMLogFace *lf;
-	unsigned int f_id = range_tree_uint_take_any(log->unused_ids);
+	uint f_id = range_tree_uint_take_any(log->unused_ids);
 	void *key = SET_UINT_IN_POINTER(f_id);
 
 	/* Only triangles are supported for now */
@@ -920,7 +922,7 @@ void BM_log_face_added(BMLog *log, BMFace *f)
 void BM_log_vert_removed(BMLog *log, BMVert *v, const int cd_vert_mask_offset)
 {
 	BMLogEntry *entry = log->current_entry;
-	unsigned int v_id = bm_log_vert_id_get(log, v);
+	uint v_id = bm_log_vert_id_get(log, v);
 	void *key = SET_UINT_IN_POINTER(v_id);
 
 	/* if it has a key, it shouldn't be NULL */
@@ -961,7 +963,7 @@ void BM_log_vert_removed(BMLog *log, BMVert *v, const int cd_vert_mask_offset)
 void BM_log_face_removed(BMLog *log, BMFace *f)
 {
 	BMLogEntry *entry = log->current_entry;
-	unsigned int f_id = bm_log_face_id_get(log, f);
+	uint f_id = bm_log_face_id_get(log, f);
 	void *key = SET_UINT_IN_POINTER(f_id);
 
 	/* if it has a key, it shouldn't be NULL */
@@ -986,6 +988,15 @@ void BM_log_all_added(BMesh *bm, BMLog *log)
 	BMIter bm_iter;
 	BMVert *v;
 	BMFace *f;
+
+	/* avoid unnecessary resizing on initialization */
+	if (BLI_ghash_size(log->current_entry->added_verts) == 0) {
+		BLI_ghash_reserve(log->current_entry->added_verts, (uint)bm->totvert);
+	}
+
+	if (BLI_ghash_size(log->current_entry->added_faces) == 0) {
+		BLI_ghash_reserve(log->current_entry->added_faces, (uint)bm->totface);
+	}
 
 	/* Log all vertices as newly created */
 	BM_ITER_MESH (v, &bm_iter, bm, BM_VERTS_OF_MESH) {
@@ -1069,6 +1080,24 @@ float BM_log_original_mask(BMLog *log, BMVert *v)
 
 	lv = BLI_ghash_lookup(entry->modified_verts, key);
 	return lv->mask;
+}
+
+void BM_log_original_vert_data(
+        BMLog *log, BMVert *v,
+        const float **r_co, const short **r_no)
+{
+	BMLogEntry *entry = log->current_entry;
+	const BMLogVert *lv;
+	unsigned v_id = bm_log_vert_id_get(log, v);
+	void *key = SET_UINT_IN_POINTER(v_id);
+
+	BLI_assert(entry);
+
+	BLI_assert(BLI_ghash_haskey(entry->modified_verts, key));
+
+	lv = BLI_ghash_lookup(entry->modified_verts, key);
+	*r_co = lv->co;
+	*r_no = lv->no;
 }
 
 /************************ Debugging and Testing ***********************/

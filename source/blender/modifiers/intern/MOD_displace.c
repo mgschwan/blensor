@@ -37,13 +37,18 @@
 #include "DNA_object_types.h"
 
 #include "BLI_utildefines.h"
-
+#include "BLI_math.h"
+#include "BLI_task.h"
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
+#include "BKE_image.h"
+#include "BKE_mesh.h"
 #include "BKE_modifier.h"
 #include "BKE_texture.h"
 #include "BKE_deform.h"
+#include "BKE_object.h"
 
 #include "depsgraph_private.h"
 #include "MEM_guardedalloc.h"
@@ -63,6 +68,7 @@ static void initData(ModifierData *md)
 	dmd->strength = 1;
 	dmd->direction = MOD_DISP_DIR_NOR;
 	dmd->midlevel = 0.5;
+	dmd->space = MOD_DISP_SPACE_LOCAL;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -98,6 +104,10 @@ static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
 	/* ask for UV coordinates if we need them */
 	if (dmd->texmapping == MOD_DISP_MAP_UV) dataMask |= CD_MASK_MTFACE;
 
+	if (dmd->direction == MOD_DISP_DIR_CLNOR) {
+		dataMask |= CD_MASK_CUSTOMLOOPNORMAL;
+	}
+
 	return dataMask;
 }
 
@@ -116,7 +126,7 @@ static bool dependsOnTime(ModifierData *md)
 static bool dependsOnNormals(ModifierData *md)
 {
 	DisplaceModifierData *dmd = (DisplaceModifierData *)md;
-	return (dmd->direction == MOD_DISP_DIR_NOR);
+	return ELEM(dmd->direction, MOD_DISP_DIR_NOR, MOD_DISP_DIR_CLNOR);
 }
 
 static void foreachObjectLink(ModifierData *md, Object *ob,
@@ -124,7 +134,7 @@ static void foreachObjectLink(ModifierData *md, Object *ob,
 {
 	DisplaceModifierData *dmd = (DisplaceModifierData *) md;
 
-	walk(userData, ob, &dmd->map_object);
+	walk(userData, ob, &dmd->map_object, IDWALK_CB_NOP);
 }
 
 static void foreachIDLink(ModifierData *md, Object *ob,
@@ -132,7 +142,7 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 {
 	DisplaceModifierData *dmd = (DisplaceModifierData *) md;
 
-	walk(userData, ob, (ID **)&dmd->texture);
+	walk(userData, ob, (ID **)&dmd->texture, IDWALK_CB_USER);
 
 	foreachObjectLink(md, ob, (ObjectWalkFunc)walk, userData);
 }
@@ -165,10 +175,142 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 	}
 	
 
-	if (dmd->texmapping == MOD_DISP_MAP_GLOBAL)
+	if (dmd->texmapping == MOD_DISP_MAP_GLOBAL ||
+	    (ELEM(dmd->direction, MOD_DISP_DIR_X, MOD_DISP_DIR_Y, MOD_DISP_DIR_Z, MOD_DISP_DIR_RGB_XYZ) &&
+	    dmd->space == MOD_DISP_SPACE_GLOBAL))
+	{
 		dag_add_relation(forest, obNode, obNode,
 		                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Displace Modifier");
-	
+	}
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *ob,
+                            struct DepsNodeHandle *node)
+{
+	DisplaceModifierData *dmd = (DisplaceModifierData *)md;
+	if (dmd->map_object != NULL && dmd->texmapping == MOD_DISP_MAP_OBJECT) {
+		DEG_add_object_relation(node, dmd->map_object, DEG_OB_COMP_TRANSFORM, "Displace Modifier");
+	}
+	if (dmd->texmapping == MOD_DISP_MAP_GLOBAL ||
+	    (ELEM(dmd->direction, MOD_DISP_DIR_X, MOD_DISP_DIR_Y, MOD_DISP_DIR_Z, MOD_DISP_DIR_RGB_XYZ) &&
+	    dmd->space == MOD_DISP_SPACE_GLOBAL))
+	{
+		DEG_add_object_relation(node, ob, DEG_OB_COMP_TRANSFORM, "Displace Modifier");
+	}
+}
+
+typedef struct DisplaceUserdata {
+	/*const*/ DisplaceModifierData *dmd;
+	struct ImagePool *pool;
+	MDeformVert *dvert;
+	float weight;
+	int defgrp_index;
+	int direction;
+	bool use_global_direction;
+	float (*tex_co)[3];
+	float (*vertexCos)[3];
+	float local_mat[4][4];
+	MVert *mvert;
+	float (*vert_clnors)[3];
+} DisplaceUserdata;
+
+static void displaceModifier_do_task(void *userdata, const int iter)
+{
+	DisplaceUserdata *data = (DisplaceUserdata *)userdata;
+	DisplaceModifierData *dmd = data->dmd;
+	MDeformVert *dvert = data->dvert;
+	float weight = data->weight;
+	int defgrp_index = data->defgrp_index;
+	int direction = data->direction;
+	bool use_global_direction = data->use_global_direction;
+	float (*tex_co)[3] = data->tex_co;
+	float (*vertexCos)[3] = data->vertexCos;
+	MVert *mvert = data->mvert;
+	float (*vert_clnors)[3] = data->vert_clnors;
+
+	const float delta_fixed = 1.0f - dmd->midlevel;  /* when no texture is used, we fallback to white */
+
+	TexResult texres;
+	float strength = dmd->strength;
+	float delta;
+	float local_vec[3];
+
+	if (dvert) {
+		weight = defvert_find_weight(dvert + iter, defgrp_index);
+		if (weight == 0.0f) {
+			return;
+		}
+	}
+
+	if (dmd->texture) {
+		texres.nor = NULL;
+		BKE_texture_get_value_ex(dmd->modifier.scene, dmd->texture, tex_co[iter], &texres, data->pool, false);
+		delta = texres.tin - dmd->midlevel;
+	}
+	else {
+		delta = delta_fixed;  /* (1.0f - dmd->midlevel) */  /* never changes */
+	}
+
+	if (dvert) {
+		strength *= weight;
+	}
+
+	delta *= strength;
+	CLAMP(delta, -10000, 10000);
+
+	switch (direction) {
+		case MOD_DISP_DIR_X:
+			if (use_global_direction) {
+				vertexCos[iter][0] += delta * data->local_mat[0][0];
+				vertexCos[iter][1] += delta * data->local_mat[1][0];
+				vertexCos[iter][2] += delta * data->local_mat[2][0];
+			}
+			else {
+				vertexCos[iter][0] += delta;
+			}
+			break;
+		case MOD_DISP_DIR_Y:
+			if (use_global_direction) {
+				vertexCos[iter][0] += delta * data->local_mat[0][1];
+				vertexCos[iter][1] += delta * data->local_mat[1][1];
+				vertexCos[iter][2] += delta * data->local_mat[2][1];
+			}
+			else {
+				vertexCos[iter][1] += delta;
+			}
+			break;
+		case MOD_DISP_DIR_Z:
+			if (use_global_direction) {
+				vertexCos[iter][0] += delta * data->local_mat[0][2];
+				vertexCos[iter][1] += delta * data->local_mat[1][2];
+				vertexCos[iter][2] += delta * data->local_mat[2][2];
+			}
+			else {
+				vertexCos[iter][2] += delta;
+			}
+			break;
+		case MOD_DISP_DIR_RGB_XYZ:
+			local_vec[0] = texres.tr - dmd->midlevel;
+			local_vec[1] = texres.tg - dmd->midlevel;
+			local_vec[2] = texres.tb - dmd->midlevel;
+			if (use_global_direction) {
+				mul_transposed_mat3_m4_v3(data->local_mat, local_vec);
+			}
+			mul_v3_fl(local_vec, strength);
+			add_v3_v3(vertexCos[iter], local_vec);
+			break;
+		case MOD_DISP_DIR_NOR:
+			vertexCos[iter][0] += delta * (mvert[iter].no[0] / 32767.0f);
+			vertexCos[iter][1] += delta * (mvert[iter].no[1] / 32767.0f);
+			vertexCos[iter][2] += delta * (mvert[iter].no[2] / 32767.0f);
+			break;
+		case MOD_DISP_DIR_CLNOR:
+			madd_v3_v3fl(vertexCos[iter], vert_clnors[iter], delta);
+			break;
+	}
 }
 
 /* dm must be a CDDerivedMesh */
@@ -176,13 +318,15 @@ static void displaceModifier_do(
         DisplaceModifierData *dmd, Object *ob,
         DerivedMesh *dm, float (*vertexCos)[3], int numVerts)
 {
-	int i;
 	MVert *mvert;
 	MDeformVert *dvert;
+	int direction = dmd->direction;
 	int defgrp_index;
 	float (*tex_co)[3];
 	float weight = 1.0f; /* init value unused but some compilers may complain */
-	const float delta_fixed = 1.0f - dmd->midlevel;  /* when no texture is used, we fallback to white */
+	float (*vert_clnors)[3] = NULL;
+	float local_mat[4][4] = {{0}};
+	const bool use_global_direction = dmd->space == MOD_DISP_SPACE_GLOBAL;
 
 	if (!dmd->texture && dmd->direction == MOD_DISP_DIR_RGB_XYZ) return;
 	if (dmd->strength == 0.0f) return;
@@ -201,55 +345,59 @@ static void displaceModifier_do(
 		tex_co = NULL;
 	}
 
-	for (i = 0; i < numVerts; i++) {
-		TexResult texres;
-		float strength = dmd->strength;
-		float delta;
+	if (direction == MOD_DISP_DIR_CLNOR) {
+		CustomData *ldata = dm->getLoopDataLayout(dm);
 
-		if (dvert) {
-			weight = defvert_find_weight(dvert + i, defgrp_index);
-			if (weight == 0.0f) continue;
-		}
+		if (CustomData_has_layer(ldata, CD_CUSTOMLOOPNORMAL)) {
+			float (*clnors)[3] = NULL;
 
-		if (dmd->texture) {
-			texres.nor = NULL;
-			BKE_texture_get_value(dmd->modifier.scene, dmd->texture, tex_co[i], &texres, false);
-			delta = texres.tin - dmd->midlevel;
+			if ((dm->dirty & DM_DIRTY_NORMALS) || !CustomData_has_layer(ldata, CD_NORMAL)) {
+				dm->calcLoopNormals(dm, true, (float)M_PI);
+			}
+
+			clnors = CustomData_get_layer(ldata, CD_NORMAL);
+			vert_clnors = MEM_mallocN(sizeof(*vert_clnors) * (size_t)numVerts, __func__);
+			BKE_mesh_normals_loop_to_vertex(numVerts, dm->getLoopArray(dm), dm->getNumLoops(dm),
+			                                (const float (*)[3])clnors, vert_clnors);
 		}
 		else {
-			delta = delta_fixed;  /* (1.0f - dmd->midlevel) */  /* never changes */
+			direction = MOD_DISP_DIR_NOR;
 		}
+	}
+	else if (ELEM(direction, MOD_DISP_DIR_X, MOD_DISP_DIR_Y, MOD_DISP_DIR_Z, MOD_DISP_DIR_RGB_XYZ) &&
+	         use_global_direction)
+	{
+		copy_m4_m4(local_mat, ob->obmat);
+	}
 
-		if (dvert) strength *= weight;
+	DisplaceUserdata data = {NULL};
+	data.dmd = dmd;
+	data.dvert = dvert;
+	data.weight = weight;
+	data.defgrp_index = defgrp_index;
+	data.direction = direction;
+	data.use_global_direction = use_global_direction;
+	data.tex_co = tex_co;
+	data.vertexCos = vertexCos;
+	copy_m4_m4(data.local_mat, local_mat);
+	data.mvert = mvert;
+	data.vert_clnors = vert_clnors;
+	if (dmd->texture != NULL) {
+		data.pool = BKE_image_pool_new();
+		BKE_texture_fetch_images_for_pool(dmd->texture, data.pool);
+	}
+	BLI_task_parallel_range(0, numVerts, &data, displaceModifier_do_task, numVerts > 512);
 
-		delta *= strength;
-		CLAMP(delta, -10000, 10000);
-
-		switch (dmd->direction) {
-			case MOD_DISP_DIR_X:
-				vertexCos[i][0] += delta;
-				break;
-			case MOD_DISP_DIR_Y:
-				vertexCos[i][1] += delta;
-				break;
-			case MOD_DISP_DIR_Z:
-				vertexCos[i][2] += delta;
-				break;
-			case MOD_DISP_DIR_RGB_XYZ:
-				vertexCos[i][0] += (texres.tr - dmd->midlevel) * strength;
-				vertexCos[i][1] += (texres.tg - dmd->midlevel) * strength;
-				vertexCos[i][2] += (texres.tb - dmd->midlevel) * strength;
-				break;
-			case MOD_DISP_DIR_NOR:
-				vertexCos[i][0] += delta * (mvert[i].no[0] / 32767.0f);
-				vertexCos[i][1] += delta * (mvert[i].no[1] / 32767.0f);
-				vertexCos[i][2] += delta * (mvert[i].no[2] / 32767.0f);
-				break;
-		}
+	if (data.pool != NULL) {
+		BKE_image_pool_free(data.pool);
 	}
 
 	if (tex_co) {
 		MEM_freeN(tex_co);
+	}
+
+	if (vert_clnors) {
+		MEM_freeN(vert_clnors);
 	}
 }
 
@@ -302,6 +450,7 @@ ModifierTypeInfo modifierType_Displace = {
 	/* freeData */          freeData,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     dependsOnTime,
 	/* dependsOnNormals */	dependsOnNormals,
 	/* foreachObjectLink */ foreachObjectLink,

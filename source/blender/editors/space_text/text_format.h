@@ -54,7 +54,7 @@ enum {
 #define FMT_CONT_ALL \
 	(FMT_CONT_QUOTESINGLE | FMT_CONT_QUOTEDOUBLE | FMT_CONT_TRIPLE | FMT_CONT_COMMENT_C)
 
-int  flatten_string(struct SpaceText *st, FlattenString *fs, const char *in);
+int  flatten_string(const struct SpaceText *st, FlattenString *fs, const char *in);
 void flatten_string_free(FlattenString *fs);
 int  flatten_string_strlen(FlattenString *fs, const char *str);
 
@@ -102,6 +102,8 @@ void            ED_text_format_register(TextFormatType *tft);
 void ED_text_format_register_py(void);
 void ED_text_format_register_osl(void);
 void ED_text_format_register_lua(void);
+void ED_text_format_register_pov(void);
+void ED_text_format_register_pov_ini(void);
 
 #define STR_LITERAL_STARTSWITH(str, str_literal, len_var) \
 	(strncmp(str, str_literal, len_var = (sizeof(str_literal) - 1)) == 0)

@@ -197,6 +197,10 @@ typedef struct Material {
 	short tot_slots;
 	short pad4[3];
 
+	/* multiple tangent (Normal Map node) */
+	char nmap_tangent_names[9][64]; /* [MAX_MTFACE+1][MAX_NAME]; +1 for empty name */
+	int nmap_tangent_names_count, pad5;
+
 	struct TexPaintSlot *texpaintslot; /* cached slot for painting. Make sure to recalculate before use
 	                                    * with refresh_texpaint_image_cache */
 	ListBase gpumaterial;		/* runtime */
@@ -210,6 +214,7 @@ typedef struct Material {
 #define	GEMAT_ALPHA		2 /* GPU_BLEND_ALPHA */
 #define GEMAT_CLIP		4 /* GPU_BLEND_CLIP */
 #define	GEMAT_ALPHA_SORT	8 /* GPU_BLEND_ALPHA_SORT */
+#define	GEMAT_ALPHA_TO_COVERAGE	16 /* GPU_BLEND_ALPHA_TO_COVERAGE */
 
 // Game Options - flag
 #define GEMAT_BACKCULL 		16 /* KX_BACKCULL */
@@ -304,6 +309,7 @@ typedef struct Material {
 /* mode2 (is int) */
 #define MA_CASTSHADOW		(1 << 0)
 #define MA_MODE2_PIPELINE	(MA_CASTSHADOW)
+#define MA_TANGENT_CONCRETE	(1 << 1)
 
 /* mapflag */
 #define MA_MAPFLAG_UVPROJECT (1 << 0)

@@ -27,7 +27,7 @@
  *  \ingroup pybmesh
  *
  * This file provides __call__ aka BPy_BMO_call for
- * the bmesh operatorand has been given its own file
+ * the bmesh operator and has been given its own file
  * because argument conversion is involved.
  */
 
@@ -69,9 +69,10 @@ static int bpy_bm_op_as_py_error(BMesh *bm)
  * \param htype Test \a value matches this type.
  * \param descr Description text.
  */
-static int bpy_slot_from_py_elem_check(BPy_BMElem *value, BMesh *bm, const char htype,
-                                       /* for error messages */
-                                       const char *opname, const char *slot_name, const char *descr)
+static int bpy_slot_from_py_elem_check(
+        BPy_BMElem *value, BMesh *bm, const char htype,
+        /* for error messages */
+        const char *opname, const char *slot_name, const char *descr)
 {
 	if (!BPy_BMElem_Check(value) ||
 	    !(value->ele->head.htype & htype))
@@ -107,10 +108,11 @@ static int bpy_slot_from_py_elem_check(BPy_BMElem *value, BMesh *bm, const char 
  * \param htype_bmo The type(s) supported by the target slot.
  * \param descr Description text.
  */
-static int bpy_slot_from_py_elemseq_check(BPy_BMGeneric *value, BMesh *bm,
-                                          const char htype_py, const char htype_bmo,
-                                          /* for error messages */
-                                          const char *opname, const char *slot_name, const char *descr)
+static int bpy_slot_from_py_elemseq_check(
+        BPy_BMGeneric *value, BMesh *bm,
+        const char htype_py, const char htype_bmo,
+        /* for error messages */
+        const char *opname, const char *slot_name, const char *descr)
 {
 	if (value->bm == NULL) {
 		PyErr_Format(PyExc_TypeError,
@@ -142,9 +144,10 @@ static int bpy_slot_from_py_elemseq_check(BPy_BMGeneric *value, BMesh *bm,
 /**
  * Use for giving py args to an operator.
  */
-static int bpy_slot_from_py(BMesh *bm, BMOperator *bmop, BMOpSlot *slot, PyObject *value,
-                            /* the are just for exception messages */
-                            const char *opname, const char *slot_name)
+static int bpy_slot_from_py(
+        BMesh *bm, BMOperator *bmop, BMOpSlot *slot, PyObject *value,
+        /* the are just for exception messages */
+        const char *opname, const char *slot_name)
 {
 	switch (slot->slot_type) {
 		case BMO_OP_SLOT_BOOL:
@@ -578,7 +581,7 @@ static PyObject *bpy_slot_to_py(BMesh *bm, BMOpSlot *slot)
 			switch (slot->slot_subtype.map) {
 				case BMO_OP_SLOT_SUBTYPE_MAP_ELEM:
 				{
-					item = PyDict_New();
+					item = _PyDict_NewPresized(slot_hash ? BLI_ghash_size(slot_hash) : 0);
 					if (slot_hash) {
 						GHASH_ITER (hash_iter, slot_hash) {
 							BMHeader *ele_key = BLI_ghashIterator_getKey(&hash_iter);
@@ -596,7 +599,7 @@ static PyObject *bpy_slot_to_py(BMesh *bm, BMOpSlot *slot)
 				}
 				case BMO_OP_SLOT_SUBTYPE_MAP_FLT:
 				{
-					item = PyDict_New();
+					item = _PyDict_NewPresized(slot_hash ? BLI_ghash_size(slot_hash) : 0);
 					if (slot_hash) {
 						GHASH_ITER (hash_iter, slot_hash) {
 							BMHeader *ele_key = BLI_ghashIterator_getKey(&hash_iter);
@@ -614,7 +617,7 @@ static PyObject *bpy_slot_to_py(BMesh *bm, BMOpSlot *slot)
 				}
 				case BMO_OP_SLOT_SUBTYPE_MAP_INT:
 				{
-					item = PyDict_New();
+					item = _PyDict_NewPresized(slot_hash ? BLI_ghash_size(slot_hash) : 0);
 					if (slot_hash) {
 						GHASH_ITER (hash_iter, slot_hash) {
 							BMHeader *ele_key = BLI_ghashIterator_getKey(&hash_iter);
@@ -632,7 +635,7 @@ static PyObject *bpy_slot_to_py(BMesh *bm, BMOpSlot *slot)
 				}
 				case BMO_OP_SLOT_SUBTYPE_MAP_BOOL:
 				{
-					item = PyDict_New();
+					item = _PyDict_NewPresized(slot_hash ? BLI_ghash_size(slot_hash) : 0);
 					if (slot_hash) {
 						GHASH_ITER (hash_iter, slot_hash) {
 							BMHeader *ele_key = BLI_ghashIterator_getKey(&hash_iter);
@@ -694,6 +697,12 @@ PyObject *BPy_BMO_call(BPy_BMeshOpFunc *self, PyObject *args, PyObject *kw)
 	{
 		BPY_BM_CHECK_OBJ(py_bm);
 		bm = py_bm->bm;
+
+		if (bm->use_toolflags == false) {
+			PyErr_SetString(PyExc_ValueError,
+			                "bmesh created with 'use_operators=False'");
+			return NULL;
+		}
 
 		/* could complain about entering with exceptions... */
 		BMO_error_clear(bm);

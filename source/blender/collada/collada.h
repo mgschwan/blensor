@@ -43,9 +43,13 @@ typedef enum BC_export_mesh_type {
 
 typedef enum BC_export_transformation_type {
 	BC_TRANSFORMATION_TYPE_MATRIX,
-	BC_TRANSFORMATION_TYPE_TRANSROTLOC,
-	BC_TRANSFORMATION_TYPE_BOTH
+	BC_TRANSFORMATION_TYPE_TRANSROTLOC
 } BC_export_transformation_type;
+
+typedef enum BC_export_texture_type {
+	BC_TEXTURE_TYPE_MAT,
+	BC_TEXTURE_TYPE_UV
+} BC_export_texture_type;
 
 struct bContext;
 struct Scene;
@@ -57,8 +61,11 @@ int collada_import(struct bContext *C,
                    const char *filepath,
 				   int import_units,
 				   int find_chains,
+				   int auto_connect,
 				   int fix_orientation,
-				   int min_chain_length);
+				   int min_chain_length,
+
+				   int keep_bind_info);
 
 int collada_export(struct Scene *sce,
                    const char *filepath,
@@ -72,17 +79,18 @@ int collada_export(struct Scene *sce,
                    int deform_bones_only,
 
                    int active_uv_only,
-                   int include_uv_textures,
-                   int include_material_textures,
+                   BC_export_texture_type export_texture_type,
                    int use_texture_copies,
 
                    int triangulate,
                    int use_object_instantiation,
+                   int use_blender_profile,
                    int sort_by_name,
                    BC_export_transformation_type export_transformation_type,
-                   int open_sim);
 
-
+                   int open_sim,
+                   int limit_precision,
+                   int keep_bind_info);
 
 #ifdef __cplusplus
 }

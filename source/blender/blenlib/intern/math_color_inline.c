@@ -28,6 +28,7 @@
  */
 
 
+#include "BLI_math_base.h"
 #include "BLI_math_color.h"
 #include "BLI_utildefines.h"
 
@@ -37,6 +38,52 @@
 #define __MATH_COLOR_INLINE_C__
 
 /******************************** Color Space ********************************/
+
+#ifdef __SSE2__
+
+MALWAYS_INLINE __m128 srgb_to_linearrgb_v4_simd(const __m128 c)
+{
+	__m128 cmp = _mm_cmplt_ps(c, _mm_set1_ps(0.04045f));
+	__m128 lt = _mm_max_ps(_mm_mul_ps(c, _mm_set1_ps(1.0f / 12.92f)),
+	                       _mm_set1_ps(0.0f));
+	__m128 gtebase = _mm_mul_ps(_mm_add_ps(c, _mm_set1_ps(0.055f)),
+	                            _mm_set1_ps(1.0f / 1.055f)); /* fma */
+	__m128 gte = _bli_math_fastpow24(gtebase);
+	return _bli_math_blend_sse(cmp, lt, gte);
+}
+
+MALWAYS_INLINE __m128 linearrgb_to_srgb_v4_simd(const __m128 c)
+{
+	__m128 cmp = _mm_cmplt_ps(c, _mm_set1_ps(0.0031308f));
+	__m128 lt = _mm_max_ps(_mm_mul_ps(c, _mm_set1_ps(12.92f)),
+	                       _mm_set1_ps(0.0f));
+	__m128 gte = _mm_add_ps(_mm_mul_ps(_mm_set1_ps(1.055f),
+	                                   _bli_math_fastpow512(c)),
+	                        _mm_set1_ps(-0.055f));
+	return _bli_math_blend_sse(cmp, lt, gte);
+}
+
+MINLINE void srgb_to_linearrgb_v3_v3(float linear[3], const float srgb[3])
+{
+	float r[4] = {srgb[0], srgb[1], srgb[2], 1.0f};
+	__m128 *rv = (__m128 *)&r;
+	*rv = srgb_to_linearrgb_v4_simd(*rv);
+	linear[0] = r[0];
+	linear[1] = r[1];
+	linear[2] = r[2];
+}
+
+MINLINE void linearrgb_to_srgb_v3_v3(float srgb[3], const float linear[3])
+{
+	float r[4] = {linear[0], linear[1], linear[2], 1.0f};
+	__m128 *rv = (__m128 *)&r;
+	*rv = linearrgb_to_srgb_v4_simd(*rv);
+	srgb[0] = r[0];
+	srgb[1] = r[1];
+	srgb[2] = r[2];
+}
+
+#else  /* __SSE2__ */
 
 MINLINE void srgb_to_linearrgb_v3_v3(float linear[3], const float srgb[3])
 {
@@ -51,6 +98,7 @@ MINLINE void linearrgb_to_srgb_v3_v3(float srgb[3], const float linear[3])
 	srgb[1] = linearrgb_to_srgb(linear[1]);
 	srgb[2] = linearrgb_to_srgb(linear[2]);
 }
+#endif  /* __SSE2__ */
 
 MINLINE void srgb_to_linearrgb_v4(float linear[4], const float srgb[4])
 {
@@ -98,10 +146,14 @@ MINLINE void srgb_to_linearrgb_predivide_v4(float linear[4], const float srgb[4]
 		inv_alpha = 1.0f / alpha;
 	}
 
-	linear[0] = srgb_to_linearrgb(srgb[0] * inv_alpha) * alpha;
-	linear[1] = srgb_to_linearrgb(srgb[1] * inv_alpha) * alpha;
-	linear[2] = srgb_to_linearrgb(srgb[2] * inv_alpha) * alpha;
+	linear[0] = srgb[0] * inv_alpha;
+	linear[1] = srgb[1] * inv_alpha;
+	linear[2] = srgb[2] * inv_alpha;
 	linear[3] = srgb[3];
+	srgb_to_linearrgb_v3_v3(linear, linear);
+	linear[0] *= alpha;
+	linear[1] *= alpha;
+	linear[2] *= alpha;
 }
 
 MINLINE void linearrgb_to_srgb_predivide_v4(float srgb[4], const float linear[4])
@@ -117,10 +169,14 @@ MINLINE void linearrgb_to_srgb_predivide_v4(float srgb[4], const float linear[4]
 		inv_alpha = 1.0f / alpha;
 	}
 
-	srgb[0] = linearrgb_to_srgb(linear[0] * inv_alpha) * alpha;
-	srgb[1] = linearrgb_to_srgb(linear[1] * inv_alpha) * alpha;
-	srgb[2] = linearrgb_to_srgb(linear[2] * inv_alpha) * alpha;
+	srgb[0] = linear[0] * inv_alpha;
+	srgb[1] = linear[1] * inv_alpha;
+	srgb[2] = linear[2] * inv_alpha;
 	srgb[3] = linear[3];
+	linearrgb_to_srgb_v3_v3(srgb, srgb);
+	srgb[0] *= alpha;
+	srgb[1] *= alpha;
+	srgb[2] *= alpha;
 }
 
 /* LUT accelerated conversions */
@@ -211,20 +267,30 @@ MINLINE void cpack_cpy_3ub(unsigned char r_col[3], const unsigned int pack)
  *
  * \{ */
 
-/* non-linear luma from ITU-R BT.601-2
- * see: http://www.poynton.com/notes/colour_and_gamma/ColorFAQ.html#RTFToC11
- * note: the values used for are not exact matches to those documented above,
- * but they are from the same */
+/**
+ * ITU-R BT.709 primaries
+ * https://en.wikipedia.org/wiki/Relative_luminance
+ *
+ * Real values are:
+ * ``Y = 0.2126390059(R) + 0.7151686788(G) + 0.0721923154(B)``
+ * according to: "Derivation of Basic Television Color Equations", RP 177-1993
+ *
+ * As this sums slightly above 1.0, the document recommends to use:
+ * ``0.2126(R) + 0.7152(G) + 0.0722(B)``, as used here.
+ *
+ * The high precision values are used to calculate the rounded byte weights so they add up to 255:
+ * ``54(R) + 182(G) + 19(B)``
+ */
 MINLINE float rgb_to_grayscale(const float rgb[3])
 {
-	return 0.3f * rgb[0] + 0.58f * rgb[1] + 0.12f * rgb[2];
+	return  (0.2126f * rgb[0]) + (0.7152f * rgb[1]) + (0.0722f * rgb[2]);
 }
 
 MINLINE unsigned char rgb_to_grayscale_byte(const unsigned char rgb[3])
 {
-	return (unsigned char)(((76  * (unsigned short)rgb[0]) +
-	                        (148 * (unsigned short)rgb[1]) +
-	                        (31  * (unsigned short)rgb[2])) / 255);
+	return (unsigned char)(((54  * (unsigned short)rgb[0]) +
+	                        (182 * (unsigned short)rgb[1]) +
+	                        (19  * (unsigned short)rgb[2])) / 255);
 }
 
 /** \} */

@@ -45,13 +45,17 @@
 
 
 #include "BKE_camera.h"
+#include "BKE_library.h"
+#include "BKE_library_query.h"
 #include "BKE_mesh.h"
 #include "BKE_DerivedMesh.h"
 
 #include "MOD_modifiertypes.h"
 
 #include "MEM_guardedalloc.h"
+
 #include "depsgraph_private.h"
+#include "DEG_depsgraph_build.h"
 
 static void initData(ModifierData *md)
 {
@@ -67,9 +71,12 @@ static void copyData(ModifierData *md, ModifierData *target)
 {
 #if 0
 	UVProjectModifierData *umd = (UVProjectModifierData *) md;
-	UVProjectModifierData *tumd = (UVProjectModifierData *) target;
 #endif
+	UVProjectModifierData *tumd = (UVProjectModifierData *) target;
+
 	modifier_copyData_generic(md, target);
+
+	id_us_plus((ID *)tumd->image);
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(md))
@@ -89,7 +96,7 @@ static void foreachObjectLink(ModifierData *md, Object *ob,
 	int i;
 
 	for (i = 0; i < MOD_UVPROJECT_MAXPROJECTORS; ++i)
-		walk(userData, ob, &umd->projectors[i]);
+		walk(userData, ob, &umd->projectors[i], IDWALK_CB_NOP);
 }
 
 static void foreachIDLink(ModifierData *md, Object *ob,
@@ -97,10 +104,9 @@ static void foreachIDLink(ModifierData *md, Object *ob,
 {
 	UVProjectModifierData *umd = (UVProjectModifierData *) md;
 
-	walk(userData, ob, (ID **)&umd->image);
+	walk(userData, ob, (ID **)&umd->image, IDWALK_CB_USER);
 
-	foreachObjectLink(md, ob, (ObjectWalkFunc)walk,
-	                  userData);
+	foreachObjectLink(md, ob, (ObjectWalkFunc)walk, userData);
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
@@ -122,6 +128,21 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 	}
 }
 
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *UNUSED(ob),
+                            struct DepsNodeHandle *node)
+{
+	UVProjectModifierData *umd = (UVProjectModifierData *)md;
+	int i;
+	for (i = 0; i < umd->num_projectors; ++i) {
+		if (umd->projectors[i] != NULL) {
+			DEG_add_object_relation(node, umd->projectors[i], DEG_OB_COMP_TRANSFORM, "UV Project Modifier");
+		}
+	}
+}
+
 typedef struct Projector {
 	Object *ob;             /* object this projector is derived from */
 	float projmat[4][4];    /* projection matrix */
@@ -139,7 +160,7 @@ static DerivedMesh *uvprojectModifier_do(UVProjectModifierData *umd,
 	Image *image = umd->image;
 	MPoly *mpoly, *mp;
 	MLoop *mloop;
-	int override_image = ((umd->flags & MOD_UVPROJECT_OVERRIDEIMAGE) != 0);
+	const bool override_image = (umd->flags & MOD_UVPROJECT_OVERRIDEIMAGE) != 0;
 	Projector projectors[MOD_UVPROJECT_MAXPROJECTORS];
 	int num_projectors = 0;
 	char uvname[MAX_CUSTOMDATA_LAYER_NAME];
@@ -369,6 +390,7 @@ ModifierTypeInfo modifierType_UVProject = {
 	/* freeData */          NULL,
 	/* isDisabled */        NULL,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */	NULL,
 	/* foreachObjectLink */ foreachObjectLink,

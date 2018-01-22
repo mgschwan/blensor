@@ -23,15 +23,16 @@ if "bpy" in locals():
     importlib.reload(settings_i18n)
 else:
     import bpy
-    from bpy.props import (BoolProperty,
-                           CollectionProperty,
-                           EnumProperty,
-                           FloatProperty,
-                           FloatVectorProperty,
-                           IntProperty,
-                           PointerProperty,
-                           StringProperty,
-                           )
+    from bpy.props import (
+            BoolProperty,
+            CollectionProperty,
+            EnumProperty,
+            FloatProperty,
+            FloatVectorProperty,
+            IntProperty,
+            PointerProperty,
+            StringProperty,
+            )
     from bl_i18n_utils import settings as settings_i18n
 
 
@@ -94,6 +95,7 @@ class UI_OT_i18n_settings_save(bpy.types.Operator):
 def _setattr(self, name, val):
     print(self, name, val)
     setattr(self, name, val)
+
 
 class UI_AP_i18n_settings(bpy.types.AddonPreferences):
     bl_idname = __name__.split(".")[0]  # We want "top" module name!
@@ -174,7 +176,7 @@ class UI_AP_i18n_settings(bpy.types.AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="WARNING: preferences are lost when addon is disabled, be sure to use \"Save Persistent\" "
+        layout.label(text="WARNING: preferences are lost when add-on is disabled, be sure to use \"Save Persistent\" "
                           "if you want to keep your settings!")
         layout.prop(self, "WARN_MSGID_NOT_CAPITALIZED")
         layout.prop(self, "GETTEXT_MSGFMT_EXECUTABLE")
@@ -194,3 +196,10 @@ class UI_AP_i18n_settings(bpy.types.AddonPreferences):
         col = split.column()
         col.operator("ui.i18n_settings_save", text="Save Persistent To...")
         col.operator("ui.i18n_settings_load", text="Load Persistent From...")
+
+
+classes = (
+    UI_OT_i18n_settings_load,
+    UI_OT_i18n_settings_save,
+    UI_AP_i18n_settings,
+)

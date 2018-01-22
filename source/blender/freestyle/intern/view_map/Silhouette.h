@@ -1122,12 +1122,12 @@ Interface0DIterator FEdge::verticesEnd()
 	return ret;
 }
 
-Interface0DIterator FEdge::pointsBegin(float t)
+Interface0DIterator FEdge::pointsBegin(float /*t*/)
 {
 	return verticesBegin();
 }
 
-Interface0DIterator FEdge::pointsEnd(float t)
+Interface0DIterator FEdge::pointsEnd(float /*t*/)
 {
 	return verticesEnd();
 }
@@ -1204,9 +1204,9 @@ public:
 	}
 
 	/*! Returns the index of the material of the face lying on the
-	*  right of the FEdge. If this FEdge is a border,
-	*  it has no Face on its right and therefore, no material.
-	*/
+	 *  right of the FEdge. If this FEdge is a border,
+	 *  it has no Face on its right and therefore, no material.
+	 */
 	inline unsigned aFrsMaterialIndex() const
 	{
 		return _aFrsMaterialIndex;
@@ -1415,7 +1415,8 @@ private:
 	vector<SVertex*> _verticesList;  // list of all vertices
 	vector<FEdge*> _edgesList;       // list of all edges
 	Id _Id;
-	string _Name;
+	const char *_Name;
+	const char *_LibraryPath;
 	BBox<Vec3r> _BBox;
 	vector<FrsMaterial> _FrsMaterials;  
 
@@ -1435,6 +1436,8 @@ public:
 		userdata = NULL;
 		_importance = 0.0f;
 		_ViewShape = NULL;
+		_Name = NULL;
+		_LibraryPath = NULL;
 	}
 
 	/*! Copy constructor */
@@ -1443,6 +1446,7 @@ public:
 		userdata = NULL;
 		_Id = iBrother._Id;
 		_Name = iBrother._Name;
+		_LibraryPath = iBrother._LibraryPath;
 		_BBox = iBrother.bbox();
 		_FrsMaterials = iBrother._FrsMaterials;
 		_importance = iBrother._importance;
@@ -1887,9 +1891,15 @@ public:
 	}
 
 	/*! Returns the name of the Shape. */
-	inline const string& getName() const
+	inline const char *getName() const
 	{
 		return _Name;
+	}
+
+	/*! Returns the library path of the Shape. */
+	inline const char *getLibraryPath() const
+	{
+		return _LibraryPath;
 	}
 
 	/* Modififers */
@@ -1900,9 +1910,15 @@ public:
 	}
 
 	/*! Sets the name of the shape.*/
-	inline void setName(const string& name)
+	inline void setName(const char *name)
 	{
 		_Name = name;
+	}
+
+	/*! Sets the library path of the shape.*/
+	inline void setLibraryPath(const char *path)
+	{
+		_LibraryPath = path;
 	}
 
 	/*! Sets the list of materials for the shape */

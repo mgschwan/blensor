@@ -186,11 +186,13 @@ int IMB_ispic_type(const char *name)
 #define HEADER_SIZE 64
 
 	unsigned char buf[HEADER_SIZE];
-	ImFileType *type;
+	const ImFileType *type;
 	BLI_stat_t st;
 	int fp;
 
-	if (UTIL_DEBUG) printf("IMB_ispic_name: loading %s\n", name);
+	BLI_assert(!BLI_path_is_rel(name));
+
+	if (UTIL_DEBUG) printf("%s: loading %s\n", __func__, name);
 	
 	if (BLI_stat(name, &st) == -1)
 		return false;
@@ -210,7 +212,7 @@ int IMB_ispic_type(const char *name)
 
 	/* XXX move this exception */
 	if ((BIG_LONG(((int *)buf)[0]) & 0xfffffff0) == 0xffd8ffe0)
-		return JPG;
+		return IMB_FTYPE_JPG;
 
 	for (type = IMB_FILE_TYPES; type < IMB_FILE_TYPES_LAST; type++) {
 		if (type->is_a) {
@@ -371,25 +373,14 @@ static int isffmpeg(const char *filename)
 }
 #endif
 
-#ifdef WITH_REDCODE
-static int isredcode(const char *filename)
-{
-	struct redcode_handle *h = redcode_open(filename);
-	if (!h) {
-		return 0;
-	}
-	redcode_close(h);
-	return 1;
-}
-
-#endif
-
 int imb_get_anim_type(const char *name)
 {
 	int type;
 	BLI_stat_t st;
 
-	if (UTIL_DEBUG) printf("in getanimtype: %s\n", name);
+	BLI_assert(!BLI_path_is_rel(name));
+
+	if (UTIL_DEBUG) printf("%s: %s\n", __func__, name);
 
 #ifndef _WIN32
 #   ifdef WITH_QUICKTIME
@@ -420,9 +411,6 @@ int imb_get_anim_type(const char *name)
 
 	if (isavi(name)) return (ANIM_AVI);
 #endif
-#ifdef WITH_REDCODE
-	if (isredcode(name)) return (ANIM_REDCODE);
-#endif
 	type = IMB_ispic(name);
 	if (type) {
 		return ANIM_SEQUENCE;
@@ -434,8 +422,20 @@ int imb_get_anim_type(const char *name)
 bool IMB_isanim(const char *filename)
 {
 	int type;
-	
+
 	type = imb_get_anim_type(filename);
 	
 	return (type && type != ANIM_SEQUENCE);
+}
+
+bool IMB_isfloat(ImBuf *ibuf)
+{
+	const ImFileType *type;
+
+	for (type = IMB_FILE_TYPES; type < IMB_FILE_TYPES_LAST; type++) {
+		if (type->ftype(type, ibuf)) {
+			return (type->flag & IM_FTYPE_FLOAT) != 0;
+		}
+	}
+	return false;
 }

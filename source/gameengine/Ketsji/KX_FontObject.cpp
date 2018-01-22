@@ -35,7 +35,7 @@
 #include "KX_Scene.h"
 #include "KX_PythonInit.h"
 #include "BLI_math.h"
-#include "StringValue.h"
+#include "EXP_StringValue.h"
 #include "RAS_IRasterizer.h"
 
 /* paths needed for font load */
@@ -193,15 +193,14 @@ void KX_FontObject::DrawFontText()
 	const float aspect = m_fsize / size;
 
 	/* Get a working copy of the OpenGLMatrix to use */
-	double mat[16];
-	memcpy(mat, this->GetOpenGLMatrix(), sizeof(double)*16);
+	float *mat = GetOpenGLMatrix();
 
 	/* Account for offset */
 	MT_Vector3 offset = this->NodeGetWorldOrientation() * m_offset * this->NodeGetWorldScaling();
 	mat[12] += offset[0]; mat[13] += offset[1]; mat[14] += offset[2];
 
 	/* Orient the spacing vector */
-	MT_Vector3 spacing = MT_Vector3(0, m_fsize*m_line_spacing, 0);
+	MT_Vector3 spacing = MT_Vector3(0.0f, m_fsize*m_line_spacing, 0.0f);
 	spacing = this->NodeGetWorldOrientation() * spacing * this->NodeGetWorldScaling()[1];
 
 	/* Draw each line, taking spacing into consideration */
@@ -282,7 +281,7 @@ int KX_FontObject::pyattr_set_text(void *self_v, const KX_PYATTRIBUTE_DEF *attrd
 	KX_FontObject* self = static_cast<KX_FontObject*>(self_v);
 	if (!PyUnicode_Check(value))
 		return PY_SET_ATTR_FAIL;
-	char* chars = _PyUnicode_AsString(value);
+	const char *chars = _PyUnicode_AsString(value);
 
 	/* Allow for some logic brick control */
 	CValue* tprop = self->GetProperty("Text");

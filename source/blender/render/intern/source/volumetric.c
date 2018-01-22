@@ -269,14 +269,18 @@ static float metadensity(Object *ob, const float co[3])
 		/* MB_BALL default */
 		switch (ml->type) {
 			case MB_ELIPSOID:
-				tp[0] /= ml->expx, tp[1] /= ml->expy, tp[2] /= ml->expz;
+				tp[0] /= ml->expx;
+				tp[1] /= ml->expy;
+				tp[2] /= ml->expz;
 				break;
 			case MB_CUBE:
 				tp[2] = (tp[2] > ml->expz) ? (tp[2] - ml->expz) : ((tp[2] < -ml->expz) ? (tp[2] + ml->expz) : 0.f);
-			/* no break, xy as plane */
+				/* no break, xy as plane */
+				ATTR_FALLTHROUGH;
 			case MB_PLANE:
 				tp[1] = (tp[1] > ml->expy) ? (tp[1] - ml->expy) : ((tp[1] < -ml->expy) ? (tp[1] + ml->expy) : 0.f);
-			/* no break, x as tube */
+				/* no break, x as tube */
+				ATTR_FALLTHROUGH;
 			case MB_TUBE:
 				tp[0] = (tp[0] > ml->expx) ? (tp[0] - ml->expx) : ((tp[0] < -ml->expx) ? (tp[0] + ml->expx) : 0.f);
 		}

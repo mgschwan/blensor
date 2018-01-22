@@ -30,8 +30,8 @@
  *  \ingroup imbcineon
  */
 
-#ifndef __LOG_IMAGE_CORE_H__
-#define __LOG_IMAGE_CORE_H__
+#ifndef __LOGIMAGECORE_H__
+#define __LOGIMAGECORE_H__
 
 #include <stdio.h>
 
@@ -52,8 +52,7 @@ enum format {
 	format_Cineon
 };
 
-typedef struct LogImageElement
-{
+typedef struct LogImageElement {
 	int             depth;
 	int             bitsPerSample;
 	int             dataOffset;
@@ -67,8 +66,7 @@ typedef struct LogImageElement
 	float           maxValue; /* = 2^bitsPerSample - 1 (used internally, doesn't come from the file header) */
 } LogImageElement;
 
-typedef struct LogImageFile
-{
+typedef struct LogImageFile {
 	/* specified in header */
 	int width;
 	int height;
@@ -280,4 +278,4 @@ BLI_INLINE unsigned int float_uint(float value, unsigned int max)
 }
 #endif
 
-#endif  /* __LOG_IMAGE_CORE_H__ */
+#endif  /* __LOGIMAGECORE_H__ */

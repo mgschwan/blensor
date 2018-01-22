@@ -46,6 +46,7 @@
 
 #define MULTIPLIER  0x5DEECE66Dll
 #define MASK        0x0000FFFFFFFFFFFFll
+#define MASK_BYTES   2
 
 #define ADDEND      0xB
 #define LOWSEED     0x330E
@@ -68,6 +69,9 @@ RNG *BLI_rng_new(unsigned int seed)
 	return rng;
 }
 
+/**
+ * A version of #BLI_rng_new that hashes the seed.
+ */
 RNG *BLI_rng_new_srandom(unsigned int seed)
 {
 	RNG *rng = MEM_mallocN(sizeof(*rng), "rng");
@@ -87,6 +91,9 @@ void BLI_rng_seed(RNG *rng, unsigned int seed)
 	rng->X = (((uint64_t) seed) << 16) | LOWSEED;
 }
 
+/**
+ * Use a hash table to create better seed.
+ */
 void BLI_rng_srandom(RNG *rng, unsigned int seed)
 {
 	BLI_rng_seed(rng, seed + hash[seed & 255]);
@@ -101,6 +108,45 @@ BLI_INLINE void rng_step(RNG *rng)
 	rng->X = (MULTIPLIER * rng->X + ADDEND) & MASK;
 }
 
+void BLI_rng_get_char_n(RNG *rng, char *bytes, size_t bytes_len)
+{
+	size_t last_len = 0;
+	size_t trim_len = bytes_len;
+
+#define RAND_STRIDE (sizeof(rng->X) - MASK_BYTES)
+
+	if (trim_len > RAND_STRIDE) {
+		last_len = trim_len % RAND_STRIDE;
+		trim_len = trim_len - last_len;
+	}
+	else {
+		trim_len = 0;
+		last_len = bytes_len;
+	}
+
+	const char *data_src = (void *)&(rng->X);
+	size_t i = 0;
+	while (i != trim_len) {
+		BLI_assert(i < trim_len);
+#ifdef __BIG_ENDIAN__
+		for (size_t j = (RAND_STRIDE + MASK_BYTES) - 1; j != MASK_BYTES - 1; j--)
+#else
+		for (size_t j = 0; j != RAND_STRIDE; j++)
+#endif
+		{
+			bytes[i++] = data_src[j];
+		}
+		rng_step(rng);
+	}
+	if (last_len) {
+		for (size_t j = 0; j != last_len; j++) {
+			bytes[i++] = data_src[j];
+		}
+	}
+
+#undef RAND_STRIDE
+}
+
 int BLI_rng_get_int(RNG *rng)
 {
 	rng_step(rng);
@@ -113,11 +159,17 @@ unsigned int BLI_rng_get_uint(RNG *rng)
 	return (unsigned int) (rng->X >> 17);
 }
 
+/**
+ * \return Random value (0..1), but never 1.0.
+ */
 double BLI_rng_get_double(RNG *rng)
 {
 	return (double) BLI_rng_get_int(rng) / 0x80000000;
 }
 
+/**
+ * \return Random value (0..1), but never 1.0.
+ */
 float BLI_rng_get_float(RNG *rng)
 {
 	return (float) BLI_rng_get_int(rng) / 0x80000000;
@@ -172,7 +224,7 @@ void BLI_rng_get_tri_sample_float_v2(
 
 void BLI_rng_shuffle_array(RNG *rng, void *data, unsigned int elem_size_i, unsigned int elem_tot)
 {
-	const size_t elem_size = (unsigned int)elem_size_i;
+	const size_t elem_size = (size_t)elem_size_i;
 	unsigned int i = elem_tot;
 	void *temp;
 
@@ -196,6 +248,11 @@ void BLI_rng_shuffle_array(RNG *rng, void *data, unsigned int elem_size_i, unsig
 	free(temp);
 }
 
+/**
+ * Simulate getting \a n random values.
+ *
+ * \note Useful when threaded code needs consistent values, independent of task division.
+ */
 void BLI_rng_skip(RNG *rng, int n)
 {
 	while (n--) {
@@ -208,7 +265,6 @@ void BLI_rng_skip(RNG *rng, int n)
 /* initialize with some non-zero seed */
 static RNG theBLI_rng = {611330372042337130};
 
-/* using hash table to create better seed */
 void BLI_srandom(unsigned int seed)
 {
 	BLI_rng_srandom(&theBLI_rng, seed);

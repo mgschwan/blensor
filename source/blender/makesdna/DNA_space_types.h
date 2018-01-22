@@ -50,28 +50,21 @@
 struct ID;
 struct Text;
 struct Script;
-struct bSound;
-struct ImBuf;
 struct Image;
 struct Scopes;
 struct Histogram;
 struct SpaceIpo;
-struct BlendHandle;
 struct bNodeTree;
-struct uiBlock;
 struct FileList;
 struct bGPdata;
 struct bDopeSheet;
 struct FileSelectParams;
 struct FileLayout;
-struct bScreen;
-struct Scene;
 struct wmOperator;
 struct wmTimer;
 struct MovieClip;
 struct MovieClipScopes;
 struct Mask;
-struct GHash;
 struct BLI_mempool;
 
 
@@ -131,7 +124,7 @@ typedef struct SpaceButs {
 	short mainb, mainbo, mainbuser; /* context tabs */
 	short re_align, align;          /* align for panels */
 	short preview;                  /* preview is signal to refresh */
-	/* texture context selector (material, lamp, particles, world, other)*/
+	/* texture context selector (material, lamp, particles, world, other) */
 	short texture_context, texture_context_prev;
 	char flag, pad[7];
 	
@@ -154,7 +147,8 @@ typedef struct SpaceButs {
 #define CONTEXT_LOGIC   6
 
 /* sbuts->mainb old (deprecated) */
-#define BUTS_VIEW           0
+#ifdef DNA_DEPRECATED_ALLOW
+// #define BUTS_VIEW           0
 #define BUTS_LAMP           1
 #define BUTS_MAT            2
 #define BUTS_TEX            3
@@ -166,9 +160,10 @@ typedef struct SpaceButs {
 #define BUTS_FPAINT         9
 #define BUTS_RADIO          10
 #define BUTS_SCRIPT         11
-#define BUTS_SOUND          12
+// #define BUTS_SOUND          12
 #define BUTS_CONSTRAINT     13
-#define BUTS_EFFECTS        14
+// #define BUTS_EFFECTS        14
+#endif
 
 /* buts->mainb new */
 typedef enum eSpaceButtons_Context {
@@ -257,7 +252,7 @@ typedef struct SpaceOops {
 	struct BLI_mempool *treestore;
 	
 	/* search stuff */
-	char search_string[32];
+	char search_string[64];
 	struct TreeStoreElem search_tse;
 
 	short flag, outlinevis, storeflag, search_flags;
@@ -297,10 +292,13 @@ typedef enum eSpaceOutliner_Mode {
 
 /* SpaceOops->storeflag */
 typedef enum eSpaceOutliner_StoreFlag {
-	/* rebuild tree */
+	/* cleanup tree */
 	SO_TREESTORE_CLEANUP    = (1 << 0),
 	/* if set, it allows redraws. gets set for some allqueue events */
 	SO_TREESTORE_REDRAW     = (1 << 1),
+	/* rebuild the tree, similar to cleanup,
+	 * but defer a call to BKE_outliner_treehash_rebuild_from_treestore instead */
+	SO_TREESTORE_REBUILD    = (1 << 2),
 } eSpaceOutliner_StoreFlag;
 
 /* outliner search flags (SpaceOops->search_flags) */
@@ -331,8 +329,10 @@ typedef struct SpaceIpo {
 	short autosnap;         /* time-transform autosnapping settings for Graph editor (eAnimEdit_AutoSnap in DNA_action_types.h) */
 	int flag;               /* settings for Graph editor (eGraphEdit_Flag) */
 	
+	float cursorTime;       /* time value for cursor (when in drivers mode; animation uses current frame) */
 	float cursorVal;        /* cursor value (y-value, x-value is current frame) */
 	int around;             /* pivot point for transforms */
+	int pad;
 } SpaceIpo;
 
 
@@ -412,6 +412,8 @@ typedef enum eSpaceNla_Flag {
 	SNLA_NOSTRIPCURVES     = (1 << 5),
 	/* don't perform realtime updates */
 	SNLA_NOREALTIMEUPDATES = (1 << 6),
+	/* don't show local strip marker indications */
+	SNLA_NOLOCALMARKERS    = (1 << 7),
 } eSpaceNla_Flag;
 
 
@@ -507,6 +509,9 @@ typedef struct SpaceSeq {
 	struct bGPdata *gpd;        /* grease-pencil data */
 
 	struct SequencerScopes scopes;  /* different scoped displayed in space */
+
+	char multiview_eye;				/* multiview current eye - for internal use */
+	char pad2[7];
 } SpaceSeq;
 
 
@@ -538,6 +543,7 @@ typedef enum eSpaceSeq_Flag {
 	SEQ_ALL_WAVEFORMS           = (1 << 7), /* draw all waveforms */
 	SEQ_NO_WAVEFORMS            = (1 << 8), /* draw no waveforms */
 	SEQ_SHOW_SAFE_CENTER        = (1 << 9),
+	SEQ_SHOW_METADATA           = (1 << 10),
 } eSpaceSeq_Flag;
 
 /* sseq->view */
@@ -558,8 +564,7 @@ typedef enum eSpaceSeq_Proxy_RenderSize {
 	SEQ_PROXY_RENDER_SIZE_FULL      = 100
 } eSpaceSeq_Proxy_RenderSize;
 
-typedef struct MaskSpaceInfo
-{
+typedef struct MaskSpaceInfo {
 	/* **** mask editing **** */
 	struct Mask *mask;
 	/* draw options */
@@ -588,20 +593,26 @@ typedef struct FileSelectParams {
 	char renamefile[256];
 	char renameedit[256]; /* annoying but the first is only used for initialization */
 
-	char filter_glob[64]; /* list of filetypes to filter */
+	char filter_glob[256]; /* list of filetypes to filter */
 
 	char filter_search[64];  /* text items' name must match to be shown. */
+	int filter_id;  /* same as filter, but for ID types (aka library groups). */
 
-	int active_file;
+	int active_file;    /* active file used for keyboard navigation */
+	int highlight_file; /* file under cursor */
 	int sel_first;
 	int sel_last;
+	unsigned short thumbnail_size;
+	short pad;
 
 	/* short */
 	short type; /* XXXXX for now store type here, should be moved to the operator */
 	short flag; /* settings for filter, hiding dots files,...  */
 	short sort; /* sort order */
 	short display; /* display mode flag */
-	short filter; /* filter when (flags & FILE_FILTER) is true */
+	int filter; /* filter when (flags & FILE_FILTER) is true */
+
+	short recursion_level;  /* max number of levels in dirtree to show at once, 0 to disable recursion. */
 
 	/* XXX --- still unused -- */
 	short f_fp; /* show font preview */
@@ -633,6 +644,7 @@ typedef struct SpaceFile {
 	struct wmOperator *op; 
 
 	struct wmTimer *smoothscroll_timer;
+	struct wmTimer *previews_timer;
 
 	struct FileLayout *layout;
 	
@@ -640,7 +652,7 @@ typedef struct SpaceFile {
 	short systemnr, system_bookmarknr;
 } SpaceFile;
 
-/* FSMenuEntry's without paths indicate seperators */
+/* FSMenuEntry's without paths indicate separators */
 typedef struct FSMenuEntry {
 	struct FSMenuEntry *next;
 
@@ -707,7 +719,10 @@ typedef enum eFileSel_Params_Flag {
 } eFileSel_Params_Flag;
 
 
-/* files in filesel list: file types */
+/* files in filesel list: file types
+ * Note we could use mere values (instead of bitflags) for file types themselves,
+ * but since we do not lack of bytes currently...
+ */
 typedef enum eFileSel_File_Types {
 	FILE_TYPE_BLENDER           = (1 << 2),
 	FILE_TYPE_BLENDER_BACKUP    = (1 << 3),
@@ -717,12 +732,16 @@ typedef enum eFileSel_File_Types {
 	FILE_TYPE_FTFONT            = (1 << 7),
 	FILE_TYPE_SOUND             = (1 << 8),
 	FILE_TYPE_TEXT              = (1 << 9),
-	FILE_TYPE_MOVIE_ICON        = (1 << 10), /* movie file that preview can't load */
+	/* 1 << 10 was FILE_TYPE_MOVIE_ICON, got rid of this so free slot for future type... */
 	FILE_TYPE_FOLDER            = (1 << 11), /* represents folders for filtering */
 	FILE_TYPE_BTX               = (1 << 12),
 	FILE_TYPE_COLLADA           = (1 << 13),
 	FILE_TYPE_OPERATOR          = (1 << 14), /* from filter_glob operator property */
 	FILE_TYPE_APPLICATIONBUNDLE = (1 << 15),
+	FILE_TYPE_ALEMBIC           = (1 << 16),
+
+	FILE_TYPE_DIR               = (1 << 30),  /* An FS directory (i.e. S_ISDIR on its path is true). */
+	FILE_TYPE_BLENDERLIB        = (1u << 31),
 } eFileSel_File_Types;
 
 /* Selection Flags in filesel: struct direntry, unsigned char selflag */
@@ -732,6 +751,119 @@ typedef enum eDirEntry_SelectFlag {
 	FILE_SEL_SELECTED       = (1 << 3),
 	FILE_SEL_EDITING        = (1 << 4),
 } eDirEntry_SelectFlag;
+
+#define FILE_LIST_MAX_RECURSION 4
+
+/* ***** Related to file browser, but never saved in DNA, only here to help with RNA. ***** */
+
+/* About Unique identifier.
+ * Stored in a CustomProps once imported.
+ * Each engine is free to use it as it likes - it will be the only thing passed to it by blender to identify
+ * asset/variant/version (concatenating the three into a single 48 bytes one).
+ * Assumed to be 128bits, handled as four integers due to lack of real bytes proptype in RNA :|.
+ */
+#define ASSET_UUID_LENGTH     16
+
+/* Used to communicate with asset engines outside of 'import' context. */
+typedef struct AssetUUID {
+	int uuid_asset[4];
+	int uuid_variant[4];
+	int uuid_revision[4];
+} AssetUUID;
+
+typedef struct AssetUUIDList {
+	AssetUUID *uuids;
+	int nbr_uuids, pad;
+} AssetUUIDList;
+
+/* Container for a revision, only relevant in asset context. */
+typedef struct FileDirEntryRevision {
+	struct FileDirEntryRevision *next, *prev;
+
+	char *comment;
+	void *pad;
+
+	int uuid[4];
+
+	uint64_t size;
+	int64_t time;
+	/* Temp caching of UI-generated strings... */
+	char    size_str[16];
+	char    time_str[8];
+	char    date_str[16];
+} FileDirEntryRevision;
+
+/* Container for a variant, only relevant in asset context.
+ * In case there are no variants, a single one shall exist, with NULL name/description. */
+typedef struct FileDirEntryVariant {
+	struct FileDirEntryVariant *next, *prev;
+
+	int uuid[4];
+	char *name;
+	char *description;
+
+	ListBase revisions;
+	int nbr_revisions;
+	int act_revision;
+} FileDirEntryVariant;
+
+/* Container for mere direntry, with additional asset-related data. */
+typedef struct FileDirEntry {
+	struct FileDirEntry *next, *prev;
+
+	int uuid[4];
+	char *name;
+	char *description;
+
+	/* Either point to active variant/revision if available, or own entry (in mere filebrowser case). */
+	FileDirEntryRevision *entry;
+
+	int typeflag;  /* eFileSel_File_Types */
+	int blentype;  /* ID type, in case typeflag has FILE_TYPE_BLENDERLIB set. */
+
+	char *relpath;
+
+	void *poin;  /* TODO: make this a real ID pointer? */
+	struct ImBuf *image;
+
+	/* Tags are for info only, most of filtering is done in asset engine. */
+	char **tags;
+	int nbr_tags;
+
+	short status;
+	short flags;
+
+	ListBase variants;
+	int nbr_variants;
+	int act_variant;
+} FileDirEntry;
+
+/* Array of direntries. */
+/* This struct is used in various, different contexts.
+ * In Filebrowser UI, it stores the total number of available entries, the number of visible (filtered) entries,
+ *                    and a subset of those in 'entries' ListBase, from idx_start (included) to idx_end (excluded).
+ * In AssetEngine context (i.e. outside of 'browsing' context), entries contain all needed data, there is no filtering,
+ *                        so nbr_entries_filtered, entry_idx_start and entry_idx_end should all be set to -1.
+ */
+typedef struct FileDirEntryArr {
+	ListBase entries;
+	int nbr_entries;
+	int nbr_entries_filtered;
+	int entry_idx_start, entry_idx_end;
+
+	char root[1024];	 /* FILE_MAX */
+} FileDirEntryArr;
+
+/* FileDirEntry.status */
+enum {
+	ASSET_STATUS_LOCAL  = 1 << 0,  /* If active uuid is available locally/immediately. */
+	ASSET_STATUS_LATEST = 1 << 1,  /* If active uuid is latest available version. */
+};
+
+/* FileDirEntry.flags */
+enum {
+	FILE_ENTRY_INVALID_PREVIEW = 1 << 0,  /* The preview for this entry could not be generated. */
+};
 
 /* Image/UV Editor ======================================== */
 
@@ -745,8 +877,6 @@ typedef struct SpaceImage {
 
 	struct Image *image;
 	struct ImageUser iuser;
-
-	struct CurveMapping *cumap DNA_DEPRECATED;  /* was switched to scene's color management settings */
 
 	struct Scopes scopes;           /* histogram waveform and vectorscope */
 	struct Histogram sample_line_hist;  /* sample line histogram */
@@ -767,6 +897,10 @@ typedef struct SpaceImage {
 	char sticky; /* sticky selection type */
 	char dt_uvstretch;
 	char around;
+
+	/* Filter settings when editor shows other object's UVs. */
+	int other_uv_filter;
+	int pad2;
 
 	MaskSpaceInfo mask_info;
 } SpaceImage;
@@ -795,7 +929,7 @@ typedef enum eSpaceImage_Mode {
 
 /* SpaceImage->sticky
  * Note DISABLE should be 0, however would also need to re-arrange icon order,
- * also, sticky loc is the default mode so this means we don't need to 'do_versons' */
+ * also, sticky loc is the default mode so this means we don't need to 'do_versions' */
 typedef enum eSpaceImage_Sticky {
 	SI_STICKY_LOC      = 0,
 	SI_STICKY_DISABLE  = 1,
@@ -828,7 +962,7 @@ typedef enum eSpaceImage_Flag {
 /*	SI_DEPRECATED5        = (1 << 18), */  /* deprecated */
 	
 	/* this means that the image is drawn until it reaches the view edge,
-	 * in the image view, its unrelated to the 'tile' mode for texface
+	 * in the image view, it's unrelated to the 'tile' mode for texface
 	 */
 	SI_DRAW_TILE          = (1 << 19),
 	SI_SMOOTH_UV          = (1 << 20),
@@ -839,7 +973,18 @@ typedef enum eSpaceImage_Flag {
 	SI_COLOR_CORRECTION   = (1 << 24),
 
 	SI_NO_DRAW_TEXPAINT   = (1 << 25),
+	SI_DRAW_METADATA      = (1 << 26),
+
+	SI_SHOW_R             = (1 << 27),
+	SI_SHOW_G             = (1 << 28),
+	SI_SHOW_B             = (1 << 29),
 } eSpaceImage_Flag;
+
+/* SpaceImage->other_uv_filter */
+typedef enum eSpaceImage_OtherUVFilter {
+	SI_FILTER_SAME_IMAGE    = 0,
+	SI_FILTER_ALL           = 1,
+} eSpaceImage_OtherUVFilter;
 
 /* Text Editor ============================================ */
 
@@ -982,12 +1127,17 @@ typedef struct SpaceNode {
 	int treetype DNA_DEPRECATED; /* treetype: as same nodetree->type */
 	int pad3;
 	
-	short texfrom;      /* texfrom object, world or brush */
-	short shaderfrom;   /* shader from object or world */
-	short recalc;       /* currently on 0/1, for auto compo */
-	short pad4;
-	ListBase linkdrag;  /* temporary data for modal linking operator */
-	
+	short texfrom;       /* texfrom object, world or brush */
+	short shaderfrom;    /* shader from object or world */
+	short recalc;        /* currently on 0/1, for auto compo */
+
+	char insert_ofs_dir; /* direction for offsetting nodes on insertion */
+	char pad4;
+
+	ListBase linkdrag;   /* temporary data for modal linking operator */
+	/* XXX hack for translate_attach op-macros to pass data from transform op to insert_offset op */
+	struct NodeInsertOfsData *iofsd; /* temporary data for node insert offset (in UI called Auto-offset) */
+
 	struct bGPdata *gpd;        /* grease-pencil data */
 } SpaceNode;
 
@@ -1001,10 +1151,11 @@ typedef enum eSpaceNode_Flag {
 	SNODE_SHOW_G         = (1 << 8),
 	SNODE_SHOW_B         = (1 << 9),
 	SNODE_AUTO_RENDER    = (1 << 5),
-	SNODE_SHOW_HIGHLIGHT = (1 << 6),
+//	SNODE_SHOW_HIGHLIGHT = (1 << 6), DNA_DEPRECATED
 //	SNODE_USE_HIDDEN_PREVIEW = (1 << 10), DNA_DEPRECATED December2013 
-	SNODE_NEW_SHADERS = (1 << 11),
+	SNODE_NEW_SHADERS    = (1 << 11),
 	SNODE_PIN            = (1 << 12),
+	SNODE_SKIP_INSOFFSET = (1 << 13), /* automatically offset following nodes in a chain on insertion */
 } eSpaceNode_Flag;
 
 /* snode->texfrom */
@@ -1021,6 +1172,12 @@ typedef enum eSpaceNode_ShaderFrom {
 	SNODE_SHADER_WORLD = 1,
 	SNODE_SHADER_LINESTYLE = 2,
 } eSpaceNode_ShaderFrom;
+
+/* snode->insert_ofs_dir */
+enum {
+	SNODE_INSERTOFS_DIR_RIGHT = 0,
+	SNODE_INSERTOFS_DIR_LEFT  = 1,
+};
 
 /* Game Logic Editor ===================================== */
 
@@ -1162,6 +1319,7 @@ typedef enum eSpaceClip_Flag {
 	SC_SHOW_GRAPH_SEL_ONLY      = (1 << 19),
 	SC_SHOW_GRAPH_HIDDEN        = (1 << 20),
 	SC_SHOW_GRAPH_TRACKS_ERROR  = (1 << 21),
+	SC_SHOW_METADATA            = (1 << 22),
 } eSpaceClip_Flag;
 
 /* SpaceClip->mode */
@@ -1200,10 +1358,13 @@ typedef enum eSpace_Type {
 	SPACE_INFO     = 7,
 	SPACE_SEQ      = 8,
 	SPACE_TEXT     = 9,
+#ifdef DNA_DEPRECATED
 	SPACE_IMASEL   = 10, /* deprecated */
 	SPACE_SOUND    = 11, /* Deprecated */
+#endif
 	SPACE_ACTION   = 12,
 	SPACE_NLA      = 13,
+	/* TODO: fully deprecate */
 	SPACE_SCRIPT   = 14, /* Deprecated */
 	SPACE_TIME     = 15,
 	SPACE_NODE     = 16,
@@ -1218,10 +1379,6 @@ typedef enum eSpace_Type {
 /* use for function args */
 #define SPACE_TYPE_ANY -1
 
-// TODO: SPACE_SCRIPT
-#if (DNA_DEPRECATED_GCC_POISON == 1)
-#pragma GCC poison SPACE_IMASEL SPACE_SOUND
-#endif
 
 #define IMG_SIZE_FALLBACK 256
 

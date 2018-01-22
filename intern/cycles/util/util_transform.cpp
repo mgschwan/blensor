@@ -46,8 +46,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "util_math.h"
-#include "util_transform.h"
+#include "util/util_transform.h"
+
+#include "util/util_boundbox.h"
+#include "util/util_math.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -156,7 +158,7 @@ Transform transform_inverse(const Transform& tfm)
 
 float4 transform_to_quat(const Transform& tfm)
 {
-	double trace = tfm[0][0] + tfm[1][1] + tfm[2][2];
+	double trace = (double)(tfm[0][0] + tfm[1][1] + tfm[2][2]);
 	float4 qt;
 
 	if(trace > 0.0) {
@@ -234,7 +236,7 @@ static void transform_decompose(Transform *decomp, const Transform *tfm)
 	} while(iteration < 100 && norm > 1e-4f);
 
 	if(transform_negative_scale(R))
-		R = R * transform_scale(-1.0f, -1.0f, -1.0f); /* todo: test scale */
+		R = R * transform_scale(-1.0f, -1.0f, -1.0f);
 
 	decomp->x = transform_to_quat(R);
 
@@ -271,5 +273,15 @@ void transform_motion_decompose(DecompMotionTransform *decomp, const MotionTrans
 	decomp->post_y = post.y;
 }
 
-CCL_NAMESPACE_END
+Transform transform_from_viewplane(BoundBox2D& viewplane)
+{
+	return
+		transform_scale(1.0f / (viewplane.right - viewplane.left),
+		                1.0f / (viewplane.top - viewplane.bottom),
+		                1.0f) *
+		transform_translate(-viewplane.left,
+		                    -viewplane.bottom,
+		                    0.0f);
+}
 
+CCL_NAMESPACE_END

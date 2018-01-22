@@ -41,7 +41,7 @@
 #include "BLI_string.h"
 #include "BLI_listbase.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_report.h"
 
@@ -51,6 +51,9 @@
 
 #include "UI_interface.h"
 #include "UI_resources.h"
+
+#include "WM_api.h"
+#include "WM_types.h"
 
 #include "interface_intern.h"
 
@@ -117,17 +120,17 @@ uiBut *uiDefAutoButR(uiBlock *block, PointerRNA *ptr, PropertyRNA *prop, int ind
 				but = uiDefButR_prop(block, UI_BTYPE_TEXT, 0, name, x1, y1, x2, y2, ptr, prop, index, 0, 0, -1, -1, NULL);
 
 			if (RNA_property_flag(prop) & PROP_TEXTEDIT_UPDATE) {
-				UI_but_flag_enable(but, UI_BUT_TEXTEDIT_UPDATE);
+				/* TEXTEDIT_UPDATE is usally used for search buttons. For these we also want
+				 * the 'x' icon to clear search string, so setting VALUE_CLEAR flag, too. */
+				UI_but_flag_enable(but, UI_BUT_TEXTEDIT_UPDATE | UI_BUT_VALUE_CLEAR);
 			}
 			break;
 		case PROP_POINTER:
 		{
-			PointerRNA pptr;
-
-			pptr = RNA_property_pointer_get(ptr, prop);
-			if (!pptr.type)
-				pptr.type = RNA_property_pointer_type(ptr, prop);
-			icon = RNA_struct_ui_icon(pptr.type);
+			if (icon == 0) {
+				PointerRNA pptr = RNA_property_pointer_get(ptr, prop);
+				icon = RNA_struct_ui_icon(pptr.type ? pptr.type : RNA_property_pointer_type(ptr, prop));
+			}
 			if (icon == ICON_DOT)
 				icon = 0;
 
@@ -154,9 +157,10 @@ uiBut *uiDefAutoButR(uiBlock *block, PointerRNA *ptr, PropertyRNA *prop, int ind
  * \a check_prop callback filters functions to avoid drawing certain properties,
  * in cases where PROP_HIDDEN flag can't be used for a property.
  */
-int uiDefAutoButsRNA(uiLayout *layout, PointerRNA *ptr,
-                     bool (*check_prop)(PointerRNA *, PropertyRNA *),
-                     const char label_align)
+int uiDefAutoButsRNA(
+        uiLayout *layout, PointerRNA *ptr,
+        bool (*check_prop)(PointerRNA *, PropertyRNA *),
+        const char label_align)
 {
 	uiLayout *split, *col;
 	int flag;
@@ -261,7 +265,7 @@ int UI_icon_from_report_type(int type)
  */
 int UI_calc_float_precision(int prec, double value)
 {
-	static const double pow10_neg[UI_PRECISION_FLOAT_MAX + 1] = {1e0, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7};
+	static const double pow10_neg[UI_PRECISION_FLOAT_MAX + 1] = {1e0, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6};
 	static const double max_pow = 10000000.0;  /* pow(10, UI_PRECISION_FLOAT_MAX) */
 
 	BLI_assert(prec <= UI_PRECISION_FLOAT_MAX);
@@ -309,6 +313,34 @@ int UI_calc_float_precision(int prec, double value)
 	return prec;
 }
 
+bool UI_but_online_manual_id(const uiBut *but, char *r_str, size_t maxlength)
+{
+	if (but->rnapoin.id.data && but->rnapoin.data && but->rnaprop) {
+		BLI_snprintf(r_str, maxlength, "%s.%s", RNA_struct_identifier(but->rnapoin.type),
+		             RNA_property_identifier(but->rnaprop));
+		return true;
+	}
+	else if (but->optype) {
+		WM_operator_py_idname(r_str, but->optype->idname);
+		return true;
+	}
+
+	*r_str = '\0';
+	return false;
+}
+
+bool UI_but_online_manual_id_from_active(const struct bContext *C, char *r_str, size_t maxlength)
+{
+	uiBut *but = UI_context_active_but_get(C);
+
+	if (but) {
+		return UI_but_online_manual_id(but, r_str, maxlength);
+	}
+
+	*r_str = '\0';
+	return false;
+}
+
 
 /* -------------------------------------------------------------------- */
 /* Modal Button Store API */
@@ -348,6 +380,17 @@ uiButStore *UI_butstore_create(uiBlock *block)
 
 void UI_butstore_free(uiBlock *block, uiButStore *bs_handle)
 {
+	/* Workaround for button store being moved into new block,
+	 * which then can't use the previous buttons state ('ui_but_update_from_old_block' fails to find a match),
+	 * keeping the active button in the old block holding a reference to the button-state in the new block: see T49034.
+	 *
+	 * Ideally we would manage moving the 'uiButStore', keeping a correct state.
+	 * All things considered this is the most straightforward fix - Campbell.
+	 */
+	if (block != bs_handle->block && bs_handle->block != NULL) {
+		block = bs_handle->block;
+	}
+
 	BLI_freelistN(&bs_handle->items);
 	BLI_remlink(&block->butstore, bs_handle);
 

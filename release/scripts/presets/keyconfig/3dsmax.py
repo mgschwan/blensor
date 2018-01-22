@@ -401,6 +401,12 @@ kmi = km.keymap_items.new('particle.hide', 'H', 'PRESS')
 kmi.properties.unselected = False
 kmi = km.keymap_items.new('particle.hide', 'H', 'PRESS', shift=True)
 kmi.properties.unselected = True
+kmi = km.keymap_items.new('view3d.manipulator', 'LEFTMOUSE', 'PRESS', shift=True)
+kmi.properties.release_confirm = True
+kmi.properties.use_planar_constraint= True
+kmi = km.keymap_items.new('view3d.manipulator', 'LEFTMOUSE', 'PRESS', shift=True)
+kmi.properties.release_confirm = True
+kmi.properties.use_accurate= True
 kmi = km.keymap_items.new('view3d.manipulator', 'LEFTMOUSE', 'PRESS', any=True)
 kmi.properties.release_confirm = True
 kmi = km.keymap_items.new('particle.brush_edit', 'LEFTMOUSE', 'PRESS')
@@ -422,6 +428,12 @@ kmi.properties.value_2 = 'ENABLED'
 # Map 3D View
 km = kc.keymaps.new('3D View', space_type='VIEW_3D', region_type='WINDOW', modal=False)
 
+kmi = km.keymap_items.new('view3d.manipulator', 'LEFTMOUSE', 'PRESS', shift=True)
+kmi.properties.release_confirm = True
+kmi.properties.use_planar_constraint= True
+kmi = km.keymap_items.new('view3d.manipulator', 'LEFTMOUSE', 'PRESS', shift=True)
+kmi.properties.release_confirm = True
+kmi.properties.use_accurate= True
 kmi = km.keymap_items.new('view3d.manipulator', 'LEFTMOUSE', 'PRESS', any=True)
 kmi.properties.release_confirm = True
 kmi = km.keymap_items.new('view3d.cursor3d', 'ACTIONMOUSE', 'PRESS')
@@ -754,8 +766,6 @@ kmi = km.keymap_items.new('anim.channels_move', 'PAGE_DOWN', 'PRESS', shift=True
 kmi.properties.direction = 'BOTTOM'
 kmi = km.keymap_items.new('anim.channels_group', 'G', 'PRESS', ctrl=True)
 kmi = km.keymap_items.new('anim.channels_ungroup', 'G', 'PRESS', alt=True)
-kmi = km.keymap_items.new('anim.channels_visibility_set', 'V', 'PRESS')
-kmi = km.keymap_items.new('anim.channels_visibility_toggle', 'V', 'PRESS', shift=True)
 
 # Map UV Editor
 km = kc.keymaps.new('UV Editor', space_type='EMPTY', region_type='WINDOW', modal=False)
@@ -1055,7 +1065,6 @@ kmi.properties.name = 'NODE_MT_add'
 kmi = km.keymap_items.new('node.duplicate_move', 'D', 'PRESS', shift=True)
 kmi = km.keymap_items.new('node.duplicate_move_keep_inputs', 'D', 'PRESS', shift=True, ctrl=True)
 kmi = km.keymap_items.new('node.parent_set', 'P', 'PRESS', ctrl=True)
-kmi = km.keymap_items.new('node.parent_clear', 'P', 'PRESS', alt=True)
 kmi = km.keymap_items.new('node.join', 'J', 'PRESS', ctrl=True)
 kmi = km.keymap_items.new('node.hide_toggle', 'H', 'PRESS')
 kmi = km.keymap_items.new('node.mute_toggle', 'M', 'PRESS')

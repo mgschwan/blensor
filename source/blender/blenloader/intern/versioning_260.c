@@ -56,8 +56,9 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
+#include "BLI_string_utils.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_anim.h"
 #include "BKE_image.h"
@@ -275,7 +276,7 @@ static void do_versions_nodetree_multi_file_output_format_2_62_1(Scene *sce, bNo
 
 				BLI_snprintf(sockpath, sizeof(sockpath), "%s_Image", filename);
 				sock = ntreeCompositOutputFileAddSocket(ntree, node, sockpath, &nimf->format);
-				/* XXX later do_versions copies path from socket name, need to set this explicitely */
+				/* XXX later do_versions copies path from socket name, need to set this explicitly */
 				BLI_strncpy(sock->name, sockpath, sizeof(sock->name));
 				if (old_image->link) {
 					old_image->link->tosock = sock;
@@ -284,7 +285,7 @@ static void do_versions_nodetree_multi_file_output_format_2_62_1(Scene *sce, bNo
 
 				BLI_snprintf(sockpath, sizeof(sockpath), "%s_Z", filename);
 				sock = ntreeCompositOutputFileAddSocket(ntree, node, sockpath, &nimf->format);
-				/* XXX later do_versions copies path from socket name, need to set this explicitely */
+				/* XXX later do_versions copies path from socket name, need to set this explicitly */
 				BLI_strncpy(sock->name, sockpath, sizeof(sock->name));
 				if (old_z->link) {
 					old_z->link->tosock = sock;
@@ -293,7 +294,7 @@ static void do_versions_nodetree_multi_file_output_format_2_62_1(Scene *sce, bNo
 			}
 			else {
 				sock = ntreeCompositOutputFileAddSocket(ntree, node, filename, &nimf->format);
-				/* XXX later do_versions copies path from socket name, need to set this explicitely */
+				/* XXX later do_versions copies path from socket name, need to set this explicitly */
 				BLI_strncpy(sock->name, filename, sizeof(sock->name));
 				if (old_image->link) {
 					old_image->link->tosock = sock;
@@ -343,7 +344,7 @@ static void do_versions_mesh_mloopcol_swap_2_62_1(Mesh *me)
 		if (layer->type == CD_MLOOPCOL) {
 			mloopcol = (MLoopCol *)layer->data;
 			for (i = 0; i < me->totloop; i++, mloopcol++) {
-				SWAP(char, mloopcol->r, mloopcol->b);
+				SWAP(unsigned char, mloopcol->r, mloopcol->b);
 			}
 		}
 	}
@@ -459,19 +460,19 @@ static void do_versions_affine_tracker_track(MovieTrackingTrack *track)
 
 		if (is_zero_v2(marker->pattern_corners[0]) && is_zero_v2(marker->pattern_corners[1]) &&
 		    is_zero_v2(marker->pattern_corners[2]) && is_zero_v2(marker->pattern_corners[3]))
-			{
-				marker->pattern_corners[0][0] = track->pat_min[0];
-				marker->pattern_corners[0][1] = track->pat_min[1];
+		{
+			marker->pattern_corners[0][0] = track->pat_min[0];
+			marker->pattern_corners[0][1] = track->pat_min[1];
 
-				marker->pattern_corners[1][0] = track->pat_max[0];
-				marker->pattern_corners[1][1] = track->pat_min[1];
+			marker->pattern_corners[1][0] = track->pat_max[0];
+			marker->pattern_corners[1][1] = track->pat_min[1];
 
-				marker->pattern_corners[2][0] = track->pat_max[0];
-				marker->pattern_corners[2][1] = track->pat_max[1];
+			marker->pattern_corners[2][0] = track->pat_max[0];
+			marker->pattern_corners[2][1] = track->pat_max[1];
 
-				marker->pattern_corners[3][0] = track->pat_min[0];
-				marker->pattern_corners[3][1] = track->pat_max[1];
-			}
+			marker->pattern_corners[3][0] = track->pat_min[0];
+			marker->pattern_corners[3][1] = track->pat_max[1];
+		}
 
 		if (is_zero_v2(marker->search_min) && is_zero_v2(marker->search_max)) {
 			copy_v2_v2(marker->search_min, track->search_min);
@@ -845,7 +846,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 		Object *ob;
 		for (ob = main->object.first; ob; ob = ob->id.next) {
 			if (is_zero_v3(ob->dscale)) {
-				fill_vn_fl(ob->dscale, 3, 1.0f);
+				copy_vn_fl(ob->dscale, 3, 1.0f);
 			}
 		}
 	}
@@ -999,7 +1000,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 		{
 			/* convert extended ascii to utf-8 for text editor */
 			Text *text;
-			for (text = main->text.first; text; text = text->id.next)
+			for (text = main->text.first; text; text = text->id.next) {
 				if (!(text->flags & TXT_ISEXT)) {
 					TextLine *tl;
 
@@ -1012,6 +1013,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 							text->curc = 0;
 					}
 				}
+			}
 		}
 		{
 			/* set new dynamic paint values */
@@ -1386,7 +1388,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 							SpaceClip *sclip = (SpaceClip *)sl;
 
 							if (sclip->around == 0) {
-								sclip->around = V3D_CENTROID;
+								sclip->around = V3D_AROUND_CENTER_MEAN;
 							}
 						}
 					}
@@ -1864,7 +1866,6 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 
 	if (main->versionfile < 265 || (main->versionfile == 265 && main->subversionfile < 5)) {
 		Scene *scene;
-		Image *image;
 		Tex *tex;
 
 		for (scene = main->scene.first; scene; scene = scene->id.next) {
@@ -1904,7 +1905,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 			}
 		}
 
-		for (image = main->image.first; image; image = image->id.next) {
+		for (Image *image = main->image.first; image; image = image->id.next) {
 			if (image->flag & IMA_DO_PREMUL) {
 				image->alpha_mode = IMA_ALPHA_STRAIGHT;
 			}
@@ -1915,7 +1916,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 
 		for (tex = main->tex.first; tex; tex = tex->id.next) {
 			if (tex->type == TEX_IMAGE && (tex->imaflag & TEX_USEALPHA) == 0) {
-				image = blo_do_versions_newlibadr(fd, tex->id.lib, tex->ima);
+				Image *image = blo_do_versions_newlibadr(fd, tex->id.lib, tex->ima);
 
 				if (image && (image->flag & IMA_DO_PREMUL) == 0)
 					image->flag |= IMA_IGNORE_ALPHA;
@@ -2096,7 +2097,7 @@ void blo_do_versions_260(FileData *fd, Library *UNUSED(lib), Main *main)
 	if (!MAIN_VERSION_ATLEAST(main, 266, 4)) {
 		Brush *brush;
 		for (brush = main->brush.first; brush; brush = brush->id.next) {
-			default_mtex(&brush->mask_mtex);
+			BKE_texture_mtex_default(&brush->mask_mtex);
 
 			if (brush->ob_mode & OB_MODE_TEXTURE_PAINT) {
 				brush->spacing /= 2;

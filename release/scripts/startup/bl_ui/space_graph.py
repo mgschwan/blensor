@@ -29,6 +29,7 @@ class GRAPH_HT_header(Header):
         from bl_ui.space_dopesheet import dopesheet_filter
 
         layout = self.layout
+        toolsettings = context.tool_settings
 
         st = context.space_data
 
@@ -41,10 +42,19 @@ class GRAPH_HT_header(Header):
 
         dopesheet_filter(layout, context)
 
-        layout.prop(st, "use_normalization", text="Normalize")
-        row = layout.row()
-        row.active = st.use_normalization
-        row.prop(st, "use_auto_normalization", text="Auto")
+        row = layout.row(align=True)
+        row.prop(st, "use_normalization", icon='NORMALIZE_FCURVES', text="Normalize", toggle=True)
+        sub = row.row(align=True)
+        sub.active = st.use_normalization
+        sub.prop(st, "use_auto_normalization", icon='FILE_REFRESH', text="", toggle=True)
+
+        row = layout.row(align=True)
+
+        row.prop(toolsettings, "use_proportional_fcurve",
+                 text="", icon_only=True)
+        if toolsettings.use_proportional_fcurve:
+            row.prop(toolsettings, "proportional_edit_falloff",
+                     text="", icon_only=True)
 
         layout.prop(st, "auto_snap", text="")
         layout.prop(st, "pivot_point", icon_only=True)
@@ -116,11 +126,12 @@ class GRAPH_MT_view(Menu):
         layout.separator()
         layout.operator("graph.view_all")
         layout.operator("graph.view_selected")
+        layout.operator("graph.view_frame")
 
         layout.separator()
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
-        layout.operator("screen.screen_full_area").use_hide_panels = True
+        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Fullscreen Area").use_hide_panels = True
 
 
 class GRAPH_MT_select(Menu):
@@ -143,6 +154,8 @@ class GRAPH_MT_select(Menu):
         props = layout.operator("graph.select_border", text="Border (Include Handles)")
         props.axis_range = False
         props.include_handles = True
+
+        layout.operator("graph.select_circle")
 
         layout.separator()
         layout.operator("graph.select_column", text="Columns on Selected Keys").mode = 'KEYS'
@@ -247,7 +260,8 @@ class GRAPH_MT_key(Menu):
         layout.operator_menu_enum("graph.easing_type", "type", text="Easing Type")
 
         layout.separator()
-        layout.operator("graph.clean")
+        layout.operator("graph.clean").channels = False
+        layout.operator("graph.clean", text="Clean Channels").channels = True
         layout.operator("graph.smooth")
         layout.operator("graph.sample")
         layout.operator("graph.bake")
@@ -271,5 +285,33 @@ class GRAPH_MT_key_transform(Menu):
         layout.operator("transform.rotate", text="Rotate")
         layout.operator("transform.resize", text="Scale")
 
+
+class GRAPH_MT_delete(Menu):
+    bl_label = "Delete"
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.operator("graph.delete")
+
+        layout.separator()
+
+        layout.operator("graph.clean").channels = False
+        layout.operator("graph.clean", text="Clean Channels").channels = True
+
+classes = (
+    GRAPH_HT_header,
+    GRAPH_MT_editor_menus,
+    GRAPH_MT_view,
+    GRAPH_MT_select,
+    GRAPH_MT_marker,
+    GRAPH_MT_channel,
+    GRAPH_MT_key,
+    GRAPH_MT_key_transform,
+    GRAPH_MT_delete,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

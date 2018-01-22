@@ -32,11 +32,6 @@
  * from blender materials.
  */
 
-/* python redefines */
-#ifdef _POSIX_C_SOURCE
-#undef _POSIX_C_SOURCE
-#endif
-
 #include <Python.h>
 
 #include "DNA_scene_types.h"
@@ -60,7 +55,7 @@
 #define PY_MODULE_ADD_CONSTANT(module, name) PyModule_AddIntConstant(module, # name, name)
 
 PyDoc_STRVAR(M_gpu_doc,
-"This module provides access to the GLSL shader."
+"This module provides access to the GLSL shader and Offscreen rendering functionalities."
 );
 static struct PyModuleDef gpumodule = {
 	PyModuleDef_HEAD_INIT,
@@ -79,22 +74,75 @@ static PyObject *PyInit_gpu(void)
 	if (m == NULL)
 		return NULL;
 
+
+	/* Take care to update docs when editing: 'doc/python_api/rst/gpu.rst' */
+
+
+	/* -------------------------------------------------------------------- */
+	/* GPUDynamicType */
+
+	/* device constant groups */
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_GROUP_MISC);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_GROUP_LAMP);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_GROUP_OBJECT);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_GROUP_SAMPLER);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_GROUP_MIST);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_GROUP_WORLD);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_GROUP_MAT);
+
 	/* device constants */
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_NONE);
+	/* GPU_DYNAMIC_GROUP_OBJECT */
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_OBJECT_VIEWMAT);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_OBJECT_MAT);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_OBJECT_VIEWIMAT);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_OBJECT_IMAT);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_OBJECT_LOCTOVIEWMAT);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_OBJECT_LOCTOVIEWIMAT);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_OBJECT_COLOR);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_OBJECT_AUTOBUMPSCALE);
+	/* GPU_DYNAMIC_GROUP_LAMP */
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_DYNVEC);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_DYNCO);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_DYNIMAT);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_DYNPERSMAT);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_DYNENERGY);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_DYNCOL);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_ATT1);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_ATT2);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_DISTANCE);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_SPOTSIZE);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_SPOTBLEND);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_LAMP_SPOTSCALE);
+	/* GPU_DYNAMIC_GROUP_SAMPLER */
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_SAMPLER_2DBUFFER);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_SAMPLER_2DIMAGE);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_SAMPLER_2DSHADOW);
+	/* GPU_DYNAMIC_GROUP_MIST */
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MIST_ENABLE);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MIST_START);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MIST_DISTANCE);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MIST_INTENSITY);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MIST_TYPE);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MIST_COLOR);
+	/* GPU_DYNAMIC_GROUP_WORLD */
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_HORIZON_COLOR);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_AMBIENT_COLOR);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_ZENITH_COLOR);
+	/* GPU_DYNAMIC_GROUP_MAT */
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MAT_DIFFRGB);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MAT_REF);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MAT_SPECRGB);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MAT_SPEC);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MAT_HARD);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MAT_EMIT);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MAT_AMB);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MAT_ALPHA);
+	PY_MODULE_ADD_CONSTANT(m, GPU_DYNAMIC_MAT_MIR);
+
+
+	/* -------------------------------------------------------------------- */
+	/* GPUDataType */
 
 	PY_MODULE_ADD_CONSTANT(m, GPU_DATA_1I);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DATA_1F);
@@ -105,6 +153,12 @@ static PyObject *PyInit_gpu(void)
 	PY_MODULE_ADD_CONSTANT(m, GPU_DATA_16F);
 	PY_MODULE_ADD_CONSTANT(m, GPU_DATA_4UB);
 
+
+	/* -------------------------------------------------------------------- */
+	/* CustomDataType
+	 *
+	 * Intentionally only include the subset used by the GPU API.
+	 */
 	PY_MODULE_ADD_CONSTANT(m, CD_MTFACE);
 	PY_MODULE_ADD_CONSTANT(m, CD_ORCO);
 	PY_MODULE_ADD_CONSTANT(m, CD_TANGENT);
@@ -208,6 +262,9 @@ static PyObject *GPU_export_shader(PyObject *UNUSED(self), PyObject *args, PyObj
 		if (uniform->lamp) {
 			PY_DICT_ADD_ID(dict, uniform, lamp);
 		}
+		if (uniform->material) {
+			PY_DICT_ADD_ID(dict, uniform, material);
+		}
 		if (uniform->image) {
 			PY_DICT_ADD_ID(dict, uniform, image);
 		}
@@ -259,12 +316,25 @@ static PyMethodDef meth_export_shader[] = {
 	{"export_shader", (PyCFunction)GPU_export_shader, METH_VARARGS | METH_KEYWORDS, GPU_export_shader_doc}
 };
 
+/* -------------------------------------------------------------------- */
+/* Initialize Module */
+
 PyObject *GPU_initPython(void)
 {
-	PyObject *module = PyInit_gpu();
-	PyModule_AddObject(module, "export_shader", (PyObject *)PyCFunction_New(meth_export_shader, NULL));
-	PyDict_SetItemString(PyImport_GetModuleDict(), "gpu", module);
+	PyObject *module;
+	PyObject *submodule;
+	PyObject *sys_modules = PyThreadState_GET()->interp->modules;
 
+	module = PyInit_gpu();
+
+	PyModule_AddObject(module, "export_shader", (PyObject *)PyCFunction_New(meth_export_shader, NULL));
+
+	/* gpu.offscreen */
+	PyModule_AddObject(module, "offscreen", (submodule = BPyInit_gpu_offscreen()));
+	PyDict_SetItem(sys_modules, PyModule_GetNameObject(submodule), submodule);
+	Py_INCREF(submodule);
+
+	PyDict_SetItem(PyImport_GetModuleDict(), PyModule_GetNameObject(module), module);
 	return module;
 }
 

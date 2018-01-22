@@ -18,9 +18,9 @@
 
 bl_info = {
     "name": "Node Wrangler",
-    "author": "Bartek Skorupa, Greg Zaal, Sebastian Koenig",
-    "version": (3, 24),
-    "blender": (2, 72, 0),
+    "author": "Bartek Skorupa, Greg Zaal, Sebastian Koenig, Christian Brinkmann, Florian Meyer",
+    "version": (3, 35),
+    "blender": (2, 78, 0),
     "location": "Node Editor Toolbar or Ctrl-Space",
     "description": "Various tools to enhance and speed up node-based workflow",
     "warning": "",
@@ -32,11 +32,15 @@ bl_info = {
 import bpy, blf, bgl
 from bpy.types import Operator, Panel, Menu
 from bpy.props import FloatProperty, EnumProperty, BoolProperty, IntProperty, StringProperty, FloatVectorProperty, CollectionProperty
-from bpy_extras.io_utils import ImportHelper
+from bpy_extras.io_utils import ImportHelper, ExportHelper
 from mathutils import Vector
 from math import cos, sin, pi, hypot
-from os import listdir
+from os import path
 from glob import glob
+from copy import copy
+from itertools import chain
+import re
+from collections import namedtuple
 
 #################
 # rl_outputs:
@@ -45,38 +49,39 @@ from glob import glob
 # and MultiLayer EXR outputs names and corresponding render engines
 #
 # rl_outputs entry = (render_pass, rl_output_name, exr_output_name, in_internal, in_cycles)
+RL_entry = namedtuple('RL_Entry', ['render_pass', 'output_name', 'exr_output_name', 'in_internal', 'in_cycles'])
 rl_outputs = (
-    ('use_pass_ambient_occlusion', 'AO', 'AO', True, True),
-    ('use_pass_color', 'Color', 'Color', True, False),
-    ('use_pass_combined', 'Image', 'Combined', True, True),
-    ('use_pass_diffuse', 'Diffuse', 'Diffuse', True, False),
-    ('use_pass_diffuse_color', 'Diffuse Color', 'DiffCol', False, True),
-    ('use_pass_diffuse_direct', 'Diffuse Direct', 'DiffDir', False, True),
-    ('use_pass_diffuse_indirect', 'Diffuse Indirect', 'DiffInd', False, True),
-    ('use_pass_emit', 'Emit', 'Emit', True, False),
-    ('use_pass_environment', 'Environment', 'Env', True, False),
-    ('use_pass_glossy_color', 'Glossy Color', 'GlossCol', False, True),
-    ('use_pass_glossy_direct', 'Glossy Direct', 'GlossDir', False, True),
-    ('use_pass_glossy_indirect', 'Glossy Indirect', 'GlossInd', False, True),
-    ('use_pass_indirect', 'Indirect', 'Indirect', True, False),
-    ('use_pass_material_index', 'IndexMA', 'IndexMA', True, True),
-    ('use_pass_mist', 'Mist', 'Mist', True, False),
-    ('use_pass_normal', 'Normal', 'Normal', True, True),
-    ('use_pass_object_index', 'IndexOB', 'IndexOB', True, True),
-    ('use_pass_reflection', 'Reflect', 'Reflect', True, False),
-    ('use_pass_refraction', 'Refract', 'Refract', True, False),
-    ('use_pass_shadow', 'Shadow', 'Shadow', True, True),
-    ('use_pass_specular', 'Specular', 'Spec', True, False),
-    ('use_pass_subsurface_color', 'Subsurface Color', 'SubsurfaceCol', False, True),
-    ('use_pass_subsurface_direct', 'Subsurface Direct', 'SubsurfaceDir', False, True),
-    ('use_pass_subsurface_indirect', 'Subsurface Indirect', 'SubsurfaceInd', False, True),
-    ('use_pass_transmission_color', 'Transmission Color', 'TransCol', False, True),
-    ('use_pass_transmission_direct', 'Transmission Direct', 'TransDir', False, True),
-    ('use_pass_transmission_indirect', 'Transmission Indirect', 'TransInd', False, True),
-    ('use_pass_uv', 'UV', 'UV', True, True),
-    ('use_pass_vector', 'Speed', 'Vector', True, True),
-    ('use_pass_z', 'Z', 'Depth', True, True),
-)
+    RL_entry('use_pass_ambient_occlusion', 'AO', 'AO', True, True),
+    RL_entry('use_pass_color', 'Color', 'Color', True, False),
+    RL_entry('use_pass_combined', 'Image', 'Combined', True, True),
+    RL_entry('use_pass_diffuse', 'Diffuse', 'Diffuse', True, False),
+    RL_entry('use_pass_diffuse_color', 'Diffuse Color', 'DiffCol', False, True),
+    RL_entry('use_pass_diffuse_direct', 'Diffuse Direct', 'DiffDir', False, True),
+    RL_entry('use_pass_diffuse_indirect', 'Diffuse Indirect', 'DiffInd', False, True),
+    RL_entry('use_pass_emit', 'Emit', 'Emit', True, False),
+    RL_entry('use_pass_environment', 'Environment', 'Env', True, False),
+    RL_entry('use_pass_glossy_color', 'Glossy Color', 'GlossCol', False, True),
+    RL_entry('use_pass_glossy_direct', 'Glossy Direct', 'GlossDir', False, True),
+    RL_entry('use_pass_glossy_indirect', 'Glossy Indirect', 'GlossInd', False, True),
+    RL_entry('use_pass_indirect', 'Indirect', 'Indirect', True, False),
+    RL_entry('use_pass_material_index', 'IndexMA', 'IndexMA', True, True),
+    RL_entry('use_pass_mist', 'Mist', 'Mist', True, False),
+    RL_entry('use_pass_normal', 'Normal', 'Normal', True, True),
+    RL_entry('use_pass_object_index', 'IndexOB', 'IndexOB', True, True),
+    RL_entry('use_pass_reflection', 'Reflect', 'Reflect', True, False),
+    RL_entry('use_pass_refraction', 'Refract', 'Refract', True, False),
+    RL_entry('use_pass_shadow', 'Shadow', 'Shadow', True, True),
+    RL_entry('use_pass_specular', 'Specular', 'Spec', True, False),
+    RL_entry('use_pass_subsurface_color', 'Subsurface Color', 'SubsurfaceCol', False, True),
+    RL_entry('use_pass_subsurface_direct', 'Subsurface Direct', 'SubsurfaceDir', False, True),
+    RL_entry('use_pass_subsurface_indirect', 'Subsurface Indirect', 'SubsurfaceInd', False, True),
+    RL_entry('use_pass_transmission_color', 'Transmission Color', 'TransCol', False, True),
+    RL_entry('use_pass_transmission_direct', 'Transmission Direct', 'TransDir', False, True),
+    RL_entry('use_pass_transmission_indirect', 'Transmission Indirect', 'TransInd', False, True),
+    RL_entry('use_pass_uv', 'UV', 'UV', True, True),
+    RL_entry('use_pass_vector', 'Speed', 'Vector', True, True),
+    RL_entry('use_pass_z', 'Z', 'Depth', True, True),
+    )
 
 # shader nodes
 # (rna_type.identifier, type, rna_type.name)
@@ -127,21 +132,23 @@ shaders_shader_nodes_props = (
     ('ShaderNodeHoldout', 'HOLDOUT', 'Holdout'),
     ('ShaderNodeVolumeAbsorption', 'VOLUME_ABSORPTION', 'Volume Absorption'),
     ('ShaderNodeVolumeScatter', 'VOLUME_SCATTER', 'Volume Scatter'),
+    ('ShaderNodeBsdfPrincipled', 'BSDF_PRINCIPLED', 'Principled BSDF'),
 )
 # (rna_type.identifier, type, rna_type.name)
 # Keeping mixed case to avoid having to translate entries when adding new nodes in operators.
 shaders_texture_nodes_props = (
-    ('ShaderNodeTexImage', 'TEX_IMAGE', 'Image'),
-    ('ShaderNodeTexEnvironment', 'TEX_ENVIRONMENT', 'Environment'),
-    ('ShaderNodeTexSky', 'TEX_SKY', 'Sky'),
-    ('ShaderNodeTexNoise', 'TEX_NOISE', 'Noise'),
-    ('ShaderNodeTexWave', 'TEX_WAVE', 'Wave'),
-    ('ShaderNodeTexVoronoi', 'TEX_VORONOI', 'Voronoi'),
-    ('ShaderNodeTexMusgrave', 'TEX_MUSGRAVE', 'Musgrave'),
-    ('ShaderNodeTexGradient', 'TEX_GRADIENT', 'Gradient'),
-    ('ShaderNodeTexMagic', 'TEX_MAGIC', 'Magic'),
-    ('ShaderNodeTexChecker', 'TEX_CHECKER', 'Checker'),
-    ('ShaderNodeTexBrick', 'TEX_BRICK', 'Brick')
+    ('ShaderNodeTexBrick', 'TEX_BRICK', 'Brick Texture'),
+    ('ShaderNodeTexChecker', 'TEX_CHECKER', 'Checker Texture'),
+    ('ShaderNodeTexEnvironment', 'TEX_ENVIRONMENT', 'Environment Texture'),
+    ('ShaderNodeTexGradient', 'TEX_GRADIENT', 'Gradient Texture'),
+    ('ShaderNodeTexImage', 'TEX_IMAGE', 'Image Texture'),
+    ('ShaderNodeTexMagic', 'TEX_MAGIC', 'Magic Texture'),
+    ('ShaderNodeTexMusgrave', 'TEX_MUSGRAVE', 'Musgrave Texture'),
+    ('ShaderNodeTexNoise', 'TEX_NOISE', 'Noise Texture'),
+    ('ShaderNodeTexPointDensity', 'TEX_POINTDENSITY', 'Point Density'),
+    ('ShaderNodeTexSky', 'TEX_SKY', 'Sky Texture'),
+    ('ShaderNodeTexVoronoi', 'TEX_VORONOI', 'Voronoi Texture'),
+    ('ShaderNodeTexWave', 'TEX_WAVE', 'Wave Texture'),
 )
 # (rna_type.identifier, type, rna_type.name)
 # Keeping mixed case to avoid having to translate entries when adding new nodes in operators.
@@ -591,34 +598,13 @@ def nice_hotkey_name(punc):
     return nice_punc
 
 
-def hack_force_update(context, nodes):
-    if context.space_data.tree_type == "ShaderNodeTree":
-        node = nodes.new('ShaderNodeMath')
-        node.inputs[0].default_value = 0.0
-        nodes.remove(node)
-    elif context.space_data.tree_type == "CompositorNodeTree":
-        node = nodes.new('CompositorNodeMath')
-        node.inputs[0].default_value = 0.0
-        nodes.remove(node)
-    return False
+def force_update(context):
+    context.space_data.node_tree.update_tag()
 
 
 def dpifac():
     prefs = bpy.context.user_preferences.system
-    if hasattr(prefs, 'pixel_size'):  # python access to this was only added recently, assume non-retina display is used if using older blender
-        retinafac = bpy.context.user_preferences.system.pixel_size
-    else:
-        retinafac = 1
-    return bpy.context.user_preferences.system.dpi/(72/retinafac)
-
-
-def is_end_node(node):
-    bool = True
-    for output in node.outputs:
-        if output.links:
-            bool = False
-            break
-    return bool
+    return prefs.dpi * prefs.pixel_size / 72
 
 
 def node_mid_pt(node, axis):
@@ -757,9 +743,13 @@ def store_mouse_cursor(context, event):
 
 
 def draw_line(x1, y1, x2, y2, size, colour=[1.0, 1.0, 1.0, 0.7]):
+    shademodel_state = bgl.Buffer(bgl.GL_INT, 1)
+    bgl.glGetIntegerv(bgl.GL_SHADE_MODEL, shademodel_state)
+
     bgl.glEnable(bgl.GL_BLEND)
-    bgl.glLineWidth(size)
+    bgl.glLineWidth(size * dpifac())
     bgl.glShadeModel(bgl.GL_SMOOTH)
+    bgl.glEnable(bgl.GL_LINE_SMOOTH)
 
     bgl.glBegin(bgl.GL_LINE_STRIP)
     try:
@@ -770,26 +760,28 @@ def draw_line(x1, y1, x2, y2, size, colour=[1.0, 1.0, 1.0, 0.7]):
     except:
         pass
     bgl.glEnd()
-    bgl.glShadeModel(bgl.GL_FLAT)
+
+    bgl.glShadeModel(shademodel_state[0])
+    bgl.glDisable(bgl.GL_LINE_SMOOTH)
 
 
 def draw_circle(mx, my, radius, colour=[1.0, 1.0, 1.0, 0.7]):
+    bgl.glEnable(bgl.GL_LINE_SMOOTH)
     bgl.glBegin(bgl.GL_TRIANGLE_FAN)
     bgl.glColor4f(colour[0], colour[1], colour[2], colour[3])
-    radius = radius
-    sides = 32
+    radius = radius * dpifac()
+    sides = 12
     for i in range(sides + 1):
         cosine = radius * cos(i * 2 * pi / sides) + mx
         sine = radius * sin(i * 2 * pi / sides) + my
         bgl.glVertex2f(cosine, sine)
     bgl.glEnd()
+    bgl.glDisable(bgl.GL_LINE_SMOOTH)
 
 
 def draw_rounded_node_border(node, radius=8, colour=[1.0, 1.0, 1.0, 0.7]):
     bgl.glEnable(bgl.GL_BLEND)
-    settings = bpy.context.user_preferences.addons[__name__].preferences
-    if settings.bgl_antialiasing:
-        bgl.glEnable(bgl.GL_LINE_SMOOTH)
+    bgl.glEnable(bgl.GL_LINE_SMOOTH)
 
     area_width = bpy.context.area.width - (16*dpifac()) - 1
     bottom_bar = (16*dpifac()) + 1
@@ -926,22 +918,19 @@ def draw_rounded_node_border(node, radius=8, colour=[1.0, 1.0, 1.0, 0.7]):
 
     # Restore defaults
     bgl.glDisable(bgl.GL_BLEND)
-    if settings.bgl_antialiasing:
-        bgl.glDisable(bgl.GL_LINE_SMOOTH)
+    bgl.glDisable(bgl.GL_LINE_SMOOTH)
 
 
-def draw_callback_mixnodes(self, context, mode):
+def draw_callback_nodeoutline(self, context, mode):
     if self.mouse_path:
-        nodes = context.space_data.node_tree.nodes
-        settings = context.user_preferences.addons[__name__].preferences
-        if settings.bgl_antialiasing:
-            bgl.glEnable(bgl.GL_LINE_SMOOTH)
+        nodes, links = get_nodes_links(context)
+        bgl.glEnable(bgl.GL_LINE_SMOOTH)
 
         if mode == "LINK":
             col_outer = [1.0, 0.2, 0.2, 0.4]
             col_inner = [0.0, 0.0, 0.0, 0.5]
             col_circle_inner = [0.3, 0.05, 0.05, 1.0]
-        if mode == "LINKMENU":
+        elif mode == "LINKMENU":
             col_outer = [0.4, 0.6, 1.0, 0.4]
             col_inner = [0.0, 0.0, 0.0, 0.5]
             col_circle_inner = [0.08, 0.15, .3, 1.0]
@@ -958,18 +947,22 @@ def draw_callback_mixnodes(self, context, mode):
         n1 = nodes[context.scene.NWLazySource]
         n2 = nodes[context.scene.NWLazyTarget]
 
-        if n1 != n2:
-            draw_rounded_node_border(n1, radius=6, colour=col_outer)  # outline
-            draw_rounded_node_border(n1, radius=5, colour=col_inner)  # inner
-            draw_rounded_node_border(n2, radius=6, colour=col_outer)  # outline
-            draw_rounded_node_border(n2, radius=5, colour=col_inner)  # inner
+        if n1 == n2:
+            col_outer = [0.4, 0.4, 0.4, 0.4]
+            col_inner = [0.0, 0.0, 0.0, 0.5]
+            col_circle_inner = [0.2, 0.2, 0.2, 1.0]
 
-        draw_line(m1x, m1y, m2x, m2y, 4, col_outer)  # line outline
+        draw_rounded_node_border(n1, radius=6, colour=col_outer)  # outline
+        draw_rounded_node_border(n1, radius=5, colour=col_inner)  # inner
+        draw_rounded_node_border(n2, radius=6, colour=col_outer)  # outline
+        draw_rounded_node_border(n2, radius=5, colour=col_inner)  # inner
+
+        draw_line(m1x, m1y, m2x, m2y, 5, col_outer)  # line outline
         draw_line(m1x, m1y, m2x, m2y, 2, col_inner)  # line inner
 
         # circle outline
-        draw_circle(m1x, m1y, 6, col_outer)
-        draw_circle(m2x, m2y, 6, col_outer)
+        draw_circle(m1x, m1y, 7, col_outer)
+        draw_circle(m2x, m2y, 7, col_outer)
 
         # circle inner
         draw_circle(m1x, m1y, 5, col_circle_inner)
@@ -980,32 +973,61 @@ def draw_callback_mixnodes(self, context, mode):
         bgl.glDisable(bgl.GL_BLEND)
         bgl.glColor4f(0.0, 0.0, 0.0, 1.0)
 
-        if settings.bgl_antialiasing:
-            bgl.glDisable(bgl.GL_LINE_SMOOTH)
+        bgl.glDisable(bgl.GL_LINE_SMOOTH)
 
 
 def get_nodes_links(context):
-    space = context.space_data
-    tree = space.node_tree
-    nodes = tree.nodes
-    links = tree.links
-    active = nodes.active
-    context_active = context.active_node
-    # check if we are working on regular node tree or node group is currently edited.
-    # if group is edited - active node of space_tree is the group
-    # if context.active_node != space active node - it means that the group is being edited.
-    # in such case we set "nodes" to be nodes of this group, "links" to be links of this group
-    # if context.active_node == space.active_node it means that we are not currently editing group
-    is_main_tree = True
-    if active:
-        is_main_tree = context_active == active
-    if not is_main_tree:  # if group is currently edited
-        tree = active.node_tree
-        nodes = tree.nodes
-        links = tree.links
+    tree = context.space_data.node_tree
 
-    return nodes, links
+    # Get nodes from currently edited tree.
+    # If user is editing a group, space_data.node_tree is still the base level (outside group).
+    # context.active_node is in the group though, so if space_data.node_tree.nodes.active is not
+    # the same as context.active_node, the user is in a group.
+    # Check recursively until we find the real active node_tree:
+    if tree.nodes.active:
+        while tree.nodes.active != context.active_node:
+            tree = tree.nodes.active.node_tree
 
+    return tree.nodes, tree.links
+
+# Principled prefs
+class NWPrincipledPreferences(bpy.types.PropertyGroup):
+    base_color = StringProperty(
+        name='Base Color',
+        default='diffuse diff albedo base col color',
+        description='Naming Components for Base Color maps')
+    sss_color = StringProperty(
+        name='Subsurface Color',
+        default='sss subsurface',
+        description='Naming Components for Subsurface Color maps')
+    metallic = StringProperty(
+        name='Metallic',
+        default='metallic metalness metal mtl',
+        description='Naming Components for metallness maps')
+    specular = StringProperty(
+        name='Specular',
+        default='specularity specular spec spc',
+        description='Naming Components for Specular maps')
+    normal = StringProperty(
+        name='Normal',
+        default='normal nor nrm nrml norm',
+        description='Naming Components for Normal maps')
+    bump = StringProperty(
+        name='Bump',
+        default='bump bmp',
+        description='Naming Components for bump maps')
+    rough = StringProperty(
+        name='Roughness',
+        default='roughness rough rgh',
+        description='Naming Components for roughness maps')
+    gloss = StringProperty(
+        name='Gloss',
+        default='gloss glossy glossyness',
+        description='Naming Components for glossy maps')
+    displacement = StringProperty(
+        name='Displacement',
+        default='displacement displace disp dsp height heightmap',
+        description='Naming Components for displacement maps')
 
 # Addon prefs
 class NWNodeWrangler(bpy.types.AddonPreferences):
@@ -1028,11 +1050,6 @@ class NWNodeWrangler(bpy.types.AddonPreferences):
         ),
         default='CENTER',
         description="When merging nodes with the Ctrl+Numpad0 hotkey (and similar) specifiy the position of the new nodes")
-    bgl_antialiasing = BoolProperty(
-        name="Line Antialiasing",
-        default=False,
-        description="Remove aliasing artifacts on lines drawn in interactive modes such as Lazy Connect (Alt+LMB) and Lazy Merge (Alt+RMB) - this may cause issues on some systems"
-    )
 
     show_hotkey_list = BoolProperty(
         name="Show Hotkey List",
@@ -1044,17 +1061,37 @@ class NWNodeWrangler(bpy.types.AddonPreferences):
         default="",
         description="Show only hotkeys that have this text in their name"
     )
+    show_principled_lists = BoolProperty(
+        name="Show Principled naming tags",
+        default=False,
+        description="Expand this box into a list of all naming tags for principled texture setup"
+    )
+    principled_tags = bpy.props.PointerProperty(type=NWPrincipledPreferences)
 
     def draw(self, context):
         layout = self.layout
         col = layout.column()
         col.prop(self, "merge_position")
         col.prop(self, "merge_hide")
-        col.prop(self, "bgl_antialiasing")
 
-        box = col.box()
+        box = layout.box()
         col = box.column(align=True)
+        col.prop(self, "show_principled_lists", text='Edit tags for auto texture detection in Principled BSDF setup', toggle=True)
+        if self.show_principled_lists:
+            tags = self.principled_tags
 
+            col.prop(tags, "base_color")
+            col.prop(tags, "sss_color")
+            col.prop(tags, "metallic")
+            col.prop(tags, "specular")
+            col.prop(tags, "rough")
+            col.prop(tags, "gloss")
+            col.prop(tags, "normal")
+            col.prop(tags, "bump")
+            col.prop(tags, "displacement")
+
+        box = layout.box()
+        col = box.column(align=True)
         hotkey_button_name = "Show Hotkey List"
         if self.show_hotkey_list:
             hotkey_button_name = "Hide Hotkey List"
@@ -1078,13 +1115,17 @@ class NWNodeWrangler(bpy.types.AddonPreferences):
                             keystr = "Ctrl " + keystr
                         row.label(keystr)
 
+
+
 def nw_check(context):
     space = context.space_data
+    valid_trees = ["ShaderNodeTree", "CompositorNodeTree", "TextureNodeTree"]
+
     valid = False
-    if space.type == 'NODE_EDITOR' and space.node_tree is not None:
+    if space.type == 'NODE_EDITOR' and space.node_tree is not None and space.tree_type in valid_trees:
         valid = True
-        
-    return valid    
+
+    return valid
 
 class NWBase:
     @classmethod
@@ -1158,7 +1199,7 @@ class NWLazyMix(Operator, NWBase):
             args = (self, context, 'MIX')
             # Add the region OpenGL drawing callback
             # draw in view space with 'POST_VIEW' and 'PRE_VIEW'
-            self._handle = bpy.types.SpaceNodeEditor.draw_handler_add(draw_callback_mixnodes, args, 'WINDOW', 'POST_PIXEL')
+            self._handle = bpy.types.SpaceNodeEditor.draw_handler_add(draw_callback_nodeoutline, args, 'WINDOW', 'POST_PIXEL')
 
             self.mouse_path = []
 
@@ -1239,7 +1280,7 @@ class NWLazyConnect(Operator, NWBase):
                         node.select = False
 
             if link_success:
-                hack_force_update(context, nodes)
+                force_update(context)
             context.scene.NWBusyDrawing = ""
             return {'FINISHED'}
 
@@ -1263,7 +1304,7 @@ class NWLazyConnect(Operator, NWBase):
             args = (self, context, mode)
             # Add the region OpenGL drawing callback
             # draw in view space with 'POST_VIEW' and 'PRE_VIEW'
-            self._handle = bpy.types.SpaceNodeEditor.draw_handler_add(draw_callback_mixnodes, args, 'WINDOW', 'POST_PIXEL')
+            self._handle = bpy.types.SpaceNodeEditor.draw_handler_add(draw_callback_nodeoutline, args, 'WINDOW', 'POST_PIXEL')
 
             self.mouse_path = []
 
@@ -1280,6 +1321,21 @@ class NWDeleteUnused(Operator, NWBase):
     bl_label = 'Delete Unused Nodes'
     bl_options = {'REGISTER', 'UNDO'}
 
+    delete_muted = BoolProperty(name="Delete Muted", description="Delete (but reconnect, like Ctrl-X) all muted nodes", default=True)
+    delete_frames = BoolProperty(name="Delete Empty Frames", description="Delete all frames that have no nodes inside them", default=True)
+
+    def is_unused_node(self, node):
+        end_types = ['OUTPUT_MATERIAL', 'OUTPUT', 'VIEWER', 'COMPOSITE', \
+                'SPLITVIEWER', 'OUTPUT_FILE', 'LEVELS', 'OUTPUT_LAMP', \
+                'OUTPUT_WORLD', 'GROUP_INPUT', 'GROUP_OUTPUT', 'FRAME']
+        if node.type in end_types:
+            return False
+
+        for output in node.outputs:
+            if output.links:
+                return False
+        return True
+
     @classmethod
     def poll(cls, context):
         valid = False
@@ -1290,9 +1346,6 @@ class NWDeleteUnused(Operator, NWBase):
 
     def execute(self, context):
         nodes, links = get_nodes_links(context)
-        end_types = 'OUTPUT_MATERIAL', 'OUTPUT', 'VIEWER', 'COMPOSITE', \
-            'SPLITVIEWER', 'OUTPUT_FILE', 'LEVELS', 'OUTPUT_LAMP', \
-            'OUTPUT_WORLD', 'GROUP', 'GROUP_INPUT', 'GROUP_OUTPUT'
 
         # Store selection
         selection = []
@@ -1300,21 +1353,50 @@ class NWDeleteUnused(Operator, NWBase):
             if node.select == True:
                 selection.append(node.name)
 
+        for node in nodes:
+            node.select = False
+
         deleted_nodes = []
         temp_deleted_nodes = []
         del_unused_iterations = len(nodes)
         for it in range(0, del_unused_iterations):
             temp_deleted_nodes = list(deleted_nodes)  # keep record of last iteration
             for node in nodes:
-                node.select = False
-            for node in nodes:
-                if is_end_node(node) and not node.type in end_types and node.type != 'FRAME':
+                if self.is_unused_node(node):
                     node.select = True
                     deleted_nodes.append(node.name)
                     bpy.ops.node.delete()
 
             if temp_deleted_nodes == deleted_nodes:  # stop iterations when there are no more nodes to be deleted
                 break
+
+        if self.delete_frames:
+            repeat = True
+            while repeat:
+                frames_in_use = []
+                frames = []
+                repeat = False
+                for node in nodes:
+                    if node.parent:
+                        frames_in_use.append(node.parent)
+                for node in nodes:
+                    if node.type == 'FRAME' and node not in frames_in_use:
+                        frames.append(node)
+                        if node.parent:
+                            repeat = True  # repeat for nested frames
+                for node in frames:
+                    if node not in frames_in_use:
+                        node.select = True
+                        deleted_nodes.append(node.name)
+                bpy.ops.node.delete()
+
+        if self.delete_muted:
+            for node in nodes:
+                if node.mute:
+                    node.select = True
+                    deleted_nodes.append(node.name)
+            bpy.ops.node.delete_reconnect()
+
         # get unique list of deleted nodes (iterations would count the same node more than once)
         deleted_nodes = list(set(deleted_nodes))
         for n in deleted_nodes:
@@ -1448,7 +1530,7 @@ class NWSwapLinks(Operator, NWBase):
             else:
                 self.report({'WARNING'}, "This node has no inputs to swap!")
 
-        hack_force_update(context, nodes)
+        force_update(context)
         return {'FINISHED'}
 
 
@@ -1578,10 +1660,7 @@ class NWEmissionViewer(Operator, NWBase):
                     out_i = valid_outputs[0]  # Start index of node's outputs
                 for i, valid_i in enumerate(valid_outputs):
                     for out_link in active.outputs[valid_i].links:
-                        linked_to_out = False
-                        if "Emission Viewer" in out_link.to_node.name or out_link.to_node == materialout:
-                            linked_to_out = True
-                        if linked_to_out:
+                        if "Emission Viewer" in out_link.to_node.name or (out_link.to_node == materialout and out_link.to_socket == materialout.inputs[0]):
                             if i < len(valid_outputs) - 1:
                                 out_i = valid_outputs[i + 1]
                             else:
@@ -1609,7 +1688,19 @@ class NWEmissionViewer(Operator, NWBase):
                         else:
                             emission = emission_placeholder
                         make_links.append((active.outputs[out_i], emission.inputs[0]))
-                        make_links.append((emission.outputs[0], materialout.inputs[0]))
+
+                        # If Viewer is connected to output by user, don't change those connections (patch by gandalf3)
+                        if emission.outputs[0].links.__len__() > 0:
+                            if not emission.outputs[0].links[0].to_node == materialout:
+                                make_links.append((emission.outputs[0], materialout.inputs[0]))
+                        else:
+                            make_links.append((emission.outputs[0], materialout.inputs[0]))
+
+                        # Set brightness of viewer to compensate for Film and CM exposure
+                        intensity = 1/context.scene.cycles.film_exposure  # Film exposure is a multiplier
+                        intensity /= pow(2, (context.scene.view_settings.exposure))  # CM exposure is measured in stops/EVs (2^x)
+                        emission.inputs[1].default_value = intensity
+
                     else:
                         # Output type is 'SHADER', no Viewer needed. Delete Viewer if exists.
                         make_links.append((active.outputs[out_i], materialout.inputs[1 if active.outputs[out_i].name == "Volume" else 0]))
@@ -1624,7 +1715,7 @@ class NWEmissionViewer(Operator, NWBase):
                 for node in nodes:
                     if node.name in selection:
                         node.select = True
-                hack_force_update(context, nodes)
+                force_update(context)
             return {'FINISHED'}
         else:
             return {'CANCELLED'}
@@ -1683,7 +1774,7 @@ class NWReloadImages(Operator, NWBase):
         if num_reloaded:
             self.report({'INFO'}, "Reloaded images")
             print("Reloaded " + str(num_reloaded) + " images")
-            hack_force_update(context, nodes)
+            force_update(context)
             return {'FINISHED'}
         else:
             self.report({'WARNING'}, "No images found to reload in this node tree")
@@ -1900,6 +1991,7 @@ class NWSwitchNodeType(Operator, NWBase):
                     if new_node.outputs:
                         links.new(new_node.outputs[0], out_src_link.to_socket)
             nodes.remove(node)
+        force_update(context)
         return {'FINISHED'}
 
 
@@ -2263,62 +2355,97 @@ class NWCopySettings(Operator, NWBase):
         return valid
 
     def execute(self, context):
-        nodes, links = get_nodes_links(context)
-        selected = [n for n in nodes if n.select]
-        reselect = []  # duplicated nodes will be selected after execution
-        active = nodes.active
-        if active.select:
-            reselect.append(active)
+        node_active = context.active_node
+        node_selected = context.selected_nodes
 
-        for node in selected:
-            if node.type == active.type and node != active:
-                # duplicate active, relink links as in 'node', append copy to 'reselect', delete node
-                bpy.ops.node.select_all(action='DESELECT')
-                nodes.active = active
-                active.select = True
-                bpy.ops.node.duplicate()
-                copied = nodes.active
-                # Copied active should however inherit some properties from 'node'
-                attributes = (
-                    'hide', 'show_preview', 'mute', 'label',
-                    'use_custom_color', 'color', 'width', 'width_hidden',
-                )
-                for attr in attributes:
-                    setattr(copied, attr, getattr(node, attr))
-                # Handle scenario when 'node' is in frame. 'copied' is in same frame then.
-                if copied.parent:
-                    bpy.ops.node.parent_clear()
-                locx = node.location.x
-                locy = node.location.y
-                # get absolute node location
-                parent = node.parent
-                while parent:
-                    locx += parent.location.x
-                    locy += parent.location.y
-                    parent = parent.parent
-                copied.location = [locx, locy]
-                # reconnect links from node to copied
-                for i, input in enumerate(node.inputs):
-                    if input.links:
-                        link = input.links[0]
-                        links.new(link.from_socket, copied.inputs[i])
-                for out, output in enumerate(node.outputs):
-                    if output.links:
-                        out_links = output.links
-                        for link in out_links:
-                            links.new(copied.outputs[out], link.to_socket)
-                bpy.ops.node.select_all(action='DESELECT')
-                node.select = True
-                bpy.ops.node.delete()
-                reselect.append(copied)
-            else:  # If selected wasn't copied, need to reselect it afterwards.
-                reselect.append(node)
-        # clean up
-        bpy.ops.node.select_all(action='DESELECT')
-        for node in reselect:
-            node.select = True
-        nodes.active = active
+        # Error handling
+        if not (len(node_selected) > 1):
+            self.report({'ERROR'}, "2 nodes must be selected at least")
+            return {'CANCELLED'}
 
+        # Check if active node is in the selection
+        selected_node_names = [n.name for n in node_selected]
+        if node_active.name not in selected_node_names:
+            self.report({'ERROR'}, "No active node")
+            return {'CANCELLED'}
+
+        # Get nodes in selection by type
+        valid_nodes = [n for n in node_selected if n.type == node_active.type]
+
+        if not (len(valid_nodes) > 1) and node_active:
+            self.report({'ERROR'}, "Selected nodes are not of the same type as {}".format(node_active.name))
+            return {'CANCELLED'}
+
+        if len(valid_nodes) != len(node_selected):
+            # Report nodes that are not valid
+            valid_node_names = [n.name for n in valid_nodes]
+            not_valid_names = list(set(selected_node_names) - set(valid_node_names))
+            self.report({'INFO'}, "Ignored {} (not of the same type as {})".format(", ".join(not_valid_names), node_active.name))
+
+        # Reference original
+        orig = node_active
+        #node_selected_names = [n.name for n in node_selected]
+
+        # Output list
+        success_names = []
+
+        # Deselect all nodes
+        for i in node_selected:
+            i.select = False
+
+        # Code by zeffii from http://blender.stackexchange.com/a/42338/3710
+        # Run through all other nodes
+        for node in valid_nodes[1:]:
+
+            # Check for frame node
+            parent = node.parent if node.parent else None
+            node_loc = [node.location.x, node.location.y]
+
+            # Select original to duplicate
+            orig.select = True
+
+            # Duplicate selected node
+            bpy.ops.node.duplicate()
+            new_node = context.selected_nodes[0]
+
+            # Deselect copy
+            new_node.select = False
+
+            # Properties to copy
+            node_tree = node.id_data
+            props_to_copy = 'bl_idname name location height width'.split(' ')
+
+            # Input and outputs
+            reconnections = []
+            mappings = chain.from_iterable([node.inputs, node.outputs])
+            for i in (i for i in mappings if i.is_linked):
+                for L in i.links:
+                    reconnections.append([L.from_socket.path_from_id(), L.to_socket.path_from_id()])
+
+            # Properties
+            props = {j: getattr(node, j) for j in props_to_copy}
+            props_to_copy.pop(0)
+
+            for prop in props_to_copy:
+                setattr(new_node, prop, props[prop])
+
+            # Get the node tree to remove the old node
+            nodes = node_tree.nodes
+            nodes.remove(node)
+            new_node.name = props['name']
+
+            if parent:
+                new_node.parent = parent
+                new_node.location = node_loc
+
+            for str_from, str_to in reconnections:
+                node_tree.links.new(eval(str_from), eval(str_to))
+
+            success_names.append(new_node.name)
+
+        orig.select = True
+        node_tree.nodes.active = orig
+        self.report({'INFO'}, "Successfully copied attributes from {} to: {}".format(orig.name, ", ".join(success_names)))
         return {'FINISHED'}
 
 
@@ -2426,6 +2553,8 @@ class NWAddTextureSetup(Operator, NWBase):
     bl_description = "Add Texture Node Setup to Selected Shaders"
     bl_options = {'REGISTER', 'UNDO'}
 
+    add_mapping = BoolProperty(name="Add Mapping Nodes", description="Create coordinate and mapping nodes for the texture (ignored for selected texture nodes)", default=True)
+
     @classmethod
     def poll(cls, context):
         valid = False
@@ -2437,55 +2566,314 @@ class NWAddTextureSetup(Operator, NWBase):
 
     def execute(self, context):
         nodes, links = get_nodes_links(context)
-        active = nodes.active
         shader_types = [x[1] for x in shaders_shader_nodes_props if x[1] not in {'MIX_SHADER', 'ADD_SHADER'}]
         texture_types = [x[1] for x in shaders_texture_nodes_props]
-        valid = False
-        if active:
-            if active.select:
-                if active.type in shader_types or active.type in texture_types:
-                    if not active.inputs[0].is_linked:
+        selected_nodes = [n for n in nodes if n.select]
+        for t_node in selected_nodes:
+            valid = False
+            input_index = 0
+            if t_node.inputs:
+                for index, i in enumerate(t_node.inputs):
+                    if not i.is_linked:
                         valid = True
-        if valid:
-            locx = active.location.x
-            locy = active.location.y
+                        input_index = index
+                        break
+            if valid:
+                locx = t_node.location.x
+                locy = t_node.location.y - t_node.dimensions.y/2
 
-            xoffset = [500.0, 700.0]
-            isshader = True
-            if active.type not in shader_types:
-                xoffset = [290.0, 500.0]
-                isshader = False
+                xoffset = [500, 700]
+                is_texture = False
+                if t_node.type in texture_types + ['MAPPING']:
+                    xoffset = [290, 500]
+                    is_texture = True
 
-            coordout = 2
-            image_type = 'ShaderNodeTexImage'
+                coordout = 2
+                image_type = 'ShaderNodeTexImage'
 
-            if (active.type in texture_types and active.type != 'TEX_IMAGE') or (active.type == 'BACKGROUND'):
-                coordout = 0  # image texture uses UVs, procedural textures and Background shader use Generated
-                if active.type == 'BACKGROUND':
-                    image_type = 'ShaderNodeTexEnvironment'
+                if (t_node.type in texture_types and t_node.type != 'TEX_IMAGE') or (t_node.type == 'BACKGROUND'):
+                    coordout = 0  # image texture uses UVs, procedural textures and Background shader use Generated
+                    if t_node.type == 'BACKGROUND':
+                        image_type = 'ShaderNodeTexEnvironment'
 
-            if isshader:
-                tex = nodes.new(image_type)
-                tex.location = [locx - 200.0, locy + 28.0]
+                if not is_texture:
+                    tex = nodes.new(image_type)
+                    tex.location = [locx - 200, locy + 112]
+                    nodes.active = tex
+                    links.new(tex.outputs[0], t_node.inputs[input_index])
 
-            map = nodes.new('ShaderNodeMapping')
-            map.location = [locx - xoffset[0], locy + 80.0]
-            map.width = 240
-            coord = nodes.new('ShaderNodeTexCoord')
-            coord.location = [locx - xoffset[1], locy + 40.0]
-            active.select = False
+                t_node.select = False
+                if self.add_mapping or is_texture:
+                    if t_node.type != 'MAPPING':
+                        m = nodes.new('ShaderNodeMapping')
+                        m.location = [locx - xoffset[0], locy + 141]
+                        m.width = 240
+                    else:
+                        m = t_node
+                    coord = nodes.new('ShaderNodeTexCoord')
+                    coord.location = [locx - (200 if t_node.type == 'MAPPING' else xoffset[1]), locy + 124]
 
-            if isshader:
-                nodes.active = tex
-                links.new(tex.outputs[0], active.inputs[0])
-                links.new(map.outputs[0], tex.inputs[0])
-                links.new(coord.outputs[coordout], map.inputs[0])
+                    if not is_texture:
+                        links.new(m.outputs[0], tex.inputs[0])
+                        links.new(coord.outputs[coordout], m.inputs[0])
+                    else:
+                        nodes.active = m
+                        links.new(m.outputs[0], t_node.inputs[input_index])
+                        links.new(coord.outputs[coordout], m.inputs[0])
+            else:
+                self.report({'WARNING'}, "No free inputs for node: "+t_node.name)
+        return {'FINISHED'}
+
+
+class NWAddPrincipledSetup(Operator, NWBase, ImportHelper):
+    bl_idname = "node.nw_add_textures_for_principled"
+    bl_label = "Principled Texture Setup"
+    bl_description = "Add Texture Node Setup for Principled BSDF"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    directory = StringProperty(
+                    name='Directory',
+                    subtype='DIR_PATH',
+                    default='',
+                    description='Folder to search in for image files')
+    files = CollectionProperty(
+                    type=bpy.types.OperatorFileListElement,
+                    options={'HIDDEN', 'SKIP_SAVE'})
+
+    order = [
+        "filepath",
+        "files",
+        ]
+
+    @classmethod
+    def poll(cls, context):
+        valid = False
+        if nw_check(context):
+            space = context.space_data
+            if space.tree_type == 'ShaderNodeTree' and context.scene.render.engine == 'CYCLES':
+                valid = True
+        return valid
+
+    def execute(self, context):
+        # Check if everything is ok
+        if not self.directory:
+            self.report({'INFO'}, 'No Folder Selected')
+            return {'CANCELLED'}
+        if not self.files[:]:
+            self.report({'INFO'}, 'No Files Selected')
+            return {'CANCELLED'}
+
+        nodes, links = get_nodes_links(context)
+        active_node = nodes.active
+        if not active_node.bl_idname == 'ShaderNodeBsdfPrincipled':
+            self.report({'INFO'}, 'Select Principled BSDF')
+            return {'CANCELLED'}
+
+        # Helper_functions
+        def split_into__components(fname):
+            # Split filename into components
+            # 'WallTexture_diff_2k.002.jpg' -> ['Wall', 'Texture', 'diff', 'k']
+            # Remove extension
+            fname = path.splitext(fname)[0]
+            # Remove digits
+            fname = ''.join(i for i in fname if not i.isdigit())
+            # Seperate CamelCase by space
+            fname = re.sub("([a-z])([A-Z])","\g<1> \g<2>",fname)
+            # Replace common separators with SPACE
+            seperators = ['_', '.', '-', '__', '--', '#']
+            for sep in seperators:
+                fname = fname.replace(sep, ' ')
+
+            components = fname.split(' ')
+            components = [c.lower() for c in components]
+            return components
+
+        # Filter textures names for texturetypes in filenames
+        # [Socket Name, [abbreviations and keyword list], Filename placeholder]
+        tags = context.user_preferences.addons[__name__].preferences.principled_tags
+        normal_abbr = tags.normal.split(' ')
+        bump_abbr = tags.bump.split(' ')
+        gloss_abbr = tags.gloss.split(' ')
+        rough_abbr = tags.rough.split(' ')
+        socketnames = [
+        ['Displacement', tags.displacement.split(' '), None],
+        ['Base Color', tags.base_color.split(' '), None],
+        ['Subsurface Color', tags.sss_color.split(' '), None],
+        ['Metallic', tags.metallic.split(' '), None],
+        ['Specular', tags.specular.split(' '), None],
+        ['Roughness', rough_abbr + gloss_abbr, None],
+        ['Normal', normal_abbr + bump_abbr, None],
+        ]
+
+        # Look through texture_types and set value as filename of first matched file
+        def match_files_to_socket_names():
+            for sname in socketnames:
+                for file in self.files:
+                    fname = file.name
+                    filenamecomponents = split_into__components(fname)
+                    matches = set(sname[1]).intersection(set(filenamecomponents))
+                    # TODO: ignore basename (if texture is named "fancy_metal_nor", it will be detected as metallic map, not normal map)
+                    if matches:
+                        sname[2] = fname
+                        break
+
+        match_files_to_socket_names()
+        # Remove socketnames without found files
+        socketnames = [s for s in socketnames if s[2]
+                       and path.exists(self.directory+s[2])]
+        if not socketnames:
+            self.report({'INFO'}, 'No matching images found')
+            print('No matching images found')
+            return {'CANCELLED'}
+
+        # Add found images
+        print('\nMatched Textures:')
+        texture_nodes = []
+        disp_texture = None
+        normal_node = None
+        roughness_node = None
+        for i, sname in enumerate(socketnames):
+            print(i, sname[0], sname[2])
+
+            # DISPLACEMENT NODES
+            if sname[0] == 'Displacement':
+                disp_texture = nodes.new(type='ShaderNodeTexImage')
+                img = bpy.data.images.load(self.directory+sname[2])
+                disp_texture.image = img
+                disp_texture.label = 'Displacement'
+                disp_texture.color_space = 'NONE'
+
+                # Add displacement offset nodes
+                math_sub = nodes.new(type='ShaderNodeMath')
+                math_sub.operation = 'SUBTRACT'
+                math_sub.label = 'Offset'
+                math_sub.location = active_node.location + Vector((0, -560))
+                math_mul = nodes.new(type='ShaderNodeMath')
+                math_mul.operation = 'MULTIPLY'
+                math_mul.label = 'Strength'
+                math_mul.location = math_sub.location + Vector((200, 0))
+                link = links.new(math_mul.inputs[0], math_sub.outputs[0])
+                link = links.new(math_sub.inputs[0], disp_texture.outputs[0])
+
+                # Turn on true displacement in the material
+                # Too complicated for now
+
+                '''
+                # Frame. Does not update immediatly
+                # Seems to need an editor redraw
+                frame = nodes.new(type='NodeFrame')
+                frame.label = 'Displacement'
+                math_sub.parent = frame
+                math_mul.parent = frame
+                frame.update()
+                '''
+
+                #find ouput node
+                output_node = [n for n in nodes if n.bl_idname == 'ShaderNodeOutputMaterial']
+                if output_node:
+                    if not output_node[0].inputs[2].is_linked:
+                        link = links.new(output_node[0].inputs[2], math_mul.outputs[0])
+
+                continue
+
+            if not active_node.inputs[sname[0]].is_linked:
+                # No texture node connected -> add texture node with new image
+                texture_node = nodes.new(type='ShaderNodeTexImage')
+                img = bpy.data.images.load(self.directory+sname[2])
+                texture_node.image = img
+
+                # NORMAL NODES
+                if sname[0] == 'Normal':
+                    # Test if new texture node is normal or bump map
+                    fname_components = split_into__components(sname[2])
+                    match_normal = set(normal_abbr).intersection(set(fname_components))
+                    match_bump = set(bump_abbr).intersection(set(fname_components))
+                    if match_normal:
+                        # If Normal add normal node in between
+                        normal_node = nodes.new(type='ShaderNodeNormalMap')
+                        link = links.new(normal_node.inputs[1], texture_node.outputs[0])
+                    elif match_bump:
+                        # If Bump add bump node in between
+                        normal_node = nodes.new(type='ShaderNodeBump')
+                        link = links.new(normal_node.inputs[2], texture_node.outputs[0])
+
+                    link = links.new(active_node.inputs[sname[0]], normal_node.outputs[0])
+                    normal_node_texture = texture_node
+
+                elif sname[0] == 'Roughness':
+                    # Test if glossy or roughness map
+                    fname_components = split_into__components(sname[2])
+                    match_rough = set(rough_abbr).intersection(set(fname_components))
+                    match_gloss = set(gloss_abbr).intersection(set(fname_components))
+
+                    if match_rough:
+                        # If Roughness nothing to to
+                        link = links.new(active_node.inputs[sname[0]], texture_node.outputs[0])
+
+                    elif match_gloss:
+                        # If Gloss Map add invert node
+                        invert_node = nodes.new(type='ShaderNodeInvert')
+                        link = links.new(invert_node.inputs[1], texture_node.outputs[0])
+
+                        link = links.new(active_node.inputs[sname[0]], invert_node.outputs[0])
+                        roughness_node = texture_node
+
+                else:
+                    # This is a simple connection Texture --> Input slot
+                    link = links.new(active_node.inputs[sname[0]], texture_node.outputs[0])
+
+                # Use non-color for all but 'Base Color' Textures
+                if not sname[0] in ['Base Color']:
+                    texture_node.color_space = 'NONE'
 
             else:
-                nodes.active = map
-                links.new(map.outputs[0], active.inputs[0])
-                links.new(coord.outputs[coordout], map.inputs[0])
+                # If already texture connected. add to node list for alignment
+                texture_node = active_node.inputs[sname[0]].links[0].from_node
 
+            # This are all connected texture nodes
+            texture_nodes.append(texture_node)
+            texture_node.label = sname[0]
+
+        if disp_texture:
+            texture_nodes.append(disp_texture)
+
+        # Alignment
+        for i, texture_node in enumerate(texture_nodes):
+            offset = Vector((-400, (i * -260) + 200))
+            texture_node.location = active_node.location + offset
+
+        if normal_node:
+            # Extra alignment if normal node was added
+            normal_node.location = normal_node_texture.location + Vector((200, 0))
+
+        if roughness_node:
+            # Alignment of invert node if glossy map
+            invert_node.location = roughness_node.location + Vector((200, 0))
+
+        # Add texture input + mapping
+        mapping = nodes.new(type='ShaderNodeMapping')
+        mapping.location = active_node.location + Vector((-900, 0))
+        if len(texture_nodes) > 1:
+            # If more than one texture add reroute node in between
+            reroute = nodes.new(type='NodeReroute')
+            tex_coords = Vector((texture_nodes[0].location.x, sum(n.location.y for n in texture_nodes)/len(texture_nodes)))
+            reroute.location = tex_coords + Vector((-50, -120))
+            for texture_node in texture_nodes:
+                link = links.new(texture_node.inputs[0], reroute.outputs[0])
+            link = links.new(reroute.inputs[0], mapping.outputs[0])
+        else:
+            link = links.new(texture_nodes[0].inputs[0], mapping.outputs[0])
+
+        # Connect texture_coordiantes to mapping node
+        texture_input = nodes.new(type='ShaderNodeTexCoord')
+        texture_input.location = mapping.location + Vector((-200, 0))
+        link = links.new(mapping.inputs[0], texture_input.outputs[2])
+
+        # Just to be sure
+        active_node.select = False
+        nodes.update()
+        links.update()
+        force_update(context)
         return {'FINISHED'}
 
 
@@ -2556,9 +2944,10 @@ class NWAddReroutes(Operator, NWBase):
                         pass_used = True
                     else:
                         # check entries in global 'rl_outputs' variable
-                        for render_pass, out_name, exr_name, in_internal, in_cycles in rl_outputs:
-                            if output.name == out_name:
-                                pass_used = getattr(node_scene.render.layers[node_layer], render_pass)
+                        #for render_pass, output_name, exr_name, in_internal, in_cycles in rl_outputs:
+                        for rlo in rl_outputs:
+                            if output.name == rlo.output_name or output.name == rlo.exr_output_name:
+                                pass_used = getattr(node_scene.render.layers[node_layer], rlo.render_pass)
                                 break
                 if pass_used:
                     valid = ((option == 'ALL') or
@@ -2671,98 +3060,71 @@ class NWLinkActiveToSelected(Operator, NWBase):
 
 
 class NWAlignNodes(Operator, NWBase):
+    '''Align the selected nodes neatly in a row/column'''
     bl_idname = "node.nw_align_nodes"
-    bl_label = "Align nodes"
+    bl_label = "Align Nodes"
     bl_options = {'REGISTER', 'UNDO'}
-
-    # option: 'Vertically', 'Horizontally'
-    option = EnumProperty(
-        name="option",
-        description="Direction",
-        items=(
-            ('AXIS_X', "Align Vertically", 'Align Vertically'),
-            ('AXIS_Y', "Aligh Horizontally", 'Aligh Horizontally'),
-        )
-    )
+    margin = IntProperty(name='Margin', default=50, description='The amount of space between nodes')
 
     def execute(self, context):
         nodes, links = get_nodes_links(context)
-        selected = []  # entry = [index, loc.x, loc.y, width, height]
-        frames_reselect = []  # entry = frame node. will be used to reselect all selected frames
-        active = nodes.active
-        for i, node in enumerate(nodes):
-            total_w = 0.0  # total width of all nodes. Will be calculated later.
-            total_h = 0.0  # total height of all nodes. Will be calculated later
-            if node.select:
-                if node.type == 'FRAME':
-                    node.select = False
-                    frames_reselect.append(i)
+        margin = self.margin
+
+        selection = []
+        for node in nodes:
+            if node.select and node.type != 'FRAME':
+                selection.append(node)
+
+        # If no nodes are selected, align all nodes
+        active_loc = None
+        if not selection:
+            selection = nodes
+        elif nodes.active in selection:
+            active_loc = copy(nodes.active.location)  # make a copy, not a reference
+
+        # Check if nodes should be layed out horizontally or vertically
+        x_locs = [n.location.x + (n.dimensions.x / 2) for n in selection]  # use dimension to get center of node, not corner
+        y_locs = [n.location.y - (n.dimensions.y / 2) for n in selection]
+        x_range = max(x_locs) - min(x_locs)
+        y_range = max(y_locs) - min(y_locs)
+        mid_x = (max(x_locs) + min(x_locs)) / 2
+        mid_y = (max(y_locs) + min(y_locs)) / 2
+        horizontal = x_range > y_range
+
+        # Sort selection by location of node mid-point
+        if horizontal:
+            selection = sorted(selection, key=lambda n: n.location.x + (n.dimensions.x / 2))
+        else:
+            selection = sorted(selection, key=lambda n: n.location.y - (n.dimensions.y / 2), reverse=True)
+
+        # Alignment
+        current_pos = 0
+        for node in selection:
+            current_margin = margin
+            current_margin = current_margin * 0.5 if node.hide else current_margin  # use a smaller margin for hidden nodes
+
+            if horizontal:
+                node.location.x = current_pos
+                current_pos += current_margin + node.dimensions.x
+                node.location.y = mid_y + (node.dimensions.y / 2)
+            else:
+                node.location.y = current_pos
+                current_pos -= (current_margin * 0.3) + node.dimensions.y  # use half-margin for vertical alignment
+                node.location.x = mid_x - (node.dimensions.x / 2)
+
+        # If active node is selected, center nodes around it
+        if active_loc is not None:
+            active_loc_diff = active_loc - nodes.active.location
+            for node in selection:
+                node.location += active_loc_diff
+        else:  # Position nodes centered around where they used to be
+            locs = ([n.location.x + (n.dimensions.x / 2) for n in selection]) if horizontal else ([n.location.y - (n.dimensions.y / 2) for n in selection])
+            new_mid = (max(locs) + min(locs)) / 2
+            for node in selection:
+                if horizontal:
+                    node.location.x += (mid_x - new_mid)
                 else:
-                    locx = node.location.x
-                    locy = node.location.y
-                    width = node.dimensions[0]
-                    height = node.dimensions[1]
-                    total_w += width  # add nodes[i] width to total width of all nodes
-                    total_h += height  # add nodes[i] height to total height of all nodes
-                    # calculate relative locations
-                    parent = node.parent
-                    while parent is not None:
-                        locx += parent.location.x
-                        locy += parent.location.y
-                        parent = parent.parent
-                    selected.append([i, locx, locy, width, height])
-        count = len(selected)
-        if count > 1:  # aligning makes sense only if at least 2 nodes are selected
-            selected_sorted_x = sorted(selected, key=lambda k: (k[1], -k[2]))
-            selected_sorted_y = sorted(selected, key=lambda k: (-k[2], k[1]))
-            min_x = selected_sorted_x[0][1]  # min loc.x
-            min_x_loc_y = selected_sorted_x[0][2]  # loc y of node with min loc x
-            min_x_w = selected_sorted_x[0][3]  # width of node with max loc x
-            max_x = selected_sorted_x[count - 1][1]  # max loc.x
-            max_x_loc_y = selected_sorted_x[count - 1][2]  # loc y of node with max loc.x
-            max_x_w = selected_sorted_x[count - 1][3]  # width of node with max loc.x
-            min_y = selected_sorted_y[0][2]  # min loc.y
-            min_y_loc_x = selected_sorted_y[0][1]  # loc.x of node with min loc.y
-            min_y_h = selected_sorted_y[0][4]  # height of node with min loc.y
-            min_y_w = selected_sorted_y[0][3]  # width of node with min loc.y
-            max_y = selected_sorted_y[count - 1][2]  # max loc.y
-            max_y_loc_x = selected_sorted_y[count - 1][1]  # loc x of node with max loc.y
-            max_y_w = selected_sorted_y[count - 1][3]  # width of node with max loc.y
-            max_y_h = selected_sorted_y[count - 1][4]  # height of node with max loc.y
-
-            if self.option == 'AXIS_Y':  # Horizontally. Equivelent of s -> x -> 0 with even spacing.
-                loc_x = min_x
-                #loc_y = (max_x_loc_y + min_x_loc_y) / 2.0
-                loc_y = (max_y - max_y_h / 2.0 + min_y - min_y_h / 2.0) / 2.0
-                offset_x = (max_x - min_x - total_w + max_x_w) / (count - 1)
-                for i, x, y, w, h in selected_sorted_x:
-                    nodes[i].location.x = loc_x
-                    nodes[i].location.y = loc_y + h / 2.0
-                    parent = nodes[i].parent
-                    while parent is not None:
-                        nodes[i].location.x -= parent.location.x
-                        nodes[i].location.y -= parent.location.y
-                        parent = parent.parent
-                    loc_x += offset_x + w
-            else:  # if self.option == 'AXIS_Y'
-                loc_x = (max_x + max_x_w / 2.0 + min_x + min_x_w / 2.0) / 2.0
-                loc_y = min_y
-                offset_y = (max_y - min_y + total_h - min_y_h) / (count - 1)
-                for i, x, y, w, h in selected_sorted_y:
-                    nodes[i].location.x = loc_x - w / 2.0
-                    nodes[i].location.y = loc_y
-                    parent = nodes[i].parent
-                    while parent is not None:
-                        nodes[i].location.x -= parent.location.x
-                        nodes[i].location.y -= parent.location.y
-                        parent = parent.parent
-                    loc_y += offset_y - h
-
-            # reselect selected frames
-            for i in frames_reselect:
-                nodes[i].select = True
-            # restore active node
-            nodes.active = active
+                    node.location.y += (mid_y - new_mid)
 
         return {'FINISHED'}
 
@@ -2883,7 +3245,7 @@ class NWLinkToOutputNode(Operator, NWBase):
                     out_input_index = 2
             links.new(active.outputs[output_index], output_node.inputs[out_input_index])
 
-        hack_force_update(context, nodes)  # viewport render does not update
+        force_update(context)  # viewport render does not update
 
         return {'FINISHED'}
 
@@ -2904,7 +3266,7 @@ class NWMakeLink(Operator, NWBase):
 
         links.new(n1.outputs[self.from_socket], n2.inputs[self.to_socket])
 
-        hack_force_update(context, nodes)
+        force_update(context)
 
         return {'FINISHED'}
 
@@ -2937,27 +3299,43 @@ class NWAddSequence(Operator, ImportHelper):
     bl_options = {'REGISTER', 'UNDO'}
     directory = StringProperty(subtype="DIR_PATH")
     filename = StringProperty(subtype="FILE_NAME")
+    files = CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
 
     def execute(self, context):
         nodes, links = get_nodes_links(context)
         directory = self.directory
         filename = self.filename
+        files = self.files
+        tree = context.space_data.node_tree
 
+        # DEBUG
+        # print ("\nDIR:", directory)
+        # print ("FN:", filename)
+        # print ("Fs:", list(f.name for f in files), '\n')
 
-        if context.space_data.node_tree.type == 'SHADER':
+        if tree.type == 'SHADER':
             node_type = "ShaderNodeTexImage"
-        elif context.space_data.node_tree.type == 'COMPOSITING':
+        elif tree.type == 'COMPOSITING':
             node_type = "CompositorNodeImage"
         else:
             self.report({'ERROR'}, "Unsupported Node Tree type!")
             return {'CANCELLED'}
 
+        if not files[0].name and not filename:
+            self.report({'ERROR'}, "No file chosen")
+            return {'CANCELLED'}
+        elif files[0].name and (not filename or not path.exists(directory+filename)):
+            # User has selected multiple files without an active one, or the active one is non-existant
+            filename = files[0].name
+
+        if not path.exists(directory+filename):
+            self.report({'ERROR'}, filename+" does not exist!")
+            return {'CANCELLED'}
+
         without_ext = '.'.join(filename.split('.')[:-1])
 
         # if last digit isn't a number, it's not a sequence
-        if without_ext[-1].isdigit():
-            without_ext = without_ext[:-1] + '1'
-        else:
+        if not without_ext[-1].isdigit():
             self.report({'ERROR'}, filename+" does not seem to be part of a sequence")
             return {'CANCELLED'}
 
@@ -2993,20 +3371,17 @@ class NWAddSequence(Operator, ImportHelper):
 
         name_with_hashes = without_num + "#"*count_numbers + '.' + extension
 
-        node = nodes.new(node_type)
-        node.location.x = xloc
-        node.location.y = yloc + 110
+        bpy.ops.node.add_node('INVOKE_DEFAULT', use_transform=True, type=node_type)
+        node = nodes.active
         node.label = name_with_hashes
 
         img = bpy.data.images.load(directory+(without_ext+'.'+extension))
         img.source = 'SEQUENCE'
         img.name = name_with_hashes
         node.image = img
-        node.frame_offset = int(files[0][len(without_num)+len(directory):-1*(len(extension)+1)]) - 1  # separate the number from the file name of the first  file
-        if context.space_data.node_tree.type == 'SHADER':
-            node.image_user.frame_duration = num_frames
-        else:
-            node.frame_duration = num_frames
+        image_user = node.image_user if tree.type == 'SHADER' else node
+        image_user.frame_offset = int(files[0][len(without_num)+len(directory):-1*(len(extension)+1)]) - 1  # separate the number from the file name of the first  file
+        image_user.frame_duration = num_frames
 
         return {'FINISHED'}
 
@@ -3021,18 +3396,8 @@ class NWAddMultipleImages(Operator, ImportHelper):
 
     def execute(self, context):
         nodes, links = get_nodes_links(context)
-        nodes_list = [node for node in nodes]
-        if nodes_list:
-            nodes_list.sort(key=lambda k: k.location.x)
-            xloc = nodes_list[0].location.x - 220  # place new nodes at far left
-            yloc = 0
-            for node in nodes:
-                node.select = False
-                yloc += node_mid_pt(node, 'y')
-            yloc = yloc/len(nodes)
-        else:
-            xloc = 0
-            yloc = 0
+
+        xloc, yloc = context.region.view2d.region_to_view(context.area.width/2, context.area.height/2)
 
         if context.space_data.node_tree.type == 'SHADER':
             node_type = "ShaderNodeTexImage"
@@ -3060,9 +3425,12 @@ class NWAddMultipleImages(Operator, ImportHelper):
 
         # shift new nodes up to center of tree
         list_size = new_nodes[0].location.y - new_nodes[-1].location.y
-        for node in new_nodes:
-            node.select = True
-            node.location.y += (list_size/2)
+        for node in nodes:
+            if node in new_nodes:
+                node.select = True
+                node.location.y += (list_size/2)
+            else:
+                node.select = False
         return {'FINISHED'}
 
 
@@ -3100,7 +3468,7 @@ class NWViewerFocus(bpy.types.Operator):
 
                 region_center_x = context.region.width  / 2
                 region_center_y = context.region.height / 2
-                
+
                 bd_x = render.resolution_x * percent * space.backdrop_zoom
                 bd_y = render.resolution_y * percent * space.backdrop_zoom
 
@@ -3112,7 +3480,7 @@ class NWViewerFocus(bpy.types.Operator):
 
                 abs_mouse_x = (mlocx - margin_x) / bd_x
                 abs_mouse_y = (mlocy - margin_y) / bd_y
-                
+
                 for node in viewers:
                     node.center_x = abs_mouse_x
                     node.center_y = abs_mouse_y
@@ -3120,6 +3488,174 @@ class NWViewerFocus(bpy.types.Operator):
                 return {'PASS_THROUGH'}
 
         return self.execute(context)
+
+
+class NWSaveViewer(bpy.types.Operator, ExportHelper):
+    """Save the current viewer node to an image file"""
+    bl_idname = "node.nw_save_viewer"
+    bl_label = "Save This Image"
+    filepath = StringProperty(subtype="FILE_PATH")
+    filename_ext = EnumProperty(
+            name="Format",
+            description="Choose the file format to save to",
+            items=(('.bmp', "PNG", ""),
+                   ('.rgb', 'IRIS', ""),
+                   ('.png', 'PNG', ""),
+                   ('.jpg', 'JPEG', ""),
+                   ('.jp2', 'JPEG2000', ""),
+                   ('.tga', 'TARGA', ""),
+                   ('.cin', 'CINEON', ""),
+                   ('.dpx', 'DPX', ""),
+                   ('.exr', 'OPEN_EXR', ""),
+                   ('.hdr', 'HDR', ""),
+                   ('.tif', 'TIFF', "")),
+            default='.png',
+            )
+
+    @classmethod
+    def poll(cls, context):
+        valid = False
+        if nw_check(context):
+            if context.space_data.tree_type == 'CompositorNodeTree':
+                if "Viewer Node" in [i.name for i in bpy.data.images]:
+                    if sum(bpy.data.images["Viewer Node"].size) > 0:  # False if not connected or connected but no image
+                        valid = True
+        return valid
+
+    def execute(self, context):
+        fp = self.filepath
+        if fp:
+            formats = {
+                       '.bmp': 'BMP',
+                       '.rgb': 'IRIS',
+                       '.png': 'PNG',
+                       '.jpg': 'JPEG',
+                       '.jpeg': 'JPEG',
+                       '.jp2': 'JPEG2000',
+                       '.tga': 'TARGA',
+                       '.cin': 'CINEON',
+                       '.dpx': 'DPX',
+                       '.exr': 'OPEN_EXR',
+                       '.hdr': 'HDR',
+                       '.tiff': 'TIFF',
+                       '.tif': 'TIFF'}
+            basename, ext = path.splitext(fp)
+            old_render_format = context.scene.render.image_settings.file_format
+            context.scene.render.image_settings.file_format = formats[self.filename_ext]
+            context.area.type = "IMAGE_EDITOR"
+            context.area.spaces[0].image = bpy.data.images['Viewer Node']
+            context.area.spaces[0].image.save_render(fp)
+            context.area.type = "NODE_EDITOR"
+            context.scene.render.image_settings.file_format = old_render_format
+            return {'FINISHED'}
+
+
+class NWResetNodes(bpy.types.Operator):
+    """Reset Nodes in Selection"""
+    bl_idname = "node.nw_reset_nodes"
+    bl_label = "Reset Nodes"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        space = context.space_data
+        return space.type == 'NODE_EDITOR'
+
+    def execute(self, context):
+        node_active = context.active_node
+        node_selected = context.selected_nodes
+        node_ignore = ["FRAME","REROUTE", "GROUP"]
+
+        # Check if one node is selected at least
+        if not (len(node_selected) > 0):
+            self.report({'ERROR'}, "1 node must be selected at least")
+            return {'CANCELLED'}
+
+        active_node_name = node_active.name if node_active.select else None
+        valid_nodes = [n for n in node_selected if n.type not in node_ignore]
+
+        # Create output lists
+        selected_node_names = [n.name for n in node_selected]
+        success_names = []
+
+        # Reset all valid children in a frame
+        node_active_is_frame = False
+        if len(node_selected) == 1 and node_active.type == "FRAME":
+            node_tree = node_active.id_data
+            children = [n for n in node_tree.nodes if n.parent == node_active]
+            if children:
+                valid_nodes = [n for n in children if n.type not in node_ignore]
+                selected_node_names = [n.name for n in children if n.type not in node_ignore]
+                node_active_is_frame = True
+
+        # Check if valid nodes in selection
+        if not (len(valid_nodes) > 0):
+            # Check for frames only
+            frames_selected = [n for n in node_selected if n.type == "FRAME"]
+            if (len(frames_selected) > 1 and len(frames_selected) == len(node_selected)):
+                self.report({'ERROR'}, "Please select only 1 frame to reset")
+            else:
+                self.report({'ERROR'}, "No valid node(s) in selection")
+            return {'CANCELLED'}
+
+        # Report nodes that are not valid
+        if len(valid_nodes) != len(node_selected) and node_active_is_frame is False:
+            valid_node_names = [n.name for n in valid_nodes]
+            not_valid_names = list(set(selected_node_names) - set(valid_node_names))
+            self.report({'INFO'}, "Ignored {}".format(", ".join(not_valid_names)))
+
+        # Deselect all nodes
+        for i in node_selected:
+            i.select = False
+
+        # Run through all valid nodes
+        for node in valid_nodes:
+
+            parent = node.parent if node.parent else None
+            node_loc = [node.location.x, node.location.y]
+
+            node_tree = node.id_data
+            props_to_copy = 'bl_idname name location height width'.split(' ')
+
+            reconnections = []
+            mappings = chain.from_iterable([node.inputs, node.outputs])
+            for i in (i for i in mappings if i.is_linked):
+                for L in i.links:
+                    reconnections.append([L.from_socket.path_from_id(), L.to_socket.path_from_id()])
+
+            props = {j: getattr(node, j) for j in props_to_copy}
+
+            new_node = node_tree.nodes.new(props['bl_idname'])
+            props_to_copy.pop(0)
+
+            for prop in props_to_copy:
+                setattr(new_node, prop, props[prop])
+
+            nodes = node_tree.nodes
+            nodes.remove(node)
+            new_node.name = props['name']
+
+            if parent:
+                new_node.parent = parent
+                new_node.location = node_loc
+
+            for str_from, str_to in reconnections:
+                node_tree.links.new(eval(str_from), eval(str_to))
+
+            new_node.select = False
+            success_names.append(new_node.name)
+
+        # Reselect all nodes
+        if selected_node_names and node_active_is_frame is False:
+            for i in selected_node_names:
+                node_tree.nodes[i].select = True
+
+        if active_node_name is not None:
+            node_tree.nodes[active_node_name].select = True
+            node_tree.nodes.active = node_tree.nodes[active_node_name]
+
+        self.report({'INFO'}, "Successfully reset {}".format(", ".join(success_names)))
+        return {'FINISHED'}
 
 
 #
@@ -3140,6 +3676,7 @@ def drawlayout(context, layout, mode='non-panel'):
     if tree_type == 'ShaderNodeTree' and context.scene.render.engine == 'CYCLES':
         col = layout.column(align=True)
         col.operator(NWAddTextureSetup.bl_idname, text="Add Texture Setup", icon='NODE_SEL')
+        col.operator(NWAddPrincipledSetup.bl_idname, text="Add Principled Setup", icon='NODE_SEL')
         col.separator()
 
     col = layout.column(align=True)
@@ -3174,6 +3711,10 @@ def drawlayout(context, layout, mode='non-panel'):
 
     col = layout.column(align=True)
     col.operator(NWFrameSelected.bl_idname, icon='STICKY_UVS_LOC')
+    col.separator()
+
+    col = layout.column(align=True)
+    col.operator(NWAlignNodes.bl_idname, icon='ALIGN')
     col.separator()
 
     col = layout.column(align=True)
@@ -3432,16 +3973,6 @@ class NWLinkUseOutputsNamesMenu(Menu, NWBase):
         props.use_outputs_names = True
 
 
-class NWNodeAlignMenu(Menu, NWBase):
-    bl_idname = "NODE_MT_nw_node_align_menu"
-    bl_label = "Align Nodes"
-
-    def draw(self, context):
-        layout = self.layout
-        layout.operator(NWAlignNodes.bl_idname, text="Horizontally").option = 'AXIS_X'
-        layout.operator(NWAlignNodes.bl_idname, text="Vertically").option = 'AXIS_Y'
-
-
 class NWVertColMenu(bpy.types.Menu):
     bl_idname = "NODE_MT_nw_node_vertex_color_menu"
     bl_label = "Vertex Colors"
@@ -3529,7 +4060,7 @@ class NWSwitchShadersInputSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in shaders_input_nodes_props:
+        for ident, node_type, rna_name in sorted(shaders_input_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3540,7 +4071,7 @@ class NWSwitchShadersOutputSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in shaders_output_nodes_props:
+        for ident, node_type, rna_name in sorted(shaders_output_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3551,7 +4082,7 @@ class NWSwitchShadersShaderSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in shaders_shader_nodes_props:
+        for ident, node_type, rna_name in sorted(shaders_shader_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3562,7 +4093,7 @@ class NWSwitchShadersTextureSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in shaders_texture_nodes_props:
+        for ident, node_type, rna_name in sorted(shaders_texture_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3573,7 +4104,7 @@ class NWSwitchShadersColorSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in shaders_color_nodes_props:
+        for ident, node_type, rna_name in sorted(shaders_color_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3584,7 +4115,7 @@ class NWSwitchShadersVectorSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in shaders_vector_nodes_props:
+        for ident, node_type, rna_name in sorted(shaders_vector_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3595,7 +4126,7 @@ class NWSwitchShadersConverterSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in shaders_converter_nodes_props:
+        for ident, node_type, rna_name in sorted(shaders_converter_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3606,8 +4137,8 @@ class NWSwitchShadersLayoutSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in shaders_layout_nodes_props:
-            if type != 'FRAME':
+        for ident, node_type, rna_name in sorted(shaders_layout_nodes_props, key=lambda k: k[2]):
+            if node_type != 'FRAME':
                 props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
                 props.to_type = ident
 
@@ -3618,7 +4149,7 @@ class NWSwitchCompoInputSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in compo_input_nodes_props:
+        for ident, node_type, rna_name in sorted(compo_input_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3629,7 +4160,7 @@ class NWSwitchCompoOutputSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in compo_output_nodes_props:
+        for ident, node_type, rna_name in sorted(compo_output_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3640,7 +4171,7 @@ class NWSwitchCompoColorSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in compo_color_nodes_props:
+        for ident, node_type, rna_name in sorted(compo_color_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3651,7 +4182,7 @@ class NWSwitchCompoConverterSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in compo_converter_nodes_props:
+        for ident, node_type, rna_name in sorted(compo_converter_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3662,7 +4193,7 @@ class NWSwitchCompoFilterSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in compo_filter_nodes_props:
+        for ident, node_type, rna_name in sorted(compo_filter_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3673,7 +4204,7 @@ class NWSwitchCompoVectorSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in compo_vector_nodes_props:
+        for ident, node_type, rna_name in sorted(compo_vector_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3684,7 +4215,7 @@ class NWSwitchCompoMatteSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in compo_matte_nodes_props:
+        for ident, node_type, rna_name in sorted(compo_matte_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3695,7 +4226,7 @@ class NWSwitchCompoDistortSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in compo_distort_nodes_props:
+        for ident, node_type, rna_name in sorted(compo_distort_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3706,8 +4237,8 @@ class NWSwitchCompoLayoutSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in compo_layout_nodes_props:
-            if type != 'FRAME':
+        for ident, node_type, rna_name in sorted(compo_layout_nodes_props, key=lambda k: k[2]):
+            if node_type != 'FRAME':
                 props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
                 props.to_type = ident
 
@@ -3718,7 +4249,7 @@ class NWSwitchMatInputSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in blender_mat_input_nodes_props:
+        for ident, node_type, rna_name in sorted(blender_mat_input_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3729,7 +4260,7 @@ class NWSwitchMatOutputSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in blender_mat_output_nodes_props:
+        for ident, node_type, rna_name in sorted(blender_mat_output_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3740,7 +4271,7 @@ class NWSwitchMatColorSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in blender_mat_color_nodes_props:
+        for ident, node_type, rna_name in sorted(blender_mat_color_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3751,7 +4282,7 @@ class NWSwitchMatVectorSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in blender_mat_vector_nodes_props:
+        for ident, node_type, rna_name in sorted(blender_mat_vector_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3762,7 +4293,7 @@ class NWSwitchMatConverterSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in blender_mat_converter_nodes_props:
+        for ident, node_type, rna_name in sorted(blender_mat_converter_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3773,8 +4304,8 @@ class NWSwitchMatLayoutSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in blender_mat_layout_nodes_props:
-            if type != 'FRAME':
+        for ident, node_type, rna_name in sorted(blender_mat_layout_nodes_props, key=lambda k: k[2]):
+            if node_type != 'FRAME':
                 props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
                 props.to_type = ident
 
@@ -3785,7 +4316,7 @@ class NWSwitchTexInputSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in texture_input_nodes_props:
+        for ident, node_type, rna_name in sorted(texture_input_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3796,7 +4327,7 @@ class NWSwitchTexOutputSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in texture_output_nodes_props:
+        for ident, node_type, rna_name in sorted(texture_output_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3807,7 +4338,7 @@ class NWSwitchTexColorSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in texture_color_nodes_props:
+        for ident, node_type, rna_name in sorted(texture_color_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3818,7 +4349,7 @@ class NWSwitchTexPatternSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in texture_pattern_nodes_props:
+        for ident, node_type, rna_name in sorted(texture_pattern_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3829,7 +4360,7 @@ class NWSwitchTexTexturesSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in texture_textures_nodes_props:
+        for ident, node_type, rna_name in sorted(texture_textures_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3840,7 +4371,7 @@ class NWSwitchTexConverterSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in texture_converter_nodes_props:
+        for ident, node_type, rna_name in sorted(texture_converter_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3851,7 +4382,7 @@ class NWSwitchTexDistortSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in texture_distort_nodes_props:
+        for ident, node_type, rna_name in sorted(texture_distort_nodes_props, key=lambda k: k[2]):
             props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
             props.to_type = ident
 
@@ -3862,8 +4393,8 @@ class NWSwitchTexLayoutSubmenu(Menu, NWBase):
 
     def draw(self, context):
         layout = self.layout
-        for ident, type, rna_name in texture_layout_nodes_props:
-            if type != 'FRAME':
+        for ident, node_type, rna_name in sorted(texture_layout_nodes_props, key=lambda k: k[2]):
+            if node_type != 'FRAME':
                 props = layout.operator(NWSwitchNodeType.bl_idname, text=rna_name)
                 props.to_type = ident
 
@@ -3890,10 +4421,35 @@ def multipleimages_menu_func(self, context):
     col.operator(NWAddMultipleImages.bl_idname, text="Multiple Images")
     col.operator(NWAddSequence.bl_idname, text="Image Sequence")
     col.separator()
-    
+
 
 def bgreset_menu_func(self, context):
     self.layout.operator(NWResetBG.bl_idname)
+
+
+def save_viewer_menu_func(self, context):
+    if nw_check(context):
+        if context.space_data.tree_type == 'CompositorNodeTree':
+            if context.scene.node_tree.nodes.active:
+                if context.scene.node_tree.nodes.active.type == "VIEWER":
+                    self.layout.operator(NWSaveViewer.bl_idname, icon='FILE_IMAGE')
+
+
+def reset_nodes_button(self, context):
+    node_active = context.active_node
+    node_selected = context.selected_nodes
+    node_ignore = ["FRAME","REROUTE", "GROUP"]
+
+    # Check if active node is in the selection and respective type
+    if (len(node_selected) == 1) and node_active.select and node_active.type not in node_ignore:
+        row = self.layout.row()
+        row.operator("node.nw_reset_nodes", text="Reset Node", icon="FILE_REFRESH")
+        self.layout.separator()
+
+    elif (len(node_selected) == 1) and node_active.select and node_active.type == "FRAME":
+        row = self.layout.row()
+        row.operator("node.nw_reset_nodes", text="Reset Nodes in Frame", icon="FILE_REFRESH")
+        self.layout.separator()
 
 
 #
@@ -4051,6 +4607,8 @@ kmi_defs = (
     (NWSelectParentChildren.bl_idname, 'LEFT_BRACKET', 'PRESS', False, False, False, (('option', 'PARENT'),), "Select Parent"),
     # Add Texture Setup
     (NWAddTextureSetup.bl_idname, 'T', 'PRESS', True, False, False, None, "Add texture setup"),
+    # Add Principled BSDF Texture Setup
+    (NWAddPrincipledSetup.bl_idname, 'T', 'PRESS', True, True, False, None, "Add Principled texture setup"),
     # Reset backdrop
     (NWResetBG.bl_idname, 'Z', 'PRESS', False, False, False, None, "Reset backdrop image zoom"),
     # Delete unused
@@ -4071,11 +4629,14 @@ kmi_defs = (
     (NWLazyConnect.bl_idname, 'RIGHTMOUSE', 'PRESS', True, True, False, (('with_menu', True),), "Lazy Connect with Socket Menu"),
     # Viewer Tile Center
     (NWViewerFocus.bl_idname, 'LEFTMOUSE', 'DOUBLE_CLICK', False, False, False, None, "Set Viewers Tile Center"),
+    # Align Nodes
+    (NWAlignNodes.bl_idname, 'EQUAL', 'PRESS', False, True, False, None, "Align selected nodes neatly in a row/column"),
+    # Reset Nodes (Back Space)
+    (NWResetNodes.bl_idname, 'BACK_SPACE', 'PRESS', False, False, False, None, "Revert node back to default state, but keep connections"),
     # MENUS
     ('wm.call_menu', 'SPACE', 'PRESS', True, False, False, (('name', NodeWranglerMenu.bl_idname),), "Node Wranger menu"),
     ('wm.call_menu', 'SLASH', 'PRESS', False, False, False, (('name', NWAddReroutesMenu.bl_idname),), "Add Reroutes menu"),
     ('wm.call_menu', 'NUMPAD_SLASH', 'PRESS', False, False, False, (('name', NWAddReroutesMenu.bl_idname),), "Add Reroutes menu"),
-    ('wm.call_menu', 'EQUAL', 'PRESS', False, True, False, (('name', NWNodeAlignMenu.bl_idname),), "Node alignment menu"),
     ('wm.call_menu', 'BACK_SLASH', 'PRESS', False, False, False, (('name', NWLinkActiveToSelectedMenu.bl_idname),), "Link active to selected (menu)"),
     ('wm.call_menu', 'C', 'PRESS', False, True, False, (('name', NWCopyToSelectedMenu.bl_idname),), "Copy to selected (menu)"),
     ('wm.call_menu', 'S', 'PRESS', False, True, False, (('name', NWSwitchNodeTypeMenu.bl_idname),), "Switch node type menu"),
@@ -4120,10 +4681,13 @@ def register():
     bpy.types.NODE_MT_category_SH_NEW_INPUT.prepend(attr_nodes_menu_func)
     bpy.types.NODE_PT_category_SH_NEW_INPUT.prepend(attr_nodes_menu_func)
     bpy.types.NODE_PT_backdrop.append(bgreset_menu_func)
+    bpy.types.NODE_PT_active_node_generic.append(save_viewer_menu_func)
     bpy.types.NODE_MT_category_SH_NEW_TEXTURE.prepend(multipleimages_menu_func)
     bpy.types.NODE_PT_category_SH_NEW_TEXTURE.prepend(multipleimages_menu_func)
     bpy.types.NODE_MT_category_CMP_INPUT.prepend(multipleimages_menu_func)
     bpy.types.NODE_PT_category_CMP_INPUT.prepend(multipleimages_menu_func)
+    bpy.types.NODE_PT_active_node_generic.prepend(reset_nodes_button)
+    bpy.types.NODE_MT_node.prepend(reset_nodes_button)
 
 
 def unregister():
@@ -4132,8 +4696,6 @@ def unregister():
     del bpy.types.Scene.NWLazySource
     del bpy.types.Scene.NWLazyTarget
     del bpy.types.Scene.NWSourceSocket
-
-    bpy.utils.unregister_module(__name__)
 
     # keymaps
     for km, kmi in addon_keymaps:
@@ -4145,10 +4707,15 @@ def unregister():
     bpy.types.NODE_MT_category_SH_NEW_INPUT.remove(attr_nodes_menu_func)
     bpy.types.NODE_PT_category_SH_NEW_INPUT.remove(attr_nodes_menu_func)
     bpy.types.NODE_PT_backdrop.remove(bgreset_menu_func)
+    bpy.types.NODE_PT_active_node_generic.remove(save_viewer_menu_func)
     bpy.types.NODE_MT_category_SH_NEW_TEXTURE.remove(multipleimages_menu_func)
     bpy.types.NODE_PT_category_SH_NEW_TEXTURE.remove(multipleimages_menu_func)
     bpy.types.NODE_MT_category_CMP_INPUT.remove(multipleimages_menu_func)
     bpy.types.NODE_PT_category_CMP_INPUT.remove(multipleimages_menu_func)
+    bpy.types.NODE_PT_active_node_generic.remove(reset_nodes_button)
+    bpy.types.NODE_MT_node.remove(reset_nodes_button)
+
+    bpy.utils.unregister_module(__name__)
 
 if __name__ == "__main__":
     register()

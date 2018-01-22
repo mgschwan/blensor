@@ -55,6 +55,8 @@ extern "C" {
 
 #include "BLI_ghash.h"
 #include "BLI_listbase.h"
+#include "BLI_math_color.h"
+#include "BLI_math_vector.h"
 #include "BLI_utildefines.h"
 
 #include "RE_pipeline.h"
@@ -94,7 +96,7 @@ BlenderStrokeRenderer::BlenderStrokeRenderer(Render *re, int render_count) : Str
 	//freestyle_scene->r.maximsize = old_scene->r.maximsize; /* DEPRECATED */
 	freestyle_scene->r.ocres = old_scene->r.ocres;
 	freestyle_scene->r.color_mgt_flag = 0; // old_scene->r.color_mgt_flag;
-	freestyle_scene->r.scemode = old_scene->r.scemode & ~(R_SINGLE_LAYER | R_NO_FRAME_UPDATE);
+	freestyle_scene->r.scemode = old_scene->r.scemode & ~(R_SINGLE_LAYER | R_NO_FRAME_UPDATE | R_MULTIVIEW);
 	freestyle_scene->r.flag = old_scene->r.flag;
 	freestyle_scene->r.threads = old_scene->r.threads;
 	freestyle_scene->r.border.xmin = old_scene->r.border.xmin;
@@ -113,7 +115,6 @@ BlenderStrokeRenderer::BlenderStrokeRenderer(Render *re, int render_count) : Str
 	BLI_strncpy(freestyle_scene->r.engine, old_scene->r.engine, sizeof(freestyle_scene->r.engine));
 	freestyle_scene->r.im_format.planes = R_IMF_PLANES_RGBA; 
 	freestyle_scene->r.im_format.imtype = R_IMF_IMTYPE_PNG;
-	BKE_scene_disable_color_management(freestyle_scene);
 
 	if (G.debug & G_DEBUG_FREESTYLE) {
 		printf("%s: %d thread(s)\n", __func__, BKE_render_num_threads(&freestyle_scene->r));
@@ -126,7 +127,8 @@ BlenderStrokeRenderer::BlenderStrokeRenderer(Render *re, int render_count) : Str
 	BKE_scene_set_background(freestyle_bmain, freestyle_scene);
 
 	// Camera
-	Object *object_camera = BKE_object_add(freestyle_bmain, freestyle_scene, OB_CAMERA);
+	Object *object_camera = BKE_object_add(freestyle_bmain, freestyle_scene, OB_CAMERA, NULL);
+	DAG_relations_tag_update(freestyle_bmain);
 
 	Camera *camera = (Camera *)object_camera->data;
 	camera->type = CAM_ORTHO;
@@ -240,6 +242,8 @@ Material* BlenderStrokeRenderer::GetStrokeShader(Main *bmain, bNodeTree *iNodeTr
 	bNodeSocket *fromsock, *tosock;
 	PointerRNA fromptr, toptr;
 	NodeShaderAttribute *storage;
+
+	id_us_min(&ma->id);
 
 	if (iNodeTree) {
 		// make a copy of linestyle->nodetree
@@ -506,10 +510,13 @@ void BlenderStrokeRenderer::RenderStrokeRepBasic(StrokeRep *iStrokeRep) const
 		// If still no material, create one
 		if (!has_mat) {
 			Material *ma = BKE_material_add(freestyle_bmain, "stroke_material");
+			DAG_relations_tag_update(freestyle_bmain);
 			ma->mode |= MA_VERTEXCOLP;
 			ma->mode |= MA_TRANSP;
 			ma->mode |= MA_SHLESS;
 			ma->vcol_alpha = 1;
+
+			id_us_min(&ma->id);
 
 			// Textures
 			while (iStrokeRep->getMTex(a)) {
@@ -517,7 +524,7 @@ void BlenderStrokeRenderer::RenderStrokeRepBasic(StrokeRep *iStrokeRep) const
 
 				// We'll generate both with tips and without tips
 				// coordinates, on two different UV layers.
-				if (ma->mtex[a]->texflag & MTEX_TIPS)  {
+				if (ma->mtex[a]->texflag & MTEX_TIPS) {
 					BLI_strncpy(ma->mtex[a]->uvname, uvNames[1], sizeof(ma->mtex[a]->uvname));
 				}
 				else {
@@ -668,6 +675,7 @@ void BlenderStrokeRenderer::GenerateStrokeMesh(StrokeGroup *group, bool hasTex)
 {
 #if 0
 	Object *object_mesh = BKE_object_add(freestyle_bmain, freestyle_scene, OB_MESH);
+	DAG_relations_tag_update(freestyle_bmain);
 #else
 	Object *object_mesh = NewMesh();
 #endif
@@ -730,6 +738,7 @@ void BlenderStrokeRenderer::GenerateStrokeMesh(StrokeGroup *group, bool hasTex)
 	     it != itend; ++it)
 	{
 		mesh->mat[material_index] = (*it)->getMaterial();
+		id_us_plus(&mesh->mat[material_index]->id);
 
 		vector<Strip*>& strips = (*it)->getStrips();
 		for (vector<Strip*>::const_iterator s = strips.begin(), send = strips.end(); s != send; ++s) {
@@ -868,38 +877,24 @@ void BlenderStrokeRenderer::GenerateStrokeMesh(StrokeGroup *group, bool hasTex)
 						}
 					}
 
-					// colors and alpha transparency
+					// colors and alpha transparency. vertex colors are in sRGB
+					// space by convention, so convert from linear
+					float rgba[3][4];
+
+					for (int i = 0; i < 3; i++) {
+						copy_v3fl_v3db(rgba[i], &svRep[i]->color()[0]);
+						rgba[i][3] = svRep[i]->alpha();
+					}
+
 					if (is_odd) {
-						colors[0].r = (short)(255.0f * svRep[2]->color()[0]);
-						colors[0].g = (short)(255.0f * svRep[2]->color()[1]);
-						colors[0].b = (short)(255.0f * svRep[2]->color()[2]);
-						colors[0].a = (short)(255.0f * svRep[2]->alpha());
-
-						colors[1].r = (short)(255.0f * svRep[0]->color()[0]);
-						colors[1].g = (short)(255.0f * svRep[0]->color()[1]);
-						colors[1].b = (short)(255.0f * svRep[0]->color()[2]);
-						colors[1].a = (short)(255.0f * svRep[0]->alpha());
-
-						colors[2].r = (short)(255.0f * svRep[1]->color()[0]);
-						colors[2].g = (short)(255.0f * svRep[1]->color()[1]);
-						colors[2].b = (short)(255.0f * svRep[1]->color()[2]);
-						colors[2].a = (short)(255.0f * svRep[1]->alpha());
+						linearrgb_to_srgb_uchar4(&colors[0].r, rgba[2]);
+						linearrgb_to_srgb_uchar4(&colors[1].r, rgba[0]);
+						linearrgb_to_srgb_uchar4(&colors[2].r, rgba[1]);
 					}
 					else {
-						colors[0].r = (short)(255.0f * svRep[2]->color()[0]);
-						colors[0].g = (short)(255.0f * svRep[2]->color()[1]);
-						colors[0].b = (short)(255.0f * svRep[2]->color()[2]);
-						colors[0].a = (short)(255.0f * svRep[2]->alpha());
-
-						colors[1].r = (short)(255.0f * svRep[1]->color()[0]);
-						colors[1].g = (short)(255.0f * svRep[1]->color()[1]);
-						colors[1].b = (short)(255.0f * svRep[1]->color()[2]);
-						colors[1].a = (short)(255.0f * svRep[1]->alpha());
-
-						colors[2].r = (short)(255.0f * svRep[0]->color()[0]);
-						colors[2].g = (short)(255.0f * svRep[0]->color()[1]);
-						colors[2].b = (short)(255.0f * svRep[0]->color()[2]);
-						colors[2].a = (short)(255.0f * svRep[0]->alpha());
+						linearrgb_to_srgb_uchar4(&colors[0].r, rgba[2]);
+						linearrgb_to_srgb_uchar4(&colors[1].r, rgba[1]);
+						linearrgb_to_srgb_uchar4(&colors[2].r, rgba[0]);
 					}
 					transp[0].r = transp[0].g = transp[0].b = colors[0].a;
 					transp[1].r = transp[1].g = transp[1].b = colors[1].a;
@@ -912,7 +907,7 @@ void BlenderStrokeRenderer::GenerateStrokeMesh(StrokeGroup *group, bool hasTex)
 		material_index++;
 	} // loop over strokes
 
-	test_object_materials(freestyle_bmain, (ID *)mesh);
+	test_object_materials(object_mesh, (ID *)mesh);
 
 #if 0 // XXX
 	BLI_assert(mesh->totvert == vertex_index);
@@ -938,6 +933,7 @@ Object *BlenderStrokeRenderer::NewMesh() const
 	ob->lay = 1;
 
 	base = BKE_scene_base_add(freestyle_scene, ob);
+	DAG_relations_tag_update(freestyle_bmain);
 #if 0
 	BKE_scene_base_deselect_all(scene);
 	BKE_scene_base_select(scene, base);
@@ -950,7 +946,7 @@ Object *BlenderStrokeRenderer::NewMesh() const
 	return ob;
 }
 
-Render *BlenderStrokeRenderer::RenderScene(Render *re, bool render)
+Render *BlenderStrokeRenderer::RenderScene(Render * /*re*/, bool render)
 {
 	Camera *camera = (Camera *)freestyle_scene->camera->data;
 	if (camera->clipend < _z)

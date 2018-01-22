@@ -30,6 +30,7 @@
 class MultilayerBaseOperation : public BaseImageOperation {
 private:
 	int m_passId;
+	int m_view;
 	RenderLayer *m_renderlayer;
 protected:
 	ImBuf *getImBuf();
@@ -37,13 +38,13 @@ public:
 	/**
 	 * Constructor
 	 */
-	MultilayerBaseOperation(int passindex);
+	MultilayerBaseOperation(int passindex, int view);
 	void setRenderLayer(RenderLayer *renderlayer) { this->m_renderlayer = renderlayer; }
 };
 
 class MultilayerColorOperation : public MultilayerBaseOperation {
 public:
-	MultilayerColorOperation(int passindex) : MultilayerBaseOperation(passindex) {
+	MultilayerColorOperation(int passindex, int view) : MultilayerBaseOperation(passindex, view) {
 		this->addOutputSocket(COM_DT_COLOR);
 	}
 	void executePixelSampled(float output[4], float x, float y, PixelSampler sampler);
@@ -51,7 +52,7 @@ public:
 
 class MultilayerValueOperation : public MultilayerBaseOperation {
 public:
-	MultilayerValueOperation(int passindex) : MultilayerBaseOperation(passindex) {
+	MultilayerValueOperation(int passindex, int view) : MultilayerBaseOperation(passindex, view) {
 		this->addOutputSocket(COM_DT_VALUE);
 	}
 	void executePixelSampled(float output[4], float x, float y, PixelSampler sampler);
@@ -59,7 +60,7 @@ public:
 
 class MultilayerVectorOperation : public MultilayerBaseOperation {
 public:
-	MultilayerVectorOperation(int passindex) : MultilayerBaseOperation(passindex) {
+	MultilayerVectorOperation(int passindex, int view) : MultilayerBaseOperation(passindex, view) {
 		this->addOutputSocket(COM_DT_VECTOR);
 	}
 	void executePixelSampled(float output[4], float x, float y, PixelSampler sampler);

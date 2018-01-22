@@ -85,12 +85,12 @@ extern struct Render R;
 static RNG_THREAD_ARRAY *random_tex_array;
 
 
-void RE_init_texture_rng(void)
+void RE_texture_rng_init(void)
 {
 	random_tex_array = BLI_rng_threaded_new();
 }
 
-void RE_exit_texture_rng(void)
+void RE_texture_rng_exit(void)
 {
 	BLI_rng_threaded_free(random_tex_array);
 }
@@ -116,7 +116,7 @@ static void init_render_texture(Render *re, Tex *tex)
 			if (G.is_rendering && re) {
 				if (re->r.mode & R_ENVMAP)
 					if (tex->env->stype==ENV_ANIM)
-						BKE_free_envmapdata(tex->env);
+						BKE_texture_envmap_free_data(tex->env);
 			}
 		}
 	}
@@ -1103,16 +1103,26 @@ static void do_2d_mapping(MTex *mtex, float texvec[3], VlakRen *vlr, const float
 
 /* ************************************** */
 
-static int multitex(Tex *tex, float texvec[3], float dxt[3], float dyt[3], int osatex, TexResult *texres, const short thread, short which_output, struct ImagePool *pool, const bool skip_load_image)
+static int multitex(Tex *tex,
+                    float texvec[3],
+                    float dxt[3], float dyt[3],
+                    int osatex,
+                    TexResult *texres,
+                    const short thread,
+                    const short which_output,
+                    struct ImagePool *pool,
+                    const bool skip_load_image,
+                    const bool texnode_preview,
+                    const bool use_nodes)
 {
 	float tmpvec[3];
 	int retval = 0; /* return value, int:0, col:1, nor:2, everything:3 */
 
 	texres->talpha = false;  /* is set when image texture returns alpha (considered premul) */
 	
-	if (tex->use_nodes && tex->nodetree) {
+	if (use_nodes && tex->use_nodes && tex->nodetree) {
 		retval = ntreeTexExecTree(tex->nodetree, texres, texvec, dxt, dyt, osatex, thread,
-		                          tex, which_output, R.r.cfra, (R.r.scemode & R_TEXNODE_PREVIEW) != 0, NULL, NULL);
+		                          tex, which_output, R.r.cfra, texnode_preview, NULL, NULL);
 	}
 	else {
 		switch (tex->type) {
@@ -1218,9 +1228,20 @@ static int multitex(Tex *tex, float texvec[3], float dxt[3], float dyt[3], int o
 	return retval;
 }
 
-static int multitex_nodes_intern(Tex *tex, float texvec[3], float dxt[3], float dyt[3], int osatex, TexResult *texres,
-                                 const short thread, short which_output, ShadeInput *shi, MTex *mtex, struct ImagePool *pool,
-                                 bool scene_color_manage, const bool skip_load_image)
+static int multitex_nodes_intern(Tex *tex,
+                                 float texvec[3],
+                                 float dxt[3], float dyt[3],
+                                 int osatex,
+                                 TexResult *texres,
+                                 const short thread,
+                                 short which_output,
+                                 ShadeInput *shi,
+                                 MTex *mtex, struct
+                                 ImagePool *pool,
+                                 const bool scene_color_manage,
+                                 const bool skip_load_image,
+                                 const bool texnode_preview,
+                                 const bool use_nodes)
 {
 	if (tex==NULL) {
 		memset(texres, 0, sizeof(TexResult));
@@ -1236,14 +1257,29 @@ static int multitex_nodes_intern(Tex *tex, float texvec[3], float dxt[3], float 
 		if (mtex) {
 			/* we have mtex, use it for 2d mapping images only */
 			do_2d_mapping(mtex, texvec, shi->vlr, shi->facenor, dxt, dyt);
-			rgbnor = multitex(tex, texvec, dxt, dyt, osatex, texres, thread, which_output, pool, skip_load_image);
+			rgbnor = multitex(tex,
+			                  texvec,
+			                  dxt, dyt,
+			                  osatex,
+			                  texres,
+			                  thread,
+			                  which_output,
+			                  pool,
+			                  skip_load_image,
+			                  texnode_preview,
+			                  use_nodes);
 
 			if (mtex->mapto & (MAP_COL+MAP_COLSPEC+MAP_COLMIR)) {
 				ImBuf *ibuf = BKE_image_pool_acquire_ibuf(tex->ima, &tex->iuser, pool);
 				
 				/* don't linearize float buffers, assumed to be linear */
-				if (ibuf && !(ibuf->rect_float) && scene_color_manage)
+				if (ibuf != NULL &&
+				    ibuf->rect_float == NULL &&
+				    (rgbnor & TEX_RGB) &&
+				    scene_color_manage)
+				{
 					IMB_colormanagement_colorspace_to_scene_linear_v3(&texres->tr, ibuf->rect_colorspace);
+				}
 
 				BKE_image_pool_release_ibuf(tex->ima, ibuf, pool);
 			}
@@ -1269,14 +1305,29 @@ static int multitex_nodes_intern(Tex *tex, float texvec[3], float dxt[3], float 
 			}
 			
 			do_2d_mapping(&localmtex, texvec_l, NULL, NULL, dxt_l, dyt_l);
-			rgbnor = multitex(tex, texvec_l, dxt_l, dyt_l, osatex, texres, thread, which_output, pool, skip_load_image);
+			rgbnor = multitex(tex,
+			                  texvec_l,
+			                  dxt_l, dyt_l,
+			                  osatex,
+			                  texres,
+			                  thread,
+			                  which_output,
+			                  pool,
+			                  skip_load_image,
+			                  texnode_preview,
+			                  use_nodes);
 
 			{
 				ImBuf *ibuf = BKE_image_pool_acquire_ibuf(tex->ima, &tex->iuser, pool);
 
 				/* don't linearize float buffers, assumed to be linear */
-				if (ibuf && !(ibuf->rect_float) && scene_color_manage)
+				if (ibuf != NULL &&
+				    ibuf->rect_float == NULL &&
+				    (rgbnor & TEX_RGB) &&
+				    scene_color_manage)
+				{
 					IMB_colormanagement_colorspace_to_scene_linear_v3(&texres->tr, ibuf->rect_colorspace);
+				}
 
 				BKE_image_pool_release_ibuf(tex->ima, ibuf, pool);
 			}
@@ -1285,7 +1336,17 @@ static int multitex_nodes_intern(Tex *tex, float texvec[3], float dxt[3], float 
 		return rgbnor;
 	}
 	else {
-		return multitex(tex, texvec, dxt, dyt, osatex, texres, thread, which_output, pool, skip_load_image);
+		return multitex(tex,
+		                texvec,
+		                dxt, dyt,
+		                osatex,
+		                texres,
+		                thread,
+		                which_output,
+		                pool,
+		                skip_load_image,
+		                texnode_preview,
+		                use_nodes);
 	}
 }
 
@@ -1297,14 +1358,16 @@ int multitex_nodes(Tex *tex, float texvec[3], float dxt[3], float dyt[3], int os
 {
 	return multitex_nodes_intern(tex, texvec, dxt, dyt, osatex, texres,
 	                             thread, which_output, shi, mtex, pool, R.scene_color_manage,
-	                             (R.r.scemode & R_NO_IMAGE_LOAD) != 0);
+	                             (R.r.scemode & R_NO_IMAGE_LOAD) != 0,
+	                             (R.r.scemode & R_TEXNODE_PREVIEW) != 0,
+	                             true);
 }
 
 /* this is called for surface shading */
 static int multitex_mtex(ShadeInput *shi, MTex *mtex, float texvec[3], float dxt[3], float dyt[3], TexResult *texres, struct ImagePool *pool, const bool skip_load_image)
 {
 	Tex *tex = mtex->tex;
-
+	/* TODO(sergey): Texture preview should become an argument? */
 	if (tex->use_nodes && tex->nodetree) {
 		/* stupid exception here .. but we have to pass shi and mtex to
 		 * textures nodes for 2d mapping and color management for images */
@@ -1312,7 +1375,17 @@ static int multitex_mtex(ShadeInput *shi, MTex *mtex, float texvec[3], float dxt
 		                        tex, mtex->which_output, R.r.cfra, (R.r.scemode & R_TEXNODE_PREVIEW) != 0, shi, mtex);
 	}
 	else {
-		return multitex(mtex->tex, texvec, dxt, dyt, shi->osatex, texres, shi->thread, mtex->which_output, pool, skip_load_image);
+		return multitex(mtex->tex,
+		                texvec,
+		                dxt, dyt,
+		                shi->osatex,
+		                texres,
+		                shi->thread,
+		                mtex->which_output,
+		                pool,
+		                skip_load_image,
+		                (R.r.scemode & R_TEXNODE_PREVIEW) != 0,
+		                true);
 	}
 }
 
@@ -1321,9 +1394,29 @@ static int multitex_mtex(ShadeInput *shi, MTex *mtex, float texvec[3], float dxt
  *
  * Use it for stuff which is out of render pipeline.
  */
-int multitex_ext(Tex *tex, float texvec[3], float dxt[3], float dyt[3], int osatex, TexResult *texres, struct ImagePool *pool, bool scene_color_manage, const bool skip_load_image)
+int multitex_ext(Tex *tex,
+                 float texvec[3],
+                 float dxt[3], float dyt[3],
+                 int osatex,
+                 TexResult *texres,
+                 const short thread,
+                 struct ImagePool *pool,
+                 bool scene_color_manage,
+                 const bool skip_load_image)
 {
-	return multitex_nodes_intern(tex, texvec, dxt, dyt, osatex, texres, 0, 0, NULL, NULL, pool, scene_color_manage, skip_load_image);
+	return multitex_nodes_intern(tex,
+	                             texvec,
+	                             dxt, dyt,
+	                             osatex,
+	                             texres,
+	                             thread,
+	                             0,
+	                             NULL, NULL,
+	                             pool,
+	                             scene_color_manage,
+	                             skip_load_image,
+	                             false,
+	                             true);
 }
 
 /* extern-tex doesn't support nodes (ntreeBeginExec() can't be called when rendering is going on)\
@@ -1332,13 +1425,19 @@ int multitex_ext(Tex *tex, float texvec[3], float dxt[3], float dyt[3], int osat
  */
 int multitex_ext_safe(Tex *tex, float texvec[3], TexResult *texres, struct ImagePool *pool, bool scene_color_manage, const bool skip_load_image)
 {
-	int use_nodes= tex->use_nodes, retval;
-	
-	tex->use_nodes = false;
-	retval= multitex_nodes_intern(tex, texvec, NULL, NULL, 0, texres, 0, 0, NULL, NULL, pool, scene_color_manage, skip_load_image);
-	tex->use_nodes= use_nodes;
-	
-	return retval;
+	return multitex_nodes_intern(tex,
+	                             texvec,
+	                             NULL, NULL,
+	                             0,
+	                             texres,
+	                             0,
+	                             0,
+	                             NULL, NULL,
+	                             pool,
+	                             scene_color_manage,
+	                             skip_load_image,
+	                             false,
+	                             false);
 }
 
 
@@ -1348,7 +1447,7 @@ int multitex_ext_safe(Tex *tex, float texvec[3], TexResult *texres, struct Image
 /* fact = texture strength, facg = button strength value */
 void texture_rgb_blend(float in[3], const float tex[3], const float out[3], float fact, float facg, int blendtype)
 {
-	float facm, col;
+	float facm;
 	
 	switch (blendtype) {
 	case MTEX_BLEND:
@@ -1396,6 +1495,7 @@ void texture_rgb_blend(float in[3], const float tex[3], const float out[3], floa
 		
 	case MTEX_SUB:
 		fact= -fact;
+		ATTR_FALLTHROUGH;
 	case MTEX_ADD:
 		fact*= facg;
 		in[0]= (fact*tex[0] + out[0]);
@@ -1435,13 +1535,10 @@ void texture_rgb_blend(float in[3], const float tex[3], const float out[3], floa
 
 	case MTEX_LIGHT:
 		fact*= facg;
-		
-		col= fact*tex[0];
-		if (col > out[0]) in[0]= col; else in[0]= out[0];
-		col= fact*tex[1];
-		if (col > out[1]) in[1]= col; else in[1]= out[1];
-		col= fact*tex[2];
-		if (col > out[2]) in[2]= col; else in[2]= out[2];
+
+		in[0] = max_ff(fact * tex[0], out[0]);
+		in[1] = max_ff(fact * tex[1], out[1]);
+		in[2] = max_ff(fact * tex[2], out[2]);
 		break;
 		
 	case MTEX_BLEND_HUE:
@@ -1513,6 +1610,7 @@ float texture_value_blend(float tex, float out, float fact, float facg, int blen
 
 	case MTEX_SUB:
 		fact= -fact;
+		ATTR_FALLTHROUGH;
 	case MTEX_ADD:
 		in= fact*tex + out;
 		break;
@@ -1637,6 +1735,21 @@ static void texco_mapping(ShadeInput *shi, Tex *tex, MTex *mtex,
 				dyt[2] = mtex->size[2]*dy[mtex->projz - 1];
 			}
 			else dxt[2]= dyt[2] = 0.f;
+		}
+
+		if (mtex->tex->type == TEX_ENVMAP) {
+			EnvMap *env = tex->env;
+			if (!env->object) {
+				// env->object is a view point for envmap rendering
+				// if it's not set, return the result depending on the world_space_shading flag
+				if (BKE_scene_use_world_space_shading(R.scene)) {
+					mul_mat3_m4_v3(R.viewinv, texvec);
+					if (shi->osatex) {
+						mul_mat3_m4_v3(R.viewinv, dxt);
+						mul_mat3_m4_v3(R.viewinv, dyt);
+					}
+				}
+			}
 		}
 	}
 }
@@ -2398,8 +2511,7 @@ void do_material_tex(ShadeInput *shi, Render *re)
 							/* can be optimized... (ton) */
 							mul_mat3_m4_v3(shi->obr->ob->obmat, texres.nor);
 							mul_mat3_m4_v3(re->viewmat, texres.nor);
-							normalize_v3(texres.nor);
-							mul_v3_fl(texres.nor, len);
+							normalize_v3_length(texres.nor, len);
 						}
 					}
 				}
@@ -2429,12 +2541,17 @@ void do_material_tex(ShadeInput *shi, Render *re)
 					ImBuf *ibuf = BKE_image_pool_acquire_ibuf(ima, &tex->iuser, re->pool);
 					
 					/* don't linearize float buffers, assumed to be linear */
-					if (ibuf && !(ibuf->rect_float) && R.scene_color_manage)
+					if (ibuf != NULL &&
+					    ibuf->rect_float == NULL &&
+					    (rgbnor & TEX_RGB) &&
+					    R.scene_color_manage)
+					{
 						IMB_colormanagement_colorspace_to_scene_linear_v3(tcol, ibuf->rect_colorspace);
+					}
 
 					BKE_image_pool_release_ibuf(ima, ibuf, re->pool);
 				}
-				
+
 				if (mtex->mapto & MAP_COL) {
 					float colfac= mtex->colfac*stencilTin;
 					texture_rgb_blend(&shi->r, tcol, &shi->r, texres.tin, colfac, mtex->blendtype);
@@ -2675,6 +2792,7 @@ void do_material_tex(ShadeInput *shi, Render *re)
 void do_volume_tex(ShadeInput *shi, const float *xyz, int mapto_flag, float col_r[3], float *val, Render *re)
 {
 	const bool skip_load_image = (re->r.scemode & R_NO_IMAGE_LOAD) != 0;
+	const bool texnode_preview = (re->r.scemode & R_TEXNODE_PREVIEW) != 0;
 	MTex *mtex;
 	Tex *tex;
 	TexResult texres= {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, NULL};
@@ -2762,7 +2880,17 @@ void do_volume_tex(ShadeInput *shi, const float *xyz, int mapto_flag, float col_
 				else texvec[2]= mtex->size[2]*(mtex->ofs[2]);
 			}
 			
-			rgbnor = multitex(tex, texvec, NULL, NULL, 0, &texres, shi->thread, mtex->which_output, re->pool, skip_load_image);	/* NULL = dxt/dyt, 0 = shi->osatex - not supported */
+			rgbnor = multitex(tex,
+			                  texvec,
+			                  NULL, NULL,
+			                  0,
+			                  &texres,
+			                  shi->thread,
+			                  mtex->which_output,
+			                  re->pool,
+			                  skip_load_image,
+			                  texnode_preview,
+			                  true);	/* NULL = dxt/dyt, 0 = shi->osatex - not supported */
 			
 			/* texture output */
 
@@ -2874,6 +3002,7 @@ void do_volume_tex(ShadeInput *shi, const float *xyz, int mapto_flag, float col_
 void do_halo_tex(HaloRen *har, float xn, float yn, float col_r[4])
 {
 	const bool skip_load_image = har->skip_load_image;
+	const bool texnode_preview = har->texnode_preview;
 	MTex *mtex;
 	TexResult texres= {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, NULL};
 	float texvec[3], dxt[3], dyt[3], fact, facm, dx;
@@ -2930,7 +3059,17 @@ void do_halo_tex(HaloRen *har, float xn, float yn, float col_r[4])
 
 	if (mtex->tex->type==TEX_IMAGE) do_2d_mapping(mtex, texvec, NULL, NULL, dxt, dyt);
 	
-	rgb = multitex(mtex->tex, texvec, dxt, dyt, osatex, &texres, 0, mtex->which_output, har->pool, skip_load_image);
+	rgb = multitex(mtex->tex,
+	               texvec,
+	               dxt, dyt,
+	               osatex,
+	               &texres,
+	               0,
+	               mtex->which_output,
+	               har->pool,
+	               skip_load_image,
+	               texnode_preview,
+	               true);
 
 	/* texture output */
 	if (rgb && (mtex->texflag & MTEX_RGBTOINT)) {
@@ -3017,13 +3156,16 @@ void do_halo_tex(HaloRen *har, float xn, float yn, float col_r[4])
 /* ------------------------------------------------------------------------- */
 
 /* hor and zen are RGB vectors, blend is 1 float, should all be initialized */
-void do_sky_tex(const float rco[3], float lo[3], const float dxyview[2], float hor[3], float zen[3], float *blend, int skyflag, short thread)
+void do_sky_tex(
+        const float rco[3], const float view[3], const float lo[3], const float dxyview[2],
+        float hor[3], float zen[3], float *blend, int skyflag, short thread)
 {
 	const bool skip_load_image = (R.r.scemode & R_NO_IMAGE_LOAD) != 0;
+	const bool texnode_preview = (R.r.scemode & R_TEXNODE_PREVIEW) != 0;
 	MTex *mtex;
 	Tex *tex;
 	TexResult texres= {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0, NULL};
-	float *co, fact, stencilTin=1.0;
+	float fact, stencilTin=1.0;
 	float tempvec[3], texvec[3], dxt[3], dyt[3];
 	int tex_nr, rgb= 0;
 	
@@ -3033,6 +3175,8 @@ void do_sky_tex(const float rco[3], float lo[3], const float dxyview[2], float h
 	
 	for (tex_nr=0; tex_nr<MAX_MTEX; tex_nr++) {
 		if (R.wrld.mtex[tex_nr]) {
+			const float *co;
+
 			mtex= R.wrld.mtex[tex_nr];
 			
 			tex= mtex->tex;
@@ -3094,8 +3238,8 @@ void do_sky_tex(const float rco[3], float lo[3], const float dxyview[2], float h
 				}
 				break;
 			case TEXCO_EQUIRECTMAP:
-				tempvec[0]= atan2f(lo[0], lo[2]) / (float)M_PI;
-				tempvec[1]= 1.0f - 2.0f*saacos(lo[1]) / (float)M_PI;
+				tempvec[0]= -atan2f(lo[2], lo[0]) / (float)M_PI;
+				tempvec[1]=  atan2f(lo[1], hypot(lo[0], lo[2])) / (float)M_PI_2;
 				tempvec[2]= 0.0f;
 				co= tempvec;
 				break;
@@ -3121,6 +3265,9 @@ void do_sky_tex(const float rco[3], float lo[3], const float dxyview[2], float h
 //				copy_v3_v3(shi->dygl, shi->dyco);
 //				mul_m3_v3(R.imat, shi->dyco);
 				break;
+			case TEXCO_VIEW:
+				co = view;
+				break;
 			}
 			
 			/* placement */
@@ -3136,7 +3283,17 @@ void do_sky_tex(const float rco[3], float lo[3], const float dxyview[2], float h
 			/* texture */
 			if (tex->type==TEX_IMAGE) do_2d_mapping(mtex, texvec, NULL, NULL, dxt, dyt);
 		
-			rgb = multitex(mtex->tex, texvec, dxt, dyt, R.osa, &texres, thread, mtex->which_output, R.pool, skip_load_image);
+			rgb = multitex(mtex->tex,
+			               texvec,
+			               dxt, dyt,
+			               R.osa,
+			               &texres,
+			               thread,
+			               mtex->which_output,
+			               R.pool,
+			               skip_load_image,
+			               texnode_preview,
+			               true);
 			
 			/* texture output */
 			if (rgb && (mtex->texflag & MTEX_RGBTOINT)) {
@@ -3229,6 +3386,7 @@ void do_sky_tex(const float rco[3], float lo[3], const float dxyview[2], float h
 void do_lamp_tex(LampRen *la, const float lavec[3], ShadeInput *shi, float col_r[3], int effect)
 {
 	const bool skip_load_image = (R.r.scemode & R_NO_IMAGE_LOAD) != 0;
+	const bool texnode_preview = (R.r.scemode & R_TEXNODE_PREVIEW) != 0;
 	Object *ob;
 	MTex *mtex;
 	Tex *tex;
@@ -3352,7 +3510,17 @@ void do_lamp_tex(LampRen *la, const float lavec[3], ShadeInput *shi, float col_r
 				do_2d_mapping(mtex, texvec, NULL, NULL, dxt, dyt);
 			}
 			
-			rgb = multitex(tex, texvec, dxt, dyt, shi->osatex, &texres, shi->thread, mtex->which_output, R.pool, skip_load_image);
+			rgb = multitex(tex,
+			               texvec,
+			               dxt, dyt,
+			               shi->osatex,
+			               &texres,
+			               shi->thread,
+			               mtex->which_output,
+			               R.pool,
+			               skip_load_image,
+			               texnode_preview,
+			               true);
 
 			/* texture output */
 			if (rgb && (mtex->texflag & MTEX_RGBTOINT)) {
@@ -3426,7 +3594,13 @@ void do_lamp_tex(LampRen *la, const float lavec[3], ShadeInput *shi, float col_r
 
 /* ------------------------------------------------------------------------- */
 
-int externtex(MTex *mtex, const float vec[3], float *tin, float *tr, float *tg, float *tb, float *ta, const int thread, struct ImagePool *pool, const bool skip_load_image)
+int externtex(MTex *mtex,
+              const float vec[3],
+              float *tin, float *tr, float *tg, float *tb, float *ta,
+              const int thread,
+              struct ImagePool *pool,
+              const bool skip_load_image,
+              const bool texnode_preview)
 {
 	Tex *tex;
 	TexResult texr;
@@ -3452,7 +3626,16 @@ int externtex(MTex *mtex, const float vec[3], float *tin, float *tr, float *tg, 
 		do_2d_mapping(mtex, texvec, NULL, NULL, dxt, dyt);
 	}
 	
-	rgb = multitex(tex, texvec, dxt, dyt, 0, &texr, thread, mtex->which_output, pool, skip_load_image);
+	rgb = multitex(tex,
+	               texvec,
+	               dxt, dyt,
+	               0, &texr,
+	               thread,
+	               mtex->which_output,
+	               pool,
+	               skip_load_image,
+	               texnode_preview,
+	               true);
 	
 	if (rgb) {
 		texr.tin = IMB_colormanagement_get_luminance(&texr.tr);
@@ -3491,9 +3674,10 @@ void render_realtime_texture(ShadeInput *shi, Image *ima)
 	if (firsttime) {
 		BLI_lock_thread(LOCK_IMAGE);
 		if (firsttime) {
-			for (a=0; a<BLENDER_MAX_THREADS; a++) {
+			const int num_threads = BLI_system_thread_count();
+			for (a = 0; a < num_threads; a++) {
 				memset(&imatex[a], 0, sizeof(Tex));
-				default_tex(&imatex[a]);
+				BKE_texture_default(&imatex[a]);
 				imatex[a].type= TEX_IMAGE;
 			}
 
@@ -3529,7 +3713,10 @@ void render_realtime_texture(ShadeInput *shi, Image *ima)
 
 /* A modified part of shadeinput.c -> shade_input_set_uv()
  *  Used for sampling UV mapped texture color */
-static void textured_face_generate_uv(float *uv, const float normal[3], float *hit, float *v1, float *v2, float *v3)
+static void textured_face_generate_uv(
+        const float normal[3], const float hit[3],
+        const float v1[3], const float v2[3], const float v3[3],
+        float r_uv[2])
 {
 
 	float detsh, t00, t10, t01, t11;
@@ -3546,16 +3733,16 @@ static void textured_face_generate_uv(float *uv, const float normal[3], float *h
 	t00*= detsh; t01*=detsh; 
 	t10*=detsh; t11*=detsh;
 
-	uv[0] = (hit[axis1]-v3[axis1])*t11-(hit[axis2]-v3[axis2])*t10;
-	uv[1] = (hit[axis2]-v3[axis2])*t00-(hit[axis1]-v3[axis1])*t01;
+	r_uv[0] = (hit[axis1] - v3[axis1]) * t11 - (hit[axis2] - v3[axis2]) * t10;
+	r_uv[1] = (hit[axis2] - v3[axis2]) * t00 - (hit[axis1] - v3[axis1]) * t01;
 
 	/* u and v are in range -1 to 0, we allow a little bit extra but not too much, screws up speedvectors */
-	CLAMP(uv[0], -2.0f, 1.0f);
-	CLAMP(uv[1], -2.0f, 1.0f);
+	CLAMP(r_uv[0], -2.0f, 1.0f);
+	CLAMP(r_uv[1], -2.0f, 1.0f);
 }
 
 /* Generate an updated copy of material to use for color sampling. */
-Material *RE_init_sample_material(Material *orig_mat, Scene *scene)
+Material *RE_sample_material_init(Material *orig_mat, Scene *scene)
 {
 	Tex *tex = NULL;
 	Material *mat;
@@ -3614,7 +3801,7 @@ Material *RE_init_sample_material(Material *orig_mat, Scene *scene)
 			}
 
 			/* copy texture */
-			tex= mtex->tex = localize_texture(cur_tex);
+			tex= mtex->tex = BKE_texture_localize(cur_tex);
 
 			/* update texture anims */
 			BKE_animsys_evaluate_animdata(scene, &tex->id, tex->adt, BKE_scene_frame_get(scene), ADT_RECALC_ANIM);
@@ -3631,7 +3818,7 @@ Material *RE_init_sample_material(Material *orig_mat, Scene *scene)
 				unit_m4(dummy_re.viewmat);
 				unit_m4(dummy_re.winmat);
 				dummy_re.winx = dummy_re.winy = 128;
-				cache_pointdensity(&dummy_re, tex);
+				cache_pointdensity(&dummy_re, tex->pd);
 			}
 
 			/* update image sequences and movies */
@@ -3643,8 +3830,8 @@ Material *RE_init_sample_material(Material *orig_mat, Scene *scene)
 	return mat;
 }
 
-/* free all duplicate data allocated by RE_init_sample_material() */
-void RE_free_sample_material(Material *mat)
+/* free all duplicate data allocated by RE_sample_material_init() */
+void RE_sample_material_free(Material *mat)
 {
 	int tex_nr;
 
@@ -3655,6 +3842,7 @@ void RE_free_sample_material(Material *mat)
 			MTex *mtex= mat->mtex[tex_nr];
 	
 			if (mtex->tex) {
+				/* don't update user counts as we are freeing a duplicate */
 				BKE_texture_free(mtex->tex);
 				MEM_freeN(mtex->tex);
 				mtex->tex = NULL;
@@ -3663,11 +3851,9 @@ void RE_free_sample_material(Material *mat)
 	}
 
 	/* don't update user counts as we are freeing a duplicate */
-	BKE_material_free_ex(mat, false);
+	BKE_material_free(mat);
 	MEM_freeN(mat);
 }
-
-
 
 /*
  *	Get material diffuse color and alpha (including linked textures) in given coordinates
@@ -3675,26 +3861,33 @@ void RE_free_sample_material(Material *mat)
  *	color,alpha : input/output color values
  *	volume_co : sample coordinate in global space. used by volumetric materials
  *	surface_co : sample surface coordinate in global space. used by "surface" materials
- *	face_index : surface face index
- *	hit_quad : whether point is on second "half" of a quad
+ *	tri_index : surface tri index
  *	orcoDm : orco state derived mesh
  */
-void RE_sample_material_color(Material *mat, float color[3], float *alpha, const float volume_co[3], const float surface_co[3], int face_index, short hit_quad, DerivedMesh *orcoDm, Object *ob)
+void RE_sample_material_color(
+        Material *mat, float color[3], float *alpha, const float volume_co[3], const float surface_co[3],
+        int tri_index, DerivedMesh *orcoDm, Object *ob)
 {
-	MFace *mface;
 	int v1, v2, v3;
 	MVert *mvert;
-	float uv[3], normal[3];
+	MLoop *mloop;
+	const MLoopTri *mlooptri;
+	float normal[3];
 	ShadeInput shi = {NULL};
 	Render re = {NULL};
 
 	/* Get face data	*/
 	mvert = orcoDm->getVertArray(orcoDm);
-	mface = orcoDm->getTessFaceArray(orcoDm);
+	mloop = orcoDm->getLoopArray(orcoDm);
+	mlooptri = orcoDm->getLoopTriArray(orcoDm);
 
-	if (!mvert || !mface || !mat) return;
-	v1=mface[face_index].v1, v2=mface[face_index].v2, v3=mface[face_index].v3;
-	if (hit_quad) { v2 = mface[face_index].v3; v3 = mface[face_index].v4; }
+	if (!mvert || !mlooptri || !mat) {
+		return;
+	}
+
+	v1 = mloop[mlooptri[tri_index].tri[0]].v;
+	v2 = mloop[mlooptri[tri_index].tri[1]].v;
+	v3 = mloop[mlooptri[tri_index].tri[2]].v;
 	normal_tri_v3(normal, mvert[v1].co, mvert[v2].co, mvert[v3].co);
 
 	/* generate shadeinput with data required */
@@ -3709,9 +3902,10 @@ void RE_sample_material_color(Material *mat, float color[3], float *alpha, const
 		mul_m4_v3(ob->imat, shi.co);
 		/* orco coordinates */
 		{
+			float uv[2];
 			float l;
 			/* Get generated UV */
-			textured_face_generate_uv(uv, normal, shi.co, mvert[v1].co, mvert[v2].co, mvert[v3].co);
+			textured_face_generate_uv(normal, shi.co, mvert[v1].co, mvert[v2].co, mvert[v3].co, uv);
 			l= 1.0f+uv[0]+uv[1];
 
 			/* calculate generated coordinate */
@@ -3721,35 +3915,37 @@ void RE_sample_material_color(Material *mat, float color[3], float *alpha, const
 		}
 		/* uv coordinates */
 		{
-			int i, layers = CustomData_number_of_layers(&orcoDm->faceData, CD_MTFACE);
-			int layer_index = CustomData_get_layer_index(&orcoDm->faceData, CD_MTFACE);
+			const int layers = CustomData_number_of_layers(&orcoDm->loopData, CD_MLOOPUV);
+			const int layer_index = CustomData_get_layer_index(&orcoDm->loopData, CD_MLOOPUV);
+			int i;
 
 			/* for every uv map set coords and name */
 			for (i=0; i<layers; i++) {
 				if (layer_index >= 0) {
 					const float *uv1, *uv2, *uv3;
+					const CustomData *data = &orcoDm->loopData;
+					const MLoopUV *mloopuv = data->layers[layer_index + i].data;
+					float uv[2];
 					float l;
-					CustomData *data = &orcoDm->faceData;
-					MTFace *tface = (MTFace *) data->layers[layer_index+i].data;
-					float uv[3];
+
 					/* point layer name from actual layer data */
 					shi.uv[i].name = data->layers[i].name;
 					/* Get generated coordinates to calculate UV from */
-					textured_face_generate_uv(uv, normal, shi.co, mvert[v1].co, mvert[v2].co, mvert[v3].co);
+					textured_face_generate_uv(normal, shi.co, mvert[v1].co, mvert[v2].co, mvert[v3].co, uv);
 					/* Get UV mapping coordinate */
 					l= 1.0f+uv[0]+uv[1];
-						
-					uv1= tface[face_index].uv[0];
-					uv2= (hit_quad) ? tface[face_index].uv[2] : tface[face_index].uv[1];
-					uv3= (hit_quad) ? tface[face_index].uv[3] : tface[face_index].uv[2];
-								
+
+					uv1 = mloopuv[mlooptri[tri_index].tri[0]].uv;
+					uv2 = mloopuv[mlooptri[tri_index].tri[1]].uv;
+					uv3 = mloopuv[mlooptri[tri_index].tri[2]].uv;
+
 					shi.uv[i].uv[0]= -1.0f + 2.0f*(l*uv3[0]-uv[0]*uv1[0]-uv[1]*uv2[0]);
 					shi.uv[i].uv[1]= -1.0f + 2.0f*(l*uv3[1]-uv[0]*uv1[1]-uv[1]*uv2[1]);
 					shi.uv[i].uv[2]= 0.0f;	/* texture.c assumes there are 3 coords */
 				}
 			}
 			/* active uv map */
-			shi.actuv = CustomData_get_active_layer_index(&orcoDm->faceData, CD_MTFACE) - layer_index;
+			shi.actuv = CustomData_get_active_layer_index(&orcoDm->loopData, CD_MLOOPUV) - layer_index;
 			shi.totuv = layers;
 		}
 

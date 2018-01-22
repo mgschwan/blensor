@@ -8,7 +8,6 @@ __author__ = "mozman <mozman@gmx.at>"
 from .codepage import toencoding
 from .defaultchunk import DefaultChunk, iterchunks
 from .headersection import HeaderSection
-from .headersection import MinVersionError
 from .tablessection import TablesSection
 from .entitysection import EntitySection, ObjectsSection
 from .blockssection import BlocksSection
@@ -30,24 +29,16 @@ class Sections(object):
             section = cls()
             self._sections[section.name] = section
 
-    def check_min_version(self, version_string):
-        v = int(version_string.replace("AC", ""))
-        if v < 1009:
-            raise MinVersionError(version_string)
-
     def _setup_sections(self, tagreader, drawing):
         def name(section):
             return section[1].value
 
-        bootstrap = True
         for section in iterchunks(tagreader, stoptag='EOF', endofchunk='ENDSEC'):
-            if bootstrap:
+            if name(section) == 'HEADER':
                 new_section = HeaderSection.from_tags(section)
                 drawing.dxfversion = new_section.get('$ACADVER', 'AC1009')
-                self.check_min_version(drawing.dxfversion)
                 codepage = new_section.get('$DWGCODEPAGE', 'ANSI_1252')
                 drawing.encoding = toencoding(codepage)
-                bootstrap = False
             else:
                 section_name = name(section)
                 if section_name in SECTIONMAP:

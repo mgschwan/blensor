@@ -1055,6 +1055,13 @@ static int imagewraposa_aniso(Tex *tex, Image *ima, ImBuf *ibuf, const float tex
 			fx -= xs;
 			fy -= ys;
 		}
+		else if ((tex->flag & TEX_CHECKER_ODD) == 0 &&
+		         (tex->flag & TEX_CHECKER_EVEN) == 0)
+		{
+			if (ima)
+				BKE_image_pool_release_ibuf(ima, ibuf, pool);
+			return retval;
+		}
 		else {
 			int xs1 = (int)floorf(fx - minx);
 			int ys1 = (int)floorf(fy - miny);
@@ -1145,7 +1152,7 @@ static int imagewraposa_aniso(Tex *tex, Image *ima, ImBuf *ibuf, const float tex
 		ImBuf *previbuf, *curibuf;
 		float levf;
 		int maxlev;
-		ImBuf *mipmaps[IB_MIPMAP_LEVELS + 1];
+		ImBuf *mipmaps[IMB_MIPMAP_LEVELS + 1];
 
 		/* modify ellipse minor axis if too eccentric, use for area sampling as well
 		 * scaling dxt/dyt as done in pbrt is not the same
@@ -1185,7 +1192,7 @@ static int imagewraposa_aniso(Tex *tex, Image *ima, ImBuf *ibuf, const float tex
 		curmap = 0;
 		maxlev = 1;
 		mipmaps[0] = ibuf;
-		while (curmap < IB_MIPMAP_LEVELS) {
+		while (curmap < IMB_MIPMAP_LEVELS) {
 			mipmaps[curmap + 1] = ibuf->mipmap[curmap];
 			if (ibuf->mipmap[curmap]) maxlev++;
 			curmap++;
@@ -1248,7 +1255,9 @@ static int imagewraposa_aniso(Tex *tex, Image *ima, ImBuf *ibuf, const float tex
 				texres->ta += levf*(texr.ta - texres->ta);
 			}
 
-			alpha_clip_aniso(ibuf, fx-minx, fy-miny, fx+minx, fy+miny, extflag, texres);
+			if (tex->texfilter != TXF_EWA) {
+				alpha_clip_aniso(ibuf, fx-minx, fy-miny, fx+minx, fy+miny, extflag, texres);
+			}
 		}
 	}
 	else {	/* no mipmap */
@@ -1290,7 +1299,9 @@ static int imagewraposa_aniso(Tex *tex, Image *ima, ImBuf *ibuf, const float tex
 		}
 		else {
 			filterfunc(texres, ibuf, fx, fy, &AFD);
-			alpha_clip_aniso(ibuf, fx-minx, fy-miny, fx+minx, fy+miny, extflag, texres);
+			if (tex->texfilter != TXF_EWA) {
+				alpha_clip_aniso(ibuf, fx-minx, fy-miny, fx+minx, fy+miny, extflag, texres);
+			}
 		}
 	}
 
@@ -1472,6 +1483,13 @@ int imagewraposa(Tex *tex, Image *ima, ImBuf *ibuf, const float texvec[3], const
 			fx-= xs;
 			fy-= ys;
 		}
+		else if ((tex->flag & TEX_CHECKER_ODD) == 0 &&
+		         (tex->flag & TEX_CHECKER_EVEN) == 0)
+		{
+			if (ima)
+				BKE_image_pool_release_ibuf(ima, ibuf, pool);
+			return retval;
+		}
 		else {
 			
 			xs1= (int)floor(fx-minx);
@@ -1585,7 +1603,7 @@ int imagewraposa(Tex *tex, Image *ima, ImBuf *ibuf, const float texvec[3], const
 		
 		curmap= 0;
 		previbuf= curibuf= ibuf;
-		while (curmap<IB_MIPMAP_LEVELS && ibuf->mipmap[curmap]) {
+		while (curmap < IMB_MIPMAP_LEVELS && ibuf->mipmap[curmap]) {
 			if (maxd < pixsize) break;
 			previbuf= curibuf;
 			curibuf= ibuf->mipmap[curmap];

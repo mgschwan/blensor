@@ -33,6 +33,7 @@
 
 #include "DNA_listBase.h"
 #include "DNA_vec_types.h"
+#include "DNA_userdef_types.h"
 
 #include "DNA_ID.h"
 
@@ -49,21 +50,19 @@ struct wmKeyConfig;
 
 /* forwards */
 struct bContext;
-struct wmLocal;
 struct bScreen;
-struct uiBlock;
 struct wmSubWindow;
 struct wmTimer;
-struct StructRNA;
 struct PointerRNA;
 struct ReportList;
 struct Report;
 struct uiLayout;
+struct Stereo3dFormat;
 
 #define OP_MAX_TYPENAME 64
 #define KMAP_MAX_NAME   64
 
-/* keep in sync with 'wm_report_items' in wm_rna.c */
+/* keep in sync with 'rna_enum_wm_report_items' in wm_rna.c */
 typedef enum ReportType {
 	RPT_DEBUG                   = (1 << 0),
 	RPT_INFO                    = (1 << 1),
@@ -191,6 +190,8 @@ typedef struct wmWindow {
 	short modalcursor;  /* the current modal cursor */
 	short grabcursor;           /* cursor grab mode */
 	short addmousemove; /* internal: tag this for extra mousemove event, makes cursors/buttons active on UI switching */
+	short multisamples; /* amount of samples for OpenGL FSA the ghost window was created with, if zero no FSA */
+	short pad[3];
 
 	int winid;                  /* winid also in screens, is for retrieving this window after read */
 
@@ -209,7 +210,7 @@ typedef struct wmWindow {
 	struct wmIMEData *ime_data;
 
 	int drawmethod, drawfail;     /* internal for wm_draw.c only */
-	void *drawdata;               /* internal for wm_draw.c only */
+	ListBase drawdata;            /* internal for wm_draw.c only */
 
 	ListBase queue;               /* all events (ghost level events were handled) */
 	ListBase handlers;            /* window+screen handlers, handled last */
@@ -217,6 +218,8 @@ typedef struct wmWindow {
 
 	ListBase subwindows;          /* opengl stuff for sub windows, see notes in wm_subwindow.c */
 	ListBase gesture;             /* gesture stuff */
+
+	struct Stereo3dFormat *stereo3d_format; /* properties for stereoscopic displays */
 } wmWindow;
 
 #ifdef ime_data
@@ -389,10 +392,16 @@ enum {
 
 /* wmOperator flag */
 enum {
-	OP_GRAB_POINTER    = (1 << 0),
 	/* low level flag so exec() operators can tell if they were invoked, use with care.
 	 * typically this shouldn't make any difference, but it rare cases its needed (see smooth-view) */
-	OP_IS_INVOKE       = (1 << 1),
+	OP_IS_INVOKE = (1 << 0),
+
+	/* When the cursor is grabbed */
+	OP_IS_MODAL_GRAB_CURSOR    = (1 << 1),
+
+	/* allow modal operators to have the region under the cursor for their context
+	 * (the regiontype is maintained to prevent errors) */
+	OP_IS_MODAL_CURSOR_REGION = (1 << 2),
 };
 
 #endif /* __DNA_WINDOWMANAGER_TYPES_H__ */

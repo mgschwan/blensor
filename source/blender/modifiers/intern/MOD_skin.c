@@ -77,6 +77,8 @@
 #include "BKE_mesh_mapping.h"
 #include "BKE_modifier.h"
 
+#include "MOD_modifiertypes.h"
+
 #include "bmesh.h"
 
 typedef struct {
@@ -104,6 +106,9 @@ typedef struct Frame {
 		/* Merge to target frame/corner (no merge if frame is null) */
 		struct Frame *frame;
 		int corner;
+		/* checked to avoid chaining.
+		 * (merging when we're already been referenced), see T39775 */
+		unsigned int is_target : 1;
 	} merge[4];
 
 	/* For hull frames, whether each vertex is detached or not */
@@ -249,6 +254,7 @@ static bool build_hull(SkinOutput *so, Frame **frames, int totframe)
 
 	/* Apply face attributes to hull output */
 	BMO_ITER (f, &oiter, op.slots_out, "geom.out", BM_FACE) {
+		BM_face_normal_update(f);
 		if (so->smd->flag & MOD_SKIN_SMOOTH_SHADING)
 			BM_elem_flag_enable(f, BM_ELEM_SMOOTH);
 		f->mat_nr = so->mat_nr;
@@ -362,7 +368,7 @@ static void merge_frame_corners(Frame **frames, int totframe)
 
 				/* Compare with each corner of all other frames... */
 				for (l = 0; l < 4; l++) {
-					if (frames[k]->merge[l].frame)
+					if (frames[k]->merge[l].frame || frames[k]->merge[l].is_target)
 						continue;
 
 					/* Some additional concerns that could be checked
@@ -392,6 +398,7 @@ static void merge_frame_corners(Frame **frames, int totframe)
 
 						frames[k]->merge[l].frame = frames[i];
 						frames[k]->merge[l].corner = j;
+						frames[i]->merge[j].is_target = true;
 
 						/* Can't merge another corner into the same
 						 * frame corner, so move on to frame k+1 */
@@ -703,7 +710,8 @@ static EMat *build_edge_mats(const MVertSkin *vs,
                              int totvert,
                              const MEdge *medge,
                              const MeshElemMap *emap,
-                             int totedge)
+                             int totedge,
+                             bool *has_valid_root)
 {
 	BLI_Stack *stack;
 	EMat *emat;
@@ -731,6 +739,8 @@ static EMat *build_edge_mats(const MVertSkin *vs,
 					stack_elem.e = emap[v].indices[i];
 					BLI_stack_push(stack, &stack_elem);
 				}
+
+				*has_valid_root = true;
 			}
 		}
 	}
@@ -960,6 +970,7 @@ static void add_poly(SkinOutput *so,
 	BLI_assert(v1 && v2 && v3);
 
 	f = BM_face_create_verts(so->bm, verts, v4 ? 4 : 3, NULL, BM_CREATE_NO_DOUBLE, true);
+	BM_face_normal_update(f);
 	if (so->smd->flag & MOD_SKIN_SMOOTH_SHADING)
 		BM_elem_flag_enable(f, BM_ELEM_SMOOTH);
 	f->mat_nr = so->mat_nr;
@@ -1421,6 +1432,9 @@ static void hull_merge_triangles(SkinOutput *so, const SkinModifierData *smd)
 			if (adj[0]->len == 3 && adj[1]->len == 3) {
 				BMVert *quad[4];
 
+				BLI_assert(BM_face_is_normal_valid(adj[0]));
+				BLI_assert(BM_face_is_normal_valid(adj[1]));
+
 				/* Construct quad using the two triangles adjacent to
 				 * the edge */
 				quad_from_tris(e, adj, quad);
@@ -1733,7 +1747,9 @@ static BMesh *build_skin(SkinNode *skin_nodes,
 	int v;
 
 	so.smd = smd;
-	so.bm = BM_mesh_create(&bm_mesh_allocsize_default);
+	so.bm = BM_mesh_create(
+	        &bm_mesh_allocsize_default,
+	        &((struct BMeshCreateParams){.use_toolflags = true,}));
 	so.mat_nr = 0;
 	
 	/* BMESH_TODO: bumping up the stack level (see MOD_array.c) */
@@ -1783,6 +1799,9 @@ static BMesh *build_skin(SkinNode *skin_nodes,
 	skin_output_connections(&so, skin_nodes, medge, totedge);
 	hull_merge_triangles(&so, smd);
 
+	bmesh_edit_end(so.bm, 0);
+	BMO_pop(so.bm);
+
 	return so.bm;
 }
 
@@ -1793,7 +1812,7 @@ static void skin_set_orig_indices(DerivedMesh *dm)
 	totpoly = dm->getNumPolys(dm);
 	orig = CustomData_add_layer(&dm->polyData, CD_ORIGINDEX,
 	                            CD_CALLOC, NULL, totpoly);
-	fill_vn_i(orig, totpoly, ORIGINDEX_NONE);
+	copy_vn_i(orig, totpoly, ORIGINDEX_NONE);
 }
 
 /*
@@ -1816,6 +1835,7 @@ static DerivedMesh *base_skin(DerivedMesh *origdm,
 	MEdge *medge;
 	MDeformVert *dvert;
 	int totvert, totedge;
+	bool has_valid_root = false;
 
 	nodes = CustomData_get_layer(&origdm->vertData, CD_MVERT_SKIN);
 
@@ -1827,7 +1847,7 @@ static DerivedMesh *base_skin(DerivedMesh *origdm,
 
 	BKE_mesh_vert_edge_map_create(&emap, &emapmem, medge, totvert, totedge);
 
-	emat = build_edge_mats(nodes, mvert, totvert, medge, emap, totedge);
+	emat = build_edge_mats(nodes, mvert, totvert, medge, emap, totedge, &has_valid_root);
 	skin_nodes = build_frames(mvert, totvert, nodes, emap, emat);
 	MEM_freeN(emat);
 	emat = NULL;
@@ -1838,13 +1858,16 @@ static DerivedMesh *base_skin(DerivedMesh *origdm,
 	MEM_freeN(emap);
 	MEM_freeN(emapmem);
 
+	if (!has_valid_root) {
+		modifier_setError(&smd->modifier, "No valid root vertex found (you need one per mesh island you want to skin)");
+	}
+
 	if (!bm)
 		return NULL;
 	
 	result = CDDM_from_bmesh(bm, false);
 	BM_mesh_free(bm);
 
-	CDDM_calc_edges(result);
 	result->dirty |= DM_DIRTY_NORMALS;
 
 	skin_set_orig_indices(result);
@@ -1930,6 +1953,7 @@ ModifierTypeInfo modifierType_Skin = {
 	/* freeData */          NULL,
 	/* isDisabled */        NULL,
 	/* updateDepgraph */    NULL,
+	/* updateDepsgraph */   NULL,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */	NULL,
 	/* foreachObjectLink */ NULL,

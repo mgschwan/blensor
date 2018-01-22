@@ -41,6 +41,7 @@
 
 #include "BKE_cdderivedmesh.h"
 #include "BKE_lattice.h"
+#include "BKE_library_query.h"
 #include "BKE_modifier.h"
 
 #include "depsgraph_private.h"
@@ -83,12 +84,11 @@ static bool isDisabled(ModifierData *md, int UNUSED(userRenderParams))
 
 static void foreachObjectLink(
         ModifierData *md, Object *ob,
-        void (*walk)(void *userData, Object *ob, Object **obpoin),
-        void *userData)
+        ObjectWalkFunc walk, void *userData)
 {
 	LatticeModifierData *lmd = (LatticeModifierData *) md;
 
-	walk(userData, ob, &lmd->object);
+	walk(userData, ob, &lmd->object, IDWALK_CB_NOP);
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
@@ -105,6 +105,20 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 		dag_add_relation(forest, latNode, obNode,
 		                 DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Lattice Modifier");
 	}
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *object,
+                            struct DepsNodeHandle *node)
+{
+	LatticeModifierData *lmd = (LatticeModifierData *)md;
+	if (lmd->object != NULL) {
+		DEG_add_object_relation(node, lmd->object, DEG_OB_COMP_GEOMETRY, "Lattice Modifier");
+		DEG_add_object_relation(node, lmd->object, DEG_OB_COMP_TRANSFORM, "Lattice Modifier");
+	}
+	DEG_add_object_relation(node, object, DEG_OB_COMP_TRANSFORM, "Lattice Modifier");
 }
 
 static void deformVerts(ModifierData *md, Object *ob,
@@ -142,6 +156,7 @@ ModifierTypeInfo modifierType_Lattice = {
 	/* structSize */        sizeof(LatticeModifierData),
 	/* type */              eModifierTypeType_OnlyDeform,
 	/* flags */             eModifierTypeFlag_AcceptsCVs |
+	                        eModifierTypeFlag_AcceptsLattice |
 	                        eModifierTypeFlag_SupportsEditmode,
 	/* copyData */          copyData,
 	/* deformVerts */       deformVerts,
@@ -155,6 +170,7 @@ ModifierTypeInfo modifierType_Lattice = {
 	/* freeData */          NULL,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */	NULL,
 	/* foreachObjectLink */ foreachObjectLink,

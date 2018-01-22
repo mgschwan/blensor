@@ -35,16 +35,13 @@
 
 #define RNA_MAGIC ((int)~0)
 
-struct ColorBand;
 struct ID;
 struct IDProperty;
 struct Main;
 struct Mesh;
 struct Object;
-struct RenderEngine;
 struct ReportList;
 struct SDNA;
-struct Sequence;
 
 /* Data structures used during define */
 
@@ -136,6 +133,7 @@ void RNA_def_armature(struct BlenderRNA *brna);
 void RNA_def_actuator(struct BlenderRNA *brna);
 void RNA_def_boid(struct BlenderRNA *brna);
 void RNA_def_brush(struct BlenderRNA *brna);
+void RNA_def_cachefile(struct BlenderRNA *brna);
 void RNA_def_camera(struct BlenderRNA *brna);
 void RNA_def_cloth(struct BlenderRNA *brna);
 void RNA_def_color(struct BlenderRNA *brna);
@@ -143,6 +141,7 @@ void RNA_def_constraint(struct BlenderRNA *brna);
 void RNA_def_context(struct BlenderRNA *brna);
 void RNA_def_controller(struct BlenderRNA *brna);
 void RNA_def_curve(struct BlenderRNA *brna);
+void RNA_def_depsgraph(struct BlenderRNA *brna);
 void RNA_def_dynamic_paint(struct BlenderRNA *brna);
 void RNA_def_fluidsim(struct BlenderRNA *brna);
 void RNA_def_fcurve(struct BlenderRNA *brna);
@@ -199,6 +198,8 @@ void rna_def_animdata_common(struct StructRNA *srna);
 void rna_def_animviz_common(struct StructRNA *srna);
 void rna_def_motionpath_common(struct StructRNA *srna);
 
+void rna_def_bone_curved_common(struct StructRNA *srna, bool is_posebone);
+
 void rna_def_texmat_common(struct StructRNA *srna, const char *texspace_editable);
 void rna_def_mtex_common(struct BlenderRNA *brna, struct StructRNA *srna, const char *begin, const char *activeget,
                          const char *activeset, const char *activeeditable, const char *structname,
@@ -236,7 +237,6 @@ int rna_object_shapekey_index_set(struct ID *id, PointerRNA value, int current);
 void rna_Object_internal_update_data(struct Main *bmain, struct Scene *scene, struct PointerRNA *ptr);
 void rna_Mesh_update_draw(struct Main *bmain, struct Scene *scene, struct PointerRNA *ptr);
 void rna_TextureSlot_update(struct Main *bmain, struct Scene *scene, struct PointerRNA *ptr);
-void rna_TextureSlot_brush_update(struct Main *bmain, struct Scene *scene, struct PointerRNA *ptr);
 
 /* basic poll functions for object types */
 int rna_Armature_object_poll(struct PointerRNA *ptr, struct PointerRNA value);
@@ -262,6 +262,7 @@ void RNA_api_camera(StructRNA *srna);
 void RNA_api_curve(StructRNA *srna);
 void RNA_api_fcurves(StructRNA *srna);
 void RNA_api_drivers(StructRNA *srna);
+void RNA_api_image_packed_file(struct StructRNA *srna);
 void RNA_api_image(struct StructRNA *srna);
 void RNA_api_lattice(struct StructRNA *srna);
 void RNA_api_operator(struct StructRNA *srna);
@@ -332,6 +333,8 @@ void RNA_def_main_gpencil(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_def_main_movieclips(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_def_main_masks(BlenderRNA *brna, PropertyRNA *cprop);
 void RNA_def_main_linestyles(BlenderRNA *brna, PropertyRNA *cprop);
+void RNA_def_main_cachefiles(BlenderRNA *brna, PropertyRNA *cprop);
+void RNA_def_main_paintcurves(BlenderRNA *brna, PropertyRNA *cprop);
 
 /* ID Properties */
 
@@ -341,6 +344,7 @@ extern IntPropertyRNA rna_PropertyGroupItem_int_array;
 extern FloatPropertyRNA rna_PropertyGroupItem_float;
 extern FloatPropertyRNA rna_PropertyGroupItem_float_array;
 extern PointerPropertyRNA rna_PropertyGroupItem_group;
+extern PointerPropertyRNA rna_PropertyGroupItem_id;
 extern CollectionPropertyRNA rna_PropertyGroupItem_collection;
 extern CollectionPropertyRNA rna_PropertyGroupItem_idp_array;
 extern FloatPropertyRNA rna_PropertyGroupItem_double;

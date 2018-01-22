@@ -39,6 +39,8 @@
 
 #include "intern/bmesh_operators_private.h" /* own include */
 
+#define USE_EDGE_REGION_FLAGS
+
 enum {
 	EXT_INPUT   = 1,
 	EXT_KEEP    = 2,
@@ -68,10 +70,10 @@ void bmo_extrude_discrete_faces_exec(BMesh *bm, BMOperator *op)
 		BMLoop *l_org, *l_org_first;
 		BMLoop *l_new;
 
-		BMO_elem_flag_enable(bm, f_org, EXT_DEL);
+		BMO_face_flag_enable(bm, f_org, EXT_DEL);
 
 		f_new = BM_face_copy(bm, bm, f_org, true, true);
-		BMO_elem_flag_enable(bm, f_new, EXT_KEEP);
+		BMO_face_flag_enable(bm, f_new, EXT_KEEP);
 
 		if (select_history_map) {
 			BMEditSelection *ese;
@@ -114,7 +116,8 @@ void bmo_extrude_discrete_faces_exec(BMesh *bm, BMOperator *op)
 				}
 			}
 
-		} while (((l_new = l_new->next),
+		} while (((void)
+		          (l_new = l_new->next),
 		          (l_org = l_org->next)) != l_org_first);
 	}
 
@@ -135,7 +138,7 @@ void bmo_extrude_discrete_faces_exec(BMesh *bm, BMOperator *op)
  * This function won't crash if its not but won't work right either.
  * \a e_b is the new edge.
  *
- * \note The edge this face comes from needs to be from the first and second verts fo the face.
+ * \note The edge this face comes from needs to be from the first and second verts to the face.
  * The caller must ensure this else we will copy from the wrong source.
  */
 static void bm_extrude_copy_face_loop_attributes(BMesh *bm, BMFace *f)
@@ -185,9 +188,9 @@ void bmo_extrude_edge_only_exec(BMesh *bm, BMOperator *op)
 	BMEdge *e, *e_new;
 	
 	BMO_ITER (e, &siter, op->slots_in, "edges", BM_EDGE) {
-		BMO_elem_flag_enable(bm, e, EXT_INPUT);
-		BMO_elem_flag_enable(bm, e->v1, EXT_INPUT);
-		BMO_elem_flag_enable(bm, e->v2, EXT_INPUT);
+		BMO_edge_flag_enable(bm, e, EXT_INPUT);
+		BMO_vert_flag_enable(bm, e->v1, EXT_INPUT);
+		BMO_vert_flag_enable(bm, e->v2, EXT_INPUT);
 	}
 
 	BMO_op_initf(
@@ -225,13 +228,14 @@ void bmo_extrude_edge_only_exec(BMesh *bm, BMOperator *op)
 		f = BM_face_create_verts(bm, f_verts, 4, NULL, BM_CREATE_NOP, true);
 		bm_extrude_copy_face_loop_attributes(bm, f);
 		
-		if (BMO_elem_flag_test(bm, e, EXT_INPUT))
+		if (BMO_edge_flag_test(bm, e, EXT_INPUT)) {
 			e = e_new;
+		}
 		
-		BMO_elem_flag_enable(bm, f, EXT_KEEP);
-		BMO_elem_flag_enable(bm, e, EXT_KEEP);
-		BMO_elem_flag_enable(bm, e->v1, EXT_KEEP);
-		BMO_elem_flag_enable(bm, e->v2, EXT_KEEP);
+		BMO_face_flag_enable(bm, f, EXT_KEEP);
+		BMO_edge_flag_enable(bm, e, EXT_KEEP);
+		BMO_vert_flag_enable(bm, e->v1, EXT_KEEP);
+		BMO_vert_flag_enable(bm, e->v2, EXT_KEEP);
 		
 	}
 
@@ -255,7 +259,7 @@ void bmo_extrude_vert_indiv_exec(BMesh *bm, BMOperator *op)
 
 	for (v = BMO_iter_new(&siter, op->slots_in, "verts", BM_VERT); v; v = BMO_iter_step(&siter)) {
 		dupev = BM_vert_create(bm, v->co, v, BM_CREATE_NOP);
-		BMO_elem_flag_enable(bm, dupev, EXT_KEEP);
+		BMO_vert_flag_enable(bm, dupev, EXT_KEEP);
 
 		if (has_vskin)
 			bm_extrude_disable_skin_root(bm, v);
@@ -276,7 +280,7 @@ void bmo_extrude_vert_indiv_exec(BMesh *bm, BMOperator *op)
 		}
 
 		e = BM_edge_create(bm, v, dupev, NULL, BM_CREATE_NOP);
-		BMO_elem_flag_enable(bm, e, EXT_KEEP);
+		BMO_edge_flag_enable(bm, e, EXT_KEEP);
 	}
 
 	if (select_history_map) {
@@ -286,6 +290,39 @@ void bmo_extrude_vert_indiv_exec(BMesh *bm, BMOperator *op)
 	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "verts.out", BM_VERT, EXT_KEEP);
 	BMO_slot_buffer_from_enabled_flag(bm, op, op->slots_out, "edges.out", BM_EDGE, EXT_KEEP);
 }
+
+#ifdef USE_EDGE_REGION_FLAGS
+/**
+ * When create an edge for an extruded face region
+ * check surrounding edge flags before creating a new edge.
+ */
+static bool bm_extrude_region_edge_flag(const BMVert *v, char r_e_hflag[2])
+{
+	BMEdge *e_iter;
+	const char hflag_enable  = BM_ELEM_SEAM;
+	const char hflag_disable = BM_ELEM_SMOOTH;
+	bool ok = false;
+
+	r_e_hflag[0] = 0x0;
+	r_e_hflag[1] = 0xff;
+
+	/* clear flags on both disks */
+	e_iter = v->e;
+	do {
+		if (e_iter->l && !BM_edge_is_boundary(e_iter)) {
+			r_e_hflag[0] |= e_iter->head.hflag;
+			r_e_hflag[1] &= e_iter->head.hflag;
+			ok = true;
+		}
+	} while ((e_iter = BM_DISK_EDGE_NEXT(e_iter, v)) != v->e);
+
+	if (ok) {
+		r_e_hflag[0] &= hflag_enable;
+		r_e_hflag[1]  = hflag_disable & ~r_e_hflag[1];
+	}
+	return ok;
+}
+#endif  /* USE_EDGE_REGION_FLAGS */
 
 void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 {
@@ -314,7 +351,7 @@ void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 
 			int edge_face_tot;
 
-			if (!BMO_elem_flag_test(bm, e, EXT_INPUT)) {
+			if (!BMO_edge_flag_test(bm, e, EXT_INPUT)) {
 				continue;
 			}
 
@@ -322,7 +359,7 @@ void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 			edge_face_tot = 0; /* edge/face count */
 
 			BM_ITER_ELEM (f, &fiter, e, BM_FACES_OF_EDGE) {
-				if (!BMO_elem_flag_test(bm, f, EXT_INPUT)) {
+				if (!BMO_face_flag_test(bm, f, EXT_INPUT)) {
 					found = true;
 					delorig = true;
 					break;
@@ -333,7 +370,7 @@ void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 
 			if ((edge_face_tot > 1) && (found == false)) {
 				/* edge has a face user, that face isn't extrude input */
-				BMO_elem_flag_enable(bm, e, EXT_DEL);
+				BMO_edge_flag_enable(bm, e, EXT_DEL);
 			}
 		}
 	}
@@ -344,7 +381,9 @@ void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 			found = false;
 
 			BM_ITER_ELEM (e, &viter, v, BM_EDGES_OF_VERT) {
-				if (!BMO_elem_flag_test(bm, e, EXT_INPUT) || !BMO_elem_flag_test(bm, e, EXT_DEL)) {
+				if (!BMO_edge_flag_test(bm, e, EXT_INPUT) ||
+				    !BMO_edge_flag_test(bm, e, EXT_DEL))
+				{
 					found = true;
 					break;
 				}
@@ -353,7 +392,7 @@ void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 			/* avoid an extra loop */
 			if (found == true) {
 				BM_ITER_ELEM (f, &viter, v, BM_FACES_OF_VERT) {
-					if (!BMO_elem_flag_test(bm, f, EXT_INPUT)) {
+					if (!BMO_face_flag_test(bm, f, EXT_INPUT)) {
 						found = true;
 						break;
 					}
@@ -361,14 +400,14 @@ void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 			}
 
 			if (found == false) {
-				BMO_elem_flag_enable(bm, v, EXT_DEL);
+				BMO_vert_flag_enable(bm, v, EXT_DEL);
 			}
 		}
 	}
 	
 	BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
-		if (BMO_elem_flag_test(bm, f, EXT_INPUT)) {
-			BMO_elem_flag_enable(bm, f, EXT_DEL);
+		if (BMO_face_flag_test(bm, f, EXT_INPUT)) {
+			BMO_face_flag_enable(bm, f, EXT_DEL);
 		}
 	}
 
@@ -390,7 +429,7 @@ void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 	}
 
 	slot_facemap_out = BMO_slot_get(dupeop.slots_out, "face_map.out");
-	if (bm->act_face && BMO_elem_flag_test(bm, bm->act_face, EXT_INPUT)) {
+	if (bm->act_face && BMO_face_flag_test(bm, bm->act_face, EXT_INPUT)) {
 		bm->act_face = BMO_slot_map_elem_get(slot_facemap_out, bm->act_face);
 	}
 
@@ -401,7 +440,7 @@ void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 	/* if not delorig, reverse loops of original face */
 	if (!delorig) {
 		BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
-			if (BMO_elem_flag_test(bm, f, EXT_INPUT)) {
+			if (BMO_face_flag_test(bm, f, EXT_INPUT)) {
 				BM_face_normal_flip(bm, f);
 			}
 		}
@@ -413,6 +452,9 @@ void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 	slot_edges_exclude = BMO_slot_get(op->slots_in, "edges_exclude");
 	for (e = BMO_iter_new(&siter, dupeop.slots_out, "boundary_map.out", 0); e; e = BMO_iter_step(&siter)) {
 		BMVert *f_verts[4];
+#ifdef USE_EDGE_REGION_FLAGS
+		BMEdge *f_edges[4];
+#endif
 
 		/* this should always be wire, so this is mainly a speedup to avoid map lookup */
 		if (BM_edge_is_wire(e) && BMO_slot_map_contains(slot_edges_exclude, e)) {
@@ -465,8 +507,38 @@ void bmo_extrude_face_region_exec(BMesh *bm, BMOperator *op)
 			f_verts[3] = e_new->v2;
 		}
 
-		/* not sure what to do about example face, pass NULL for now */
+#ifdef USE_EDGE_REGION_FLAGS
+		/* handle new edges */
+		f_edges[0] = e;
+		f_edges[2] = e_new;
+
+		f_edges[1] = BM_edge_exists(f_verts[1], f_verts[2]);
+		if (f_edges[1] == NULL) {
+			char e_hflag[2];
+			bool e_hflag_ok = bm_extrude_region_edge_flag(f_verts[2], e_hflag);
+			f_edges[1] = BM_edge_create(bm, f_verts[1], f_verts[2], NULL, BM_CREATE_NOP);
+			if (e_hflag_ok) {
+				BM_elem_flag_enable(f_edges[1], e_hflag[0]);
+				BM_elem_flag_disable(f_edges[1], e_hflag[1]);
+			}
+		}
+
+		f_edges[3] = BM_edge_exists(f_verts[3], f_verts[0]);
+		if (f_edges[3] == NULL) {
+			char e_hflag[2];
+			bool e_hflag_ok = bm_extrude_region_edge_flag(f_verts[3], e_hflag);
+			f_edges[3] = BM_edge_create(bm, f_verts[3], f_verts[0], NULL, BM_CREATE_NOP);
+			if (e_hflag_ok) {
+				BM_elem_flag_enable(f_edges[3], e_hflag[0]);
+				BM_elem_flag_disable(f_edges[3], e_hflag[1]);
+			}
+		}
+
+		f = BM_face_create(bm, f_verts, f_edges, 4, NULL, BM_CREATE_NOP);
+#else
 		f = BM_face_create_verts(bm, f_verts, 4, NULL, BM_CREATE_NOP, true);
+#endif
+
 		bm_extrude_copy_face_loop_attributes(bm, f);
 	}
 
@@ -514,7 +586,7 @@ static void calc_solidify_normals(BMesh *bm)
 	BM_mesh_elem_index_ensure(bm, BM_EDGE);
 
 	BM_ITER_MESH (f, &fiter, bm, BM_FACES_OF_MESH) {
-		if (!BMO_elem_flag_test(bm, f, FACE_MARK)) {
+		if (!BMO_face_flag_test(bm, f, FACE_MARK)) {
 			continue;
 		}
 
@@ -522,15 +594,15 @@ static void calc_solidify_normals(BMesh *bm)
 
 			/* And mark all edges and vertices on the
 			 * marked faces */
-			BMO_elem_flag_enable(bm, e, EDGE_MARK);
-			BMO_elem_flag_enable(bm, e->v1, VERT_MARK);
-			BMO_elem_flag_enable(bm, e->v2, VERT_MARK);
+			BMO_edge_flag_enable(bm, e, EDGE_MARK);
+			BMO_vert_flag_enable(bm, e->v1, VERT_MARK);
+			BMO_vert_flag_enable(bm, e->v2, VERT_MARK);
 			edge_face_count[BM_elem_index_get(e)]++;
 		}
 	}
 
 	BM_ITER_MESH (e, &eiter, bm, BM_EDGES_OF_MESH) {
-		if (!BMO_elem_flag_test(bm, e, EDGE_MARK)) {
+		if (!BMO_edge_flag_test(bm, e, EDGE_MARK)) {
 			continue;
 		}
 
@@ -539,9 +611,9 @@ static void calc_solidify_normals(BMesh *bm)
 		if (i == 0 || i > 2) {
 			/* Edge & vertices are non-manifold even when considering
 			 * only marked faces */
-			BMO_elem_flag_enable(bm, e, EDGE_NONMAN);
-			BMO_elem_flag_enable(bm, e->v1, VERT_NONMAN);
-			BMO_elem_flag_enable(bm, e->v2, VERT_NONMAN);
+			BMO_edge_flag_enable(bm, e, EDGE_NONMAN);
+			BMO_vert_flag_enable(bm, e->v1, VERT_NONMAN);
+			BMO_vert_flag_enable(bm, e->v2, VERT_NONMAN);
 		}
 	}
 	MEM_freeN(edge_face_count);
@@ -549,11 +621,11 @@ static void calc_solidify_normals(BMesh *bm)
 
 	BM_ITER_MESH (v, &viter, bm, BM_VERTS_OF_MESH) {
 		if (!BM_vert_is_manifold(v)) {
-			BMO_elem_flag_enable(bm, v, VERT_NONMAN);
+			BMO_vert_flag_enable(bm, v, VERT_NONMAN);
 			continue;
 		}
 
-		if (BMO_elem_flag_test(bm, v, VERT_MARK)) {
+		if (BMO_vert_flag_test(bm, v, VERT_MARK)) {
 			zero_v3(v->no);
 		}
 	}
@@ -562,20 +634,20 @@ static void calc_solidify_normals(BMesh *bm)
 
 		/* If the edge is not part of a the solidify region
 		 * its normal should not be considered */
-		if (!BMO_elem_flag_test(bm, e, EDGE_MARK)) {
+		if (!BMO_edge_flag_test(bm, e, EDGE_MARK)) {
 			continue;
 		}
 
 		/* If the edge joins more than two marked faces high
 		 * quality normal computation won't work */
-		if (BMO_elem_flag_test(bm, e, EDGE_NONMAN)) {
+		if (BMO_edge_flag_test(bm, e, EDGE_NONMAN)) {
 			continue;
 		}
 
 		f1 = f2 = NULL;
 
 		BM_ITER_ELEM (f, &fiter, e, BM_FACES_OF_EDGE) {
-			if (BMO_elem_flag_test(bm, f, FACE_MARK)) {
+			if (BMO_face_flag_test(bm, f, FACE_MARK)) {
 				if (f1 == NULL) {
 					f1 = f;
 				}
@@ -595,8 +667,7 @@ static void calc_solidify_normals(BMesh *bm)
 				/* two faces using this edge, calculate the edge normal
 				 * using the angle between the faces as a weighting */
 				add_v3_v3v3(edge_normal, f1->no, f2->no);
-				normalize_v3(edge_normal);
-				mul_v3_fl(edge_normal, angle);
+				normalize_v3_length(edge_normal, angle);
 			}
 			else {
 				/* can't do anything useful here!
@@ -620,11 +691,11 @@ static void calc_solidify_normals(BMesh *bm)
 
 	/* normalize accumulated vertex normal */
 	BM_ITER_MESH (v, &viter, bm, BM_VERTS_OF_MESH) {
-		if (!BMO_elem_flag_test(bm, v, VERT_MARK)) {
+		if (!BMO_vert_flag_test(bm, v, VERT_MARK)) {
 			continue;
 		}
 
-		if (BMO_elem_flag_test(bm, v, VERT_NONMAN)) {
+		if (BMO_vert_flag_test(bm, v, VERT_NONMAN)) {
 			/* use standard normals for vertices connected to non-manifold edges */
 			BM_vert_normal_update(v);
 		}
@@ -632,7 +703,7 @@ static void calc_solidify_normals(BMesh *bm)
 			/* exceptional case, totally flat. use the normal
 			 * of any marked face around the vertex */
 			BM_ITER_ELEM (f, &fiter, v, BM_FACES_OF_VERT) {
-				if (BMO_elem_flag_test(bm, f, FACE_MARK)) {
+				if (BMO_face_flag_test(bm, f, FACE_MARK)) {
 					break;
 				}
 			}
@@ -657,12 +728,12 @@ static void solidify_add_thickness(BMesh *bm, const float dist)
 	BM_mesh_elem_index_ensure(bm, BM_VERT);
 
 	BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
-		if (BMO_elem_flag_test(bm, f, FACE_MARK)) {
+		if (BMO_face_flag_test(bm, f, FACE_MARK)) {
 
 			/* array for passing verts to angle_poly_v3 */
-			float  *face_angles = BLI_buffer_resize_data(&face_angles_buf, float, f->len);
+			float  *face_angles = BLI_buffer_reinit_data(&face_angles_buf, float, f->len);
 			/* array for receiving angles from angle_poly_v3 */
-			float **verts = BLI_buffer_resize_data(&verts_buf, float *, f->len);
+			float **verts = BLI_buffer_reinit_data(&verts_buf, float *, f->len);
 
 			BM_ITER_ELEM_INDEX (l, &loopIter, f, BM_LOOPS_OF_FACE, i) {
 				verts[i] = l->v->co;
@@ -704,6 +775,7 @@ void bmo_solidify_face_region_exec(BMesh *bm, BMOperator *op)
 
 	/* Flip original faces (so the shell is extruded inward) */
 	BMO_op_init(bm, &reverseop, op->flag, "reverse_faces");
+	BMO_slot_bool_set(reverseop.slots_in, "flip_multires", true);
 	BMO_slot_copy(op,         slots_in, "geom",
 	              &reverseop, slots_in, "faces");
 	BMO_op_exec(bm, &reverseop);

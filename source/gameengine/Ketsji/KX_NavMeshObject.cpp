@@ -45,7 +45,7 @@ extern "C" {
 
 #include "KX_PythonInit.h"
 #include "KX_PyMath.h"
-#include "Value.h"
+#include "EXP_Value.h"
 #include "Recast.h"
 #include "DetourStatNavMeshBuilder.h"
 #include "KX_ObstacleSimulation.h"
@@ -98,12 +98,14 @@ void KX_NavMeshObject::ProcessReplica()
 {
 	KX_GameObject::ProcessReplica();
 	m_navMesh = NULL;  /* without this, building frees the navmesh we copied from */
-	BuildNavMesh();
+	if (!BuildNavMesh()) {
+		std::cout << "Error in " << __func__ << ": unable to build navigation mesh" << std::endl;
+		return;
+	}
 	KX_Scene* scene = KX_GetActiveScene();
 	KX_ObstacleSimulation* obssimulation = scene->GetObstacleSimulation();
 	if (obssimulation)
 		obssimulation->AddObstaclesForNavMesh(this);
-
 }
 
 bool KX_NavMeshObject::BuildVertIndArrays(float *&vertices, int& nverts,
@@ -304,7 +306,12 @@ bool KX_NavMeshObject::BuildNavMesh()
 			|| vertsPerPoly<3)
 	{
 		printf("Can't build navigation mesh data for object:%s\n", m_name.ReadPtr());
-		if (vertices) delete[] vertices;
+		if (vertices) {
+			delete[] vertices;
+		}
+		if (dvertices) {
+			delete[] dvertices;
+		}
 		return false;
 	}
 	
@@ -321,7 +328,11 @@ bool KX_NavMeshObject::BuildNavMesh()
 		}
 	}
 
-	buildMeshAdjacency(polys, npolys, nverts, vertsPerPoly);
+	if (!buildMeshAdjacency(polys, npolys, nverts, vertsPerPoly)) {
+		std::cout << __func__ << ": unable to build mesh adjacency information." << std::endl;
+		delete[] vertices;
+		return false;
+	}
 	
 	float cs = 0.2f;
 

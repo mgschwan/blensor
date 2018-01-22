@@ -30,18 +30,19 @@ bl_info = {
 }
 
 import bpy
-from bpy.types import (Operator,
-                       Panel,
-                       PropertyGroup,
-                       )
-
-from bpy.props import (BoolProperty,
-                       CollectionProperty,
-                       EnumProperty,
-                       FloatProperty,
-                       IntProperty,
-                       StringProperty,
-                       )
+from bpy.types import (
+        Operator,
+        Panel,
+        PropertyGroup,
+        )
+from bpy.props import (
+        BoolProperty,
+        CollectionProperty,
+        EnumProperty,
+        FloatProperty,
+        IntProperty,
+        StringProperty,
+        )
 import mathutils
 
 
@@ -76,6 +77,7 @@ def check_group_exist(self, context, use_report=True):
 
 
 class TexAtl_Main(Panel):
+    bl_idname = "UVTEX_ATLAS_PT_main"
     bl_label = "Texture Atlas"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -101,7 +103,7 @@ class TexAtl_Main(Panel):
         # Resolution and Unwrap types (only if Lightmap group is added)
         if context.scene.ms_lightmap_groups:
             group = scene.ms_lightmap_groups[scene.ms_lightmap_groups_index]
-            row.label(text="Resolutiom:")
+            row.label(text="Resolution:")
             row.prop(group, 'resolutionX', text='')
             row.prop(group, 'resolutionY', text='')
             row = self.layout.row()
@@ -133,7 +135,7 @@ class TexAtl_Main(Panel):
             row.operator(
                 "object.ms_run", text="StartManualUnwrap", icon="LAMP_SPOT")
             row.operator(
-                "object.ms_run_remove", text="FinshManualUnwrap", icon="LAMP_SPOT")
+                "object.ms_run_remove", text="FinishManualUnwrap", icon="LAMP_SPOT")
 
 
 class TexAtl_RunAuto(Operator):
@@ -143,14 +145,19 @@ class TexAtl_RunAuto(Operator):
 
     def execute(self, context):
         scene = context.scene
-        old_context = context.area.type
+
+        # get old context
+        old_context = None
+        if context.area:
+            old_context = context.area.type
 
         # Check if group exists
         if check_group_exist(self, context) is False:
             return {'CANCELLED'}
 
         group = scene.ms_lightmap_groups[scene.ms_lightmap_groups_index]
-        context.area.type = 'VIEW_3D'
+        if context.area:
+            context.area.type = 'VIEW_3D'
 
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -171,7 +178,9 @@ class TexAtl_RunAuto(Operator):
             else:
                 self.report({'INFO'}, "Not All Objects Are Visible!!!")
 
-        context.area.type = old_context
+        # set old context back
+        if context.area:
+            context.area.type = old_context
 
         return{'FINISHED'}
 
@@ -183,13 +192,18 @@ class TexAtl_RunStart(Operator):
 
     def execute(self, context):
         scene = context.scene
-        old_context = context.area.type
+
+        # get old context
+        old_context = None
+        if context.area:
+            old_context = context.area.type
 
         # Check if group exists
         if check_group_exist(self, context) is False:
             return {'CANCELLED'}
 
-        context.area.type = 'VIEW_3D'
+        if context.area:
+            context.area.type = 'VIEW_3D'
         group = scene.ms_lightmap_groups[scene.ms_lightmap_groups_index]
 
         if bpy.ops.object.mode_set.poll():
@@ -212,7 +226,9 @@ class TexAtl_RunStart(Operator):
                 bpy.ops.object.ms_merge_objects(
                     group_name=group.name, unwrap=False)
 
-        context.area.type = old_context
+        # set old context back
+        if context.area:
+            context.area.type = old_context
 
         return{'FINISHED'}
 
@@ -224,14 +240,19 @@ class TexAtl_RunFinish(Operator):
 
     def execute(self, context):
         scene = context.scene
-        old_context = context.area.type
+
+        # get old context
+        old_context = None
+        if context.area:
+            old_context = context.area.type
 
         # Check if group exists
         if check_group_exist(self, context) is False:
             return {'CANCELLED'}
 
         group = scene.ms_lightmap_groups[scene.ms_lightmap_groups_index]
-        context.area.type = 'VIEW_3D'
+        if context.area:
+            context.area.type = 'VIEW_3D'
 
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode='OBJECT', toggle=False)
@@ -246,7 +267,10 @@ class TexAtl_RunFinish(Operator):
             else:
                 self.report({'INFO'}, "Not All Objects Are Visible!!!")
 
-        context.area.type = old_context
+        # set old context back
+        if context.area:
+            context.area.type = old_context
+
         return{'FINISHED'}
 
 
@@ -497,7 +521,7 @@ class TexAtl_DelLightmapGroup(Operator):
                     obj.hide_render = False
                     obj.hide = False
 
-                bpy.data.groups.remove(group)
+                bpy.data.groups.remove(group, do_unlink=True)
 
             # Remove Lightmap Group
             scene.ms_lightmap_groups.remove(scene.ms_lightmap_groups_index)

@@ -52,12 +52,13 @@ typedef struct BMEdgeLoopStore {
 /* -------------------------------------------------------------------- */
 /* BM_mesh_edgeloops_find & Util Functions  */
 
-static int bm_vert_other_tag(BMVert *v, BMVert *v_prev,
-                             BMEdge **r_e)
+static int bm_vert_other_tag(
+        BMVert *v, BMVert *v_prev,
+        BMEdge **r_e)
 {
 	BMIter iter;
 	BMEdge *e, *e_next = NULL;
-	unsigned int count = 0;
+	uint count = 0;
 
 	BM_ITER_ELEM (e, &iter, v, BM_EDGES_OF_VERT) {
 		if (BM_elem_flag_test(e, BM_ELEM_INTERNAL_TAG)) {
@@ -125,8 +126,9 @@ static bool bm_loop_build(BMEdgeLoopStore *el_store, BMVert *v_prev, BMVert *v, 
 /**
  * \return listbase of listbases, each linking to a vertex.
  */
-int BM_mesh_edgeloops_find(BMesh *bm, ListBase *r_eloops,
-                           bool (*test_fn)(BMEdge *, void *user_data), void *user_data)
+int BM_mesh_edgeloops_find(
+        BMesh *bm, ListBase *r_eloops,
+        bool (*test_fn)(BMEdge *, void *user_data), void *user_data)
 {
 	BMIter iter;
 	BMEdge *e;
@@ -183,8 +185,9 @@ struct VertStep {
 	BMVert *v;
 };
 
-static void vs_add(BLI_mempool *vs_pool, ListBase *lb,
-                   BMVert *v, BMEdge *e_prev, const int iter_tot)
+static void vs_add(
+        BLI_mempool *vs_pool, ListBase *lb,
+        BMVert *v, BMEdge *e_prev, const int iter_tot)
 {
 	struct VertStep *vs_new = BLI_mempool_alloc(vs_pool);
 	vs_new->v = v;
@@ -256,9 +259,10 @@ static bool bm_loop_path_build_step(BLI_mempool *vs_pool, ListBase *lb, const in
 	return (BLI_listbase_is_empty(lb) == false);
 }
 
-bool BM_mesh_edgeloops_find_path(BMesh *bm, ListBase *r_eloops,
-                                 bool (*test_fn)(BMEdge *, void *user_data), void *user_data,
-                                 BMVert *v_src, BMVert *v_dst)
+bool BM_mesh_edgeloops_find_path(
+        BMesh *bm, ListBase *r_eloops,
+        bool (*test_fn)(BMEdge *, void *user_data), void *user_data,
+        BMVert *v_src, BMVert *v_dst)
 {
 	BMIter iter;
 	BMEdge *e;
@@ -660,17 +664,47 @@ void BM_edgeloop_flip(BMesh *UNUSED(bm), BMEdgeLoopStore *el_store)
 	BLI_listbase_reverse(&el_store->verts);
 }
 
-void BM_edgeloop_expand(BMesh *UNUSED(bm), BMEdgeLoopStore *el_store, int el_store_len)
+void BM_edgeloop_expand(
+        BMesh *bm, BMEdgeLoopStore *el_store, int el_store_len,
+        bool split, GSet *split_edges)
 {
+	bool split_swap = true;
+
+#define EDGE_SPLIT(node_copy, node_other) { \
+		BMVert *v_split, *v_other = (node_other)->data; \
+		BMEdge *e_split, *e_other = BM_edge_exists((node_copy)->data, v_other); \
+		v_split = BM_edge_split(bm, e_other, split_swap ? (node_copy)->data : v_other, &e_split, 0.0f); \
+		v_split->e = e_split; \
+		BLI_assert(v_split == e_split->v2); \
+		BLI_gset_insert(split_edges, e_split); \
+		(node_copy)->data = v_split; \
+	} ((void)0)
+
 	/* first double until we are more than half as big */
 	while ((el_store->len * 2) < el_store_len) {
 		LinkData *node_curr = el_store->verts.first;
 		while (node_curr) {
 			LinkData *node_curr_copy = MEM_dupallocN(node_curr);
-			BLI_insertlinkafter(&el_store->verts, node_curr, node_curr_copy);
+			if (split == false) {
+				BLI_insertlinkafter(&el_store->verts, node_curr, node_curr_copy);
+				node_curr = node_curr_copy->next;
+			}
+			else {
+				if (node_curr->next || (el_store->flag & BM_EDGELOOP_IS_CLOSED)) {
+					EDGE_SPLIT(node_curr_copy, node_curr->next ? node_curr->next : (LinkData *)el_store->verts.first);
+					BLI_insertlinkafter(&el_store->verts, node_curr, node_curr_copy);
+					node_curr = node_curr_copy->next;
+				}
+				else {
+					EDGE_SPLIT(node_curr_copy, node_curr->prev);
+					BLI_insertlinkbefore(&el_store->verts, node_curr, node_curr_copy);
+					node_curr = node_curr->next;
+				}
+				split_swap = !split_swap;
+			}
 			el_store->len++;
-			node_curr = node_curr_copy->next;
 		}
+		split_swap = !split_swap;
 	}
 
 	if (el_store->len < el_store_len) {
@@ -690,11 +724,28 @@ void BM_edgeloop_expand(BMesh *UNUSED(bm), BMEdgeLoopStore *el_store, int el_sto
 			BLI_LISTBASE_CIRCULAR_FORWARD_END (&el_store->verts, node_curr, node_curr_init);
 
 			node_curr_copy = MEM_dupallocN(node_curr);
-			BLI_insertlinkafter(&el_store->verts, node_curr, node_curr_copy);
+			if (split == false) {
+				BLI_insertlinkafter(&el_store->verts, node_curr, node_curr_copy);
+				node_curr = node_curr_copy->next;
+			}
+			else {
+				if (node_curr->next || (el_store->flag & BM_EDGELOOP_IS_CLOSED)) {
+					EDGE_SPLIT(node_curr_copy, node_curr->next ? node_curr->next : (LinkData *)el_store->verts.first);
+					BLI_insertlinkafter(&el_store->verts, node_curr, node_curr_copy);
+					node_curr = node_curr_copy->next;
+				}
+				else {
+					EDGE_SPLIT(node_curr_copy, node_curr->prev);
+					BLI_insertlinkbefore(&el_store->verts, node_curr, node_curr_copy);
+					node_curr = node_curr->next;
+				}
+				split_swap = !split_swap;
+			}
 			el_store->len++;
-			node_curr = node_curr_copy->next;
 		} while (el_store->len < el_store_len);
 	}
+
+#undef EDGE_SPLIT
 
 	BLI_assert(el_store->len == el_store_len);
 }

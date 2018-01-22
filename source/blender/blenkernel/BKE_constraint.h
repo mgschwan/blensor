@@ -108,8 +108,8 @@ typedef struct bConstraintTypeInfo {
 } bConstraintTypeInfo;
 
 /* Function Prototypes for bConstraintTypeInfo's */
-bConstraintTypeInfo *BKE_constraint_typeinfo_get(struct bConstraint *con);
-bConstraintTypeInfo *BKE_constraint_typeinfo_from_type(int type);
+const bConstraintTypeInfo *BKE_constraint_typeinfo_get(struct bConstraint *con);
+const bConstraintTypeInfo *BKE_constraint_typeinfo_from_type(int type);
 
 
 /* ---------------------------------------------------------------------------- */
@@ -120,7 +120,6 @@ void BKE_constraint_unique_name(struct bConstraint *con, struct ListBase *list);
 void BKE_constraints_free(struct ListBase *list);
 void BKE_constraints_free_ex(struct ListBase *list, bool do_id_user);
 void BKE_constraints_copy(struct ListBase *dst, const struct ListBase *src, bool do_extern);
-void BKE_constraints_relink(struct ListBase *list);
 void BKE_constraints_id_loop(struct ListBase *list, ConstraintIDFunc func, void *userdata);
 void BKE_constraint_free_data(struct bConstraint *con);
 void BKE_constraint_free_data_ex(struct bConstraint *con, bool do_id_user);

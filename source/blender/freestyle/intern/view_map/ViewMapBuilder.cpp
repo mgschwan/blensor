@@ -56,8 +56,8 @@ static const Global &_global = G;
 using namespace std;
 
 template <typename G, typename I>
-static void findOccludee(FEdge *fe, G& grid, I& occluders, real epsilon, WFace **oaWFace,
-                         Vec3r& u, Vec3r& A, Vec3r& origin, Vec3r& edge, vector<WVertex*>& faceVertices)
+static void findOccludee(FEdge *fe, G& /*grid*/, I& occluders, real epsilon, WFace **oaWFace,
+                         Vec3r& u, Vec3r& A, Vec3r& origin, Vec3r& edgeDir, vector<WVertex*>& faceVertices)
 {
 	WFace *face = NULL;
 	if (fe->isSmooth()) {
@@ -125,7 +125,7 @@ static void findOccludee(FEdge *fe, G& grid, I& occluders, real epsilon, WFace *
 				// check whether the edge and the polygon plane are coincident:
 				//-------------------------------------------------------------
 				//first let us compute the plane equation.
-				if (GeomUtils::COINCIDENT == GeomUtils::intersectRayPlane(origin, edge, p->getNormal(), d, t, epsilon))
+				if (GeomUtils::COINCIDENT == GeomUtils::intersectRayPlane(origin, edgeDir, p->getNormal(), d, t, epsilon))
 				{
 #if LOGGING
 					if (_global.debug & G_DEBUG_FREESTYLE) {
@@ -169,13 +169,14 @@ static void findOccludee(FEdge *fe, G& grid, I& occluders, real epsilon, WFace *
 }
 
 template <typename G, typename I>
-static void findOccludee(FEdge *fe, G& grid, real epsilon, ViewEdge *ve, WFace **oaFace)
+static void findOccludee(FEdge *fe, G& grid, real epsilon, ViewEdge * /*ve*/, WFace **oaFace)
 {
 	Vec3r A;
-	Vec3r edge;
+	Vec3r edgeDir;
 	Vec3r origin;
 	A = Vec3r(((fe)->vertexA()->point3D() + (fe)->vertexB()->point3D()) / 2.0);
-	edge = Vec3r((fe)->vertexB()->point3D() - (fe)->vertexA()->point3D());
+	edgeDir = Vec3r((fe)->vertexB()->point3D() - (fe)->vertexA()->point3D());
+	edgeDir.normalize();
 	origin = Vec3r((fe)->vertexA()->point3D());
 	Vec3r u;
 	if (grid.orthographicProjection()) {
@@ -199,23 +200,24 @@ static void findOccludee(FEdge *fe, G& grid, real epsilon, ViewEdge *ve, WFace *
 	}
 
 	I occluders(grid, A, epsilon);
-	findOccludee<G, I>(fe, grid, occluders, epsilon, oaFace, u, A, origin, edge, faceVertices);
+	findOccludee<G, I>(fe, grid, occluders, epsilon, oaFace, u, A, origin, edgeDir, faceVertices);
 }
 
 // computeVisibility takes a pointer to foundOccluders, instead of using a reference,
 // so that computeVeryFastVisibility can skip the AddOccluders step with minimal overhead.
 template <typename G, typename I>
-static int computeVisibility(ViewMap *viewMap, FEdge *fe, G& grid, real epsilon, ViewEdge *ve, WFace **oaWFace,
+static int computeVisibility(ViewMap *viewMap, FEdge *fe, G& grid, real epsilon, ViewEdge * /*ve*/, WFace **oaWFace,
                              set<ViewShape*> *foundOccluders)
 {
 	int qi = 0;
 
 	Vec3r center;
-	Vec3r edge;
+	Vec3r edgeDir;
 	Vec3r origin;
 
 	center = fe->center3d();
-	edge = Vec3r(fe->vertexB()->point3D() - fe->vertexA()->point3D());
+	edgeDir = Vec3r(fe->vertexB()->point3D() - fe->vertexA()->point3D());
+	edgeDir.normalize();
 	origin = Vec3r(fe->vertexA()->point3D());
 
 	Vec3r vp;
@@ -337,7 +339,7 @@ static int computeVisibility(ViewMap *viewMap, FEdge *fe, G& grid, real epsilon,
 			// check whether the edge and the polygon plane are coincident:
 			//-------------------------------------------------------------
 			//first let us compute the plane equation.
-			if (GeomUtils::COINCIDENT == GeomUtils::intersectRayPlane(origin, edge, p->getNormal(), d, t, epsilon)) {
+			if (GeomUtils::COINCIDENT == GeomUtils::intersectRayPlane(origin, edgeDir, p->getNormal(), d, t, epsilon)) {
 #if LOGGING
 				if (_global.debug & G_DEBUG_FREESTYLE) {
 					cout << "\t\tRejecting occluder for target coincidence." << endl;
@@ -391,7 +393,7 @@ static int computeVisibility(ViewMap *viewMap, FEdge *fe, G& grid, real epsilon,
 	}
 
 	// Find occludee
-	findOccludee<G, I>(fe, grid, occluders, epsilon, oaWFace, u, center, origin, edge, faceVertices);
+	findOccludee<G, I>(fe, grid, occluders, epsilon, oaWFace, u, center, origin, edgeDir, faceVertices);
 
 	return qi;
 }
@@ -1204,6 +1206,7 @@ void ViewMapBuilder::computeInitialViewEdges(WingedEdge& we)
 		psShape = new SShape;
 		psShape->setId((*it)->GetId());
 		psShape->setName((*it)->getName());
+		psShape->setLibraryPath((*it)->getLibraryPath());
 		psShape->setFrsMaterials((*it)->frs_materials()); // FIXME
 
 		// create the view shape
@@ -1787,7 +1790,7 @@ void ViewMapBuilder::ComputeVeryFastRayCastingVisibility(ViewMap *ioViewMap, rea
 }
 
 void ViewMapBuilder::FindOccludee(FEdge *fe, Grid *iGrid, real epsilon, Polygon3r **oaPolygon, unsigned timestamp,
-                                  Vec3r& u, Vec3r& A, Vec3r& origin, Vec3r& edge, vector<WVertex*>& faceVertices)
+                                  Vec3r& u, Vec3r& A, Vec3r& origin, Vec3r& edgeDir, vector<WVertex*>& faceVertices)
 {
 	WFace *face = NULL;
 	if (fe->isSmooth()) {
@@ -1855,7 +1858,7 @@ void ViewMapBuilder::FindOccludee(FEdge *fe, Grid *iGrid, real epsilon, Polygon3
 					continue;
 			}
 			else {
-				if (GeomUtils::COINCIDENT == GeomUtils::intersectRayPlane(origin, edge, normal, d, t, epsilon))
+				if (GeomUtils::COINCIDENT == GeomUtils::intersectRayPlane(origin, edgeDir, normal, d, t, epsilon))
 					continue;
 			}
 			if ((*p)->rayIntersect(A, v, t, t_u, t_v)) {
@@ -1882,10 +1885,11 @@ void ViewMapBuilder::FindOccludee(FEdge *fe, Grid *iGrid, real epsilon, Polygon3
 	OccludersSet occluders;
 
 	Vec3r A;
-	Vec3r edge;
+	Vec3r edgeDir;
 	Vec3r origin;
 	A = Vec3r(((fe)->vertexA()->point3D() + (fe)->vertexB()->point3D()) / 2.0);
-	edge = Vec3r((fe)->vertexB()->point3D() - (fe)->vertexA()->point3D());
+	edgeDir = Vec3r((fe)->vertexB()->point3D() - (fe)->vertexA()->point3D());
+	edgeDir.normalize();
 	origin = Vec3r((fe)->vertexA()->point3D());
 	Vec3r u;
 	if (_orthographicProjection) {
@@ -1909,7 +1913,7 @@ void ViewMapBuilder::FindOccludee(FEdge *fe, Grid *iGrid, real epsilon, Polygon3
 	if (face)
 		face->RetrieveVertexList(faceVertices);
 
-	return FindOccludee(fe, iGrid, epsilon, oaPolygon, timestamp, u, A, origin, edge, faceVertices);
+	return FindOccludee(fe, iGrid, epsilon, oaPolygon, timestamp, u, A, origin, edgeDir, faceVertices);
 }
 
 int ViewMapBuilder::ComputeRayCastingVisibility(FEdge *fe, Grid *iGrid, real epsilon, set<ViewShape*>& oOccluders,
@@ -1919,11 +1923,12 @@ int ViewMapBuilder::ComputeRayCastingVisibility(FEdge *fe, Grid *iGrid, real eps
 	int qi = 0;
 
 	Vec3r center;
-	Vec3r edge;
+	Vec3r edgeDir;
 	Vec3r origin;
 
 	center = fe->center3d();
-	edge = Vec3r(fe->vertexB()->point3D() - fe->vertexA()->point3D());
+	edgeDir = Vec3r(fe->vertexB()->point3D() - fe->vertexA()->point3D());
+	edgeDir.normalize();
 	origin = Vec3r(fe->vertexA()->point3D());
 	// Is the edge outside the view frustum ?
 	Vec3r gridOrigin(iGrid->getOrigin());
@@ -2061,7 +2066,7 @@ int ViewMapBuilder::ComputeRayCastingVisibility(FEdge *fe, Grid *iGrid, real eps
 			//-------------------------------------------------------------
 			//first let us compute the plane equation.
 
-			if (GeomUtils::COINCIDENT == GeomUtils::intersectRayPlane(origin, edge, normal, d, t, epsilon)) {
+			if (GeomUtils::COINCIDENT == GeomUtils::intersectRayPlane(origin, edgeDir, normal, d, t, epsilon)) {
 #if LOGGING
 				if (_global.debug & G_DEBUG_FREESTYLE) {
 					cout << "\t\tRejecting occluder for target coincidence." << endl;
@@ -2098,7 +2103,7 @@ int ViewMapBuilder::ComputeRayCastingVisibility(FEdge *fe, Grid *iGrid, real eps
 	}
 
 	// Find occludee
-	FindOccludee(fe, iGrid, epsilon, oaPolygon, timestamp, u, center, edge, origin, faceVertices);
+	FindOccludee(fe, iGrid, epsilon, oaPolygon, timestamp, u, center, origin, edgeDir, faceVertices);
 
 	return qi;
 }
@@ -2112,14 +2117,14 @@ void ViewMapBuilder::ComputeIntersections(ViewMap *ioViewMap, intersection_algo 
 		default:
 			break;
 	}
-	ViewMap::viewvertices_container& vvertices = ioViewMap->ViewVertices();
-	for (ViewMap::viewvertices_container::iterator vv = vvertices.begin(), vvend = vvertices.end();
-	     vv != vvend;
-	     ++vv)
-	{
-		if ((*vv)->getNature() == Nature::T_VERTEX) {
-			TVertex *tvertex = (TVertex *)(*vv);
-			if (_global.debug & G_DEBUG_FREESTYLE) {
+#if 0
+	if (_global.debug & G_DEBUG_FREESTYLE) {
+		ViewMap::viewvertices_container& vvertices = ioViewMap->ViewVertices();
+		for (ViewMap::viewvertices_container::iterator vv = vvertices.begin(), vvend = vvertices.end();
+		     vv != vvend; ++vv)
+		{
+			if ((*vv)->getNature() == Nature::T_VERTEX) {
+				TVertex *tvertex = (TVertex *)(*vv);
 				cout << "TVertex " << tvertex->getId() << " has :" << endl;
 				cout << "FrontEdgeA: " << tvertex->frontEdgeA().first << endl;
 				cout << "FrontEdgeB: " << tvertex->frontEdgeB().first << endl;
@@ -2128,6 +2133,7 @@ void ViewMapBuilder::ComputeIntersections(ViewMap *ioViewMap, intersection_algo 
 			}
 		}
 	}
+#endif
 }
 
 struct less_SVertex2D : public binary_function<SVertex *, SVertex *, bool>

@@ -22,15 +22,13 @@
  * ***** END GPL LICENSE BLOCK *****
  */
 
-#ifdef WITH_INPUT_NDOF // use contents of this file
-
 #include "GHOST_NDOFManagerWin32.h"
 
 
 GHOST_NDOFManagerWin32::GHOST_NDOFManagerWin32(GHOST_System& sys)
     : GHOST_NDOFManager(sys)
 {
-	setDeadZone(0.1f);
+	/* pass */
 }
 
 // whether multi-axis functionality is available (via the OS or driver)
@@ -40,5 +38,3 @@ bool GHOST_NDOFManagerWin32::available()
 	// always available since RawInput is built into Windows
 	return true;
 }
-
-#endif // WITH_INPUT_NDOF

@@ -46,7 +46,6 @@ struct Key;
 struct Material;
 struct VFont;
 struct AnimData;
-struct SelBox;
 struct EditFont;
 struct GHash;
 
@@ -158,6 +157,7 @@ typedef struct Nurb {
 	short tilt_interp;	/* KEY_LINEAR, KEY_CARDINAL, KEY_BSPLINE */
 	short radius_interp;
 	
+	/* only used for dynamically generated Nurbs created from OB_FONT's */
 	int charidx;
 } Nurb;
 
@@ -230,7 +230,7 @@ typedef struct Curve {
 
 	/* font part */
 	short lines;
-	char spacemode, pad1;
+	char spacemode, align_y;
 	float spacing, linedist, shear, fsize, wordspace, ulpos, ulheight;
 	float xof, yof;
 	float linewidth;
@@ -267,6 +267,9 @@ typedef struct Curve {
 	char pad2[2];
 
 } Curve;
+
+#define CURVE_VFONT_ANY(cu) \
+	((cu)->vfont), ((cu)->vfontb), ((cu)->vfonti), ((cu)->vfontbi)
 
 /* **************** CURVE ********************* */
 
@@ -319,11 +322,19 @@ enum {
 
 /* Curve.spacemode */
 enum {
-	CU_LEFT               = 0,
-	CU_MIDDLE             = 1,
-	CU_RIGHT              = 2,
-	CU_JUSTIFY            = 3,
-	CU_FLUSH              = 4,
+	CU_ALIGN_X_LEFT               = 0,
+	CU_ALIGN_X_MIDDLE             = 1,
+	CU_ALIGN_X_RIGHT              = 2,
+	CU_ALIGN_X_JUSTIFY            = 3,
+	CU_ALIGN_X_FLUSH              = 4,
+};
+
+/* Curve.align_y */
+enum {
+	CU_ALIGN_Y_TOP_BASELINE       = 0,
+	CU_ALIGN_Y_TOP                = 1,
+	CU_ALIGN_Y_CENTER             = 2,
+	CU_ALIGN_Y_BOTTOM             = 3,
 };
 
 /* Nurb.flag */
@@ -413,11 +424,17 @@ typedef enum eBezTriple_KeyframeType {
 	BEZT_KEYTYPE_EXTREME = 1,   /* 'extreme' keyframe */
 	BEZT_KEYTYPE_BREAKDOWN = 2, /* 'breakdown' keyframe */
 	BEZT_KEYTYPE_JITTER = 3,    /* 'jitter' keyframe (for adding 'filler' secondary motion) */
+	BEZT_KEYTYPE_MOVEHOLD = 4,  /* one end of a 'moving hold' */
 } eBezTriple_KeyframeType;
 
 /* checks if the given BezTriple is selected */
-#define BEZSELECTED(bezt) (((bezt)->f2 & SELECT) || ((bezt)->f1 & SELECT) || ((bezt)->f3 & SELECT))
-#define BEZSELECTED_HIDDENHANDLES(cu, bezt)   (((cu)->drawflag & CU_HIDE_HANDLES) ? (bezt)->f2 & SELECT : BEZSELECTED(bezt))
+#define BEZT_ISSEL_ANY(bezt) \
+	(((bezt)->f2 & SELECT) || ((bezt)->f1 & SELECT) || ((bezt)->f3 & SELECT))
+#define BEZT_ISSEL_ANY_HIDDENHANDLES(cu, bezt) \
+	(((cu)->drawflag & CU_HIDE_HANDLES) ? (bezt)->f2 & SELECT : BEZT_ISSEL_ANY(bezt))
+
+#define BEZT_SEL_ALL(bezt)    { (bezt)->f1 |=  SELECT; (bezt)->f2 |=  SELECT; (bezt)->f3 |=  SELECT; } ((void)0)
+#define BEZT_DESEL_ALL(bezt)  { (bezt)->f1 &= ~SELECT; (bezt)->f2 &= ~SELECT; (bezt)->f3 &= ~SELECT; } ((void)0)
 
 /* *************** CHARINFO **************** */
 

@@ -40,7 +40,7 @@
 #include "BLI_path_util.h"
 #include "BLI_string.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -97,6 +97,7 @@ void BUTTONS_OT_toolbox(wmOperatorType *ot)
 typedef struct FileBrowseOp {
 	PointerRNA ptr;
 	PropertyRNA *prop;
+	bool is_undo;
 } FileBrowseOp;
 
 static int file_browse_exec(bContext *C, wmOperator *op)
@@ -142,6 +143,10 @@ static int file_browse_exec(bContext *C, wmOperator *op)
 	RNA_property_update(C, &fbo->ptr, fbo->prop);
 	MEM_freeN(str);
 
+	if (fbo->is_undo) {
+		const char *undostr = RNA_property_identifier(fbo->prop);
+		ED_undo_push(C, undostr);
+	}
 
 	/* special, annoying exception, filesel on redo panel [#26618] */
 	{
@@ -168,6 +173,7 @@ static int file_browse_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	PointerRNA ptr;
 	PropertyRNA *prop;
+	bool is_undo;
 	FileBrowseOp *fbo;
 	char *str;
 
@@ -176,7 +182,7 @@ static int file_browse_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 		return OPERATOR_CANCELLED;
 	}
 
-	UI_context_active_but_prop_get_filebrowser(C, &ptr, &prop);
+	UI_context_active_but_prop_get_filebrowser(C, &ptr, &prop, &is_undo);
 
 	if (!prop)
 		return OPERATOR_CANCELLED;
@@ -210,19 +216,33 @@ static int file_browse_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 		fbo = MEM_callocN(sizeof(FileBrowseOp), "FileBrowseOp");
 		fbo->ptr = ptr;
 		fbo->prop = prop;
+		fbo->is_undo = is_undo;
 		op->customdata = fbo;
-
-		RNA_string_set(op->ptr, path_prop, str);
-		MEM_freeN(str);
 
 		/* normally ED_fileselect_get_params would handle this but we need to because of stupid
 		 * user-prefs exception - campbell */
 		if ((prop_relpath = RNA_struct_find_property(op->ptr, "relative_path"))) {
 			if (!RNA_property_is_set(op->ptr, prop_relpath)) {
+				bool is_relative = (U.flag & USER_RELPATHS) != 0;
+
+				/* while we want to follow the defaults,
+				 * we better not switch existing paths relative/absolute state. */
+				if (str[0]) {
+					is_relative = BLI_path_is_rel(str);
+				}
+
+				if (UNLIKELY(ptr.data == &U)) {
+					is_relative = false;
+				}
+
 				/* annoying exception!, if were dealing with the user prefs, default relative to be off */
-				RNA_property_boolean_set(op->ptr, prop_relpath, U.flag & USER_RELPATHS && (ptr.data != &U));
+				RNA_property_boolean_set(op->ptr, prop_relpath, is_relative);
 			}
 		}
+
+		RNA_string_set(op->ptr, path_prop, str);
+		MEM_freeN(str);
+
 		WM_event_add_fileselect(C, op);
 
 		return OPERATOR_RUNNING_MODAL;
@@ -241,11 +261,13 @@ void BUTTONS_OT_file_browse(wmOperatorType *ot)
 	ot->exec = file_browse_exec;
 	ot->cancel = file_browse_cancel;
 
-	ot->flag |= OPTYPE_UNDO;
+	/* conditional undo based on button flag */
+	ot->flag = 0;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, 0, FILE_SPECIAL, FILE_OPENFILE,
-	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
+	WM_operator_properties_filesel(
+	        ot, 0, FILE_SPECIAL, FILE_OPENFILE,
+	        WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 }
 
 /* second operator, only difference from BUTTONS_OT_file_browse is WM_FILESEL_DIRECTORY */
@@ -261,9 +283,11 @@ void BUTTONS_OT_directory_browse(wmOperatorType *ot)
 	ot->exec = file_browse_exec;
 	ot->cancel = file_browse_cancel;
 
-	ot->flag |= OPTYPE_UNDO;
+	/* conditional undo based on button flag */
+	ot->flag = 0;
 
 	/* properties */
-	WM_operator_properties_filesel(ot, 0, FILE_SPECIAL, FILE_OPENFILE,
-	                               WM_FILESEL_DIRECTORY | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
+	WM_operator_properties_filesel(
+	        ot, 0, FILE_SPECIAL, FILE_OPENFILE,
+	        WM_FILESEL_DIRECTORY | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 }

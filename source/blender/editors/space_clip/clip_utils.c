@@ -72,7 +72,7 @@ void clip_graph_tracking_values_iterate_track(
 	BKE_movieclip_get_size(clip, &sc->user, &width, &height);
 
 	for (coord = 0; coord < 2; coord++) {
-		int i, prevfra = 0;
+		int i, prevfra = track->markers[0].framenr;
 		bool open = false;
 		float prevval = 0.0f;
 
@@ -175,71 +175,21 @@ void clip_graph_tracking_iterate(SpaceClip *sc, bool selected_only, bool include
 void clip_delete_track(bContext *C, MovieClip *clip, MovieTrackingTrack *track)
 {
 	MovieTracking *tracking = &clip->tracking;
-	MovieTrackingStabilization *stab = &tracking->stabilization;
 	MovieTrackingTrack *act_track = BKE_tracking_track_get_active(tracking);
-	MovieTrackingPlaneTrack *plane_track, *next_plane_track;
 	ListBase *tracksbase = BKE_tracking_get_active_tracks(tracking);
-	ListBase *plane_tracks_base = BKE_tracking_get_active_plane_tracks(tracking);
-	bool has_bundle = false, update_stab = false;
+	bool has_bundle = false;
 	char track_name_escaped[MAX_NAME], prefix[MAX_NAME * 2];
+	const bool used_for_stabilization = (track->flag & (TRACK_USE_2D_STAB | TRACK_USE_2D_STAB_ROT));
 
 	if (track == act_track)
 		tracking->act_track = NULL;
-
-	if (track == stab->rot_track) {
-		stab->rot_track = NULL;
-
-		update_stab = true;
-	}
 
 	/* handle reconstruction display in 3d viewport */
 	if (track->flag & TRACK_HAS_BUNDLE)
 		has_bundle = true;
 
 	/* Make sure no plane will use freed track */
-	for (plane_track = plane_tracks_base->first;
-	     plane_track;
-	     plane_track = next_plane_track)
-	{
-		bool found = false;
-		int i;
-
-		next_plane_track = plane_track->next;
-
-		for (i = 0; i < plane_track->point_tracksnr; i++) {
-			if (plane_track->point_tracks[i] == track) {
-				found = true;
-				break;
-			}
-		}
-
-		if (!found) {
-			continue;
-		}
-
-		if (plane_track->point_tracksnr > 4) {
-			int track_index;
-			MovieTrackingTrack **new_point_tracks;
-
-			new_point_tracks = MEM_mallocN(sizeof(*new_point_tracks) * plane_track->point_tracksnr,
-			                               "new point tracks array");
-
-			for (i = 0, track_index = 0; i < plane_track->point_tracksnr; i++) {
-				if (plane_track->point_tracks[i] != track) {
-					new_point_tracks[track_index++] = plane_track->point_tracks[i];
-				}
-			}
-
-			MEM_freeN(plane_track->point_tracks);
-			plane_track->point_tracks = new_point_tracks;
-			plane_track->point_tracksnr--;
-		}
-		else {
-			/* Delete planes with less than 3 point tracks in it. */
-			BKE_tracking_plane_track_free(plane_track);
-			BLI_freelinkN(plane_tracks_base, plane_track);
-		}
-	}
+	BKE_tracking_plane_tracks_remove_point_track(tracking, track);
 
 	/* Delete f-curves associated with the track (such as weight, i.e.) */
 	BLI_strescape(track_name_escaped, track->name, sizeof(track_name_escaped));
@@ -251,8 +201,7 @@ void clip_delete_track(bContext *C, MovieClip *clip, MovieTrackingTrack *track)
 
 	WM_event_add_notifier(C, NC_MOVIECLIP | NA_EDITED, clip);
 
-	if (update_stab) {
-		tracking->stabilization.ok = false;
+	if (used_for_stabilization) {
 		WM_event_add_notifier(C, NC_MOVIECLIP | ND_DISPLAY, clip);
 	}
 
@@ -291,23 +240,18 @@ void clip_draw_cfra(SpaceClip *sc, ARegion *ar, Scene *scene)
 {
 	View2D *v2d = &ar->v2d;
 	float xscale, yscale;
-	float vec[2];
 
 	/* Draw a light green line to indicate current frame */
-	vec[0] = (float)(sc->user.framenr * scene->r.framelen);
-
 	UI_ThemeColor(TH_CFRAME);
+
+	float x = (float)(sc->user.framenr * scene->r.framelen);
+
 	glLineWidth(2.0);
 
-	glBegin(GL_LINE_STRIP);
-	vec[1] = v2d->cur.ymin;
-	glVertex2fv(vec);
-
-	vec[1] = v2d->cur.ymax;
-	glVertex2fv(vec);
+	glBegin(GL_LINES);
+	glVertex2f(x, v2d->cur.ymin);
+	glVertex2f(x, v2d->cur.ymax);
 	glEnd();
-
-	glLineWidth(1.0);
 
 	UI_view2d_view_orthoSpecial(ar, v2d, 1);
 

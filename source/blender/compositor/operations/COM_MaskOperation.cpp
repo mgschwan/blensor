@@ -93,7 +93,7 @@ void MaskOperation::initExecution()
 				frame_iter += frame_step;
 			}
 
-			BKE_mask_free_nolib(mask_temp);
+			BKE_mask_free(mask_temp);
 			MEM_freeN(mask_temp);
 		}
 	}
@@ -127,7 +127,7 @@ void MaskOperation::determineResolution(unsigned int resolution[2], unsigned int
 	}
 }
 
-void MaskOperation::executePixelSampled(float output[4], float x, float y, PixelSampler sampler)
+void MaskOperation::executePixelSampled(float output[4], float x, float y, PixelSampler /*sampler*/)
 {
 	const float xy[2] = {
 	    (x * this->m_maskWidthInv)  + this->m_mask_px_ofs[0],

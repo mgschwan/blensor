@@ -212,7 +212,6 @@ public:
 
 	/**
 	 * Gets the current swap interval for swapBuffers.
-	 * \param windowhandle The handle to the window
 	 * \param intervalOut pointer to location to return swap interval (left untouched if there is an error)
 	 * \return A boolean success indicator of if swap interval was successfully read.
 	 */
@@ -244,7 +243,7 @@ public:
 
 	/**
 	 * Changes the window user data.
-	 * \param data The window user data.
+	 * \param userData The window user data.
 	 */
 	virtual void setUserData(const GHOST_TUserDataPtr userData) = 0;
 
@@ -281,8 +280,8 @@ public:
 
 	/**
 	 * Set the shape of the cursor.
-	 * \param   cursor  The new cursor shape type id.
-	 * \return  Indication of success.
+	 * \param cursorShape:  The new cursor shape type id.
+	 * \return Indication of success.
 	 */
 	virtual GHOST_TSuccess setCursorShape(GHOST_TStandardCursor cursorShape) = 0;
 
@@ -323,13 +322,21 @@ public:
 	 * \param   grab The new grab state of the cursor.
 	 * \return  Indication of success.
 	 */
-	virtual GHOST_TSuccess setCursorGrab(GHOST_TGrabCursorMode mode, GHOST_Rect *bounds, GHOST_TInt32 mouse_ungrab_xy[2]) { return GHOST_kSuccess; }
+	virtual GHOST_TSuccess setCursorGrab(GHOST_TGrabCursorMode /*mode*/,
+	                                     GHOST_Rect * /*bounds*/,
+	                                     GHOST_TInt32 /*mouse_ungrab_xy*/[2]) { return GHOST_kSuccess; }
 
 	/** */
 	virtual GHOST_TSuccess beginFullScreen() const = 0;
 	virtual GHOST_TSuccess endFullScreen() const = 0;
 
 	virtual float getNativePixelSize(void) = 0;
+
+	/**
+	 * Returns the recommended DPI for this window.
+	 * \return The recommended DPI for this window.
+	 */
+	virtual GHOST_TUns16 getDPIHint() = 0;
 
 #ifdef WITH_INPUT_IME
 	/**

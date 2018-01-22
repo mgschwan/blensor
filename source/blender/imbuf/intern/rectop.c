@@ -301,8 +301,8 @@ void IMB_rectblend(ImBuf *dbuf, ImBuf *obuf, ImBuf *sbuf, unsigned short *dmask,
                    int destx,  int desty, int origx, int origy, int srcx, int srcy, int width, int height,
                    IMB_BlendMode mode, bool accumulate)
 {
-	unsigned int *drect = NULL, *orect, *srect = NULL, *dr, *or, *sr;
-	float *drectf = NULL, *orectf, *srectf = NULL, *drf, *orf, *srf;
+	unsigned int *drect = NULL, *orect = NULL, *srect = NULL, *dr, *or, *sr;
+	float *drectf = NULL, *orectf = NULL, *srectf = NULL, *drf, *orf, *srf;
 	unsigned short *cmaskrect = curvemask, *cmr;
 	unsigned short *dmaskrect = dmask, *dmr;
 	unsigned short *texmaskrect = texmask, *tmr;
@@ -322,30 +322,30 @@ void IMB_rectblend(ImBuf *dbuf, ImBuf *obuf, ImBuf *sbuf, unsigned short *dmask,
 	do_float = (sbuf && sbuf->rect_float && dbuf->rect_float && obuf->rect_float);
 
 	if (do_char) {
-		drect = dbuf->rect + desty * dbuf->x + destx;
-		orect = obuf->rect + origy * obuf->x + origx;
+		drect = dbuf->rect + ((size_t)desty) * dbuf->x + destx;
+		orect = obuf->rect + ((size_t)origy) * obuf->x + origx;
 	}
 	if (do_float) {
-		drectf = dbuf->rect_float + (desty * dbuf->x + destx) * 4;
-		orectf = obuf->rect_float + (origy * obuf->x + origx) * 4;
+		drectf = dbuf->rect_float + (((size_t)desty) * dbuf->x + destx) * 4;
+		orectf = obuf->rect_float + (((size_t)origy) * obuf->x + origx) * 4;
 	}
 
 	if (dmaskrect)
-		dmaskrect += origy * obuf->x + origx;
+		dmaskrect += ((size_t)origy) * obuf->x + origx;
 
 	destskip = dbuf->x;
 	origskip = obuf->x;
 
 	if (sbuf) {
-		if (do_char) srect = sbuf->rect + srcy * sbuf->x + srcx;
-		if (do_float) srectf = sbuf->rect_float + (srcy * sbuf->x + srcx) * 4;
+		if (do_char) srect = sbuf->rect + ((size_t)srcy) * sbuf->x + srcx;
+		if (do_float) srectf = sbuf->rect_float + (((size_t)srcy) * sbuf->x + srcx) * 4;
 		srcskip = sbuf->x;
 
 		if (cmaskrect)
-			cmaskrect += srcy * sbuf->x + srcx;
+			cmaskrect += ((size_t)srcy) * sbuf->x + srcx;
 
 		if (texmaskrect)
-			texmaskrect += srcy * sbuf->x + srcx;
+			texmaskrect += ((size_t)srcy) * sbuf->x + srcx;
 	}
 	else {
 		srect = drect;
@@ -424,6 +424,7 @@ void IMB_rectblend(ImBuf *dbuf, ImBuf *obuf, ImBuf *sbuf, unsigned short *dmask,
 	else {
 		switch (mode) {
 			case IMB_BLEND_MIX:
+			case IMB_BLEND_INTERPOLATE:
 				func = blend_color_mix_byte;
 				func_float = blend_color_mix_float;
 				break;
@@ -563,9 +564,15 @@ void IMB_rectblend(ImBuf *dbuf, ImBuf *obuf, ImBuf *sbuf, unsigned short *dmask,
 									mask_src[0] = src[0];
 									mask_src[1] = src[1];
 									mask_src[2] = src[2];
-									mask_src[3] = divide_round_i(src[3] * mask, 65535);
 
-									func((unsigned char *)dr, (unsigned char *)or, mask_src);
+									if (mode == IMB_BLEND_INTERPOLATE) {
+										mask_src[3] = src[3];
+										blend_color_interpolate_byte((unsigned char *)dr, (unsigned char *)or, mask_src, mask / 65535.0f);
+									}
+									else {
+										mask_src[3] = divide_round_i(src[3] * mask, 65535);
+										func((unsigned char *)dr, (unsigned char *)or, mask_src);
+									}
 								}
 							}
 						}
@@ -588,9 +595,15 @@ void IMB_rectblend(ImBuf *dbuf, ImBuf *obuf, ImBuf *sbuf, unsigned short *dmask,
 								mask_src[0] = src[0];
 								mask_src[1] = src[1];
 								mask_src[2] = src[2];
-								mask_src[3] = divide_round_i(src[3] * mask, 65535);
 
-								func((unsigned char *)dr, (unsigned char *)or, mask_src);
+								if (mode == IMB_BLEND_INTERPOLATE) {
+									mask_src[3] = src[3];
+									blend_color_interpolate_byte((unsigned char *)dr, (unsigned char *)or, mask_src, mask / 65535.0f);
+								}
+								else {
+									mask_src[3] = divide_round_i(src[3] * mask, 65535);
+									func((unsigned char *)dr, (unsigned char *)or, mask_src);
+								}
 							}
 						}
 					}
@@ -642,12 +655,16 @@ void IMB_rectblend(ImBuf *dbuf, ImBuf *obuf, ImBuf *sbuf, unsigned short *dmask,
 								mask = min_ff(mask, 65535.0);
 
 								if (mask > *dmr) {
-									float mask_srf[4];
-
 									*dmr = mask;
-									mul_v4_v4fl(mask_srf, srf, mask / 65535.0f);
 
-									func_float(drf, orf, mask_srf);
+									if (mode == IMB_BLEND_INTERPOLATE) {
+										blend_color_interpolate_float(drf, orf, srf, mask / 65535.0f);
+									}
+									else {
+										float mask_srf[4];
+										mul_v4_v4fl(mask_srf, srf, mask / 65535.0f);
+										func_float(drf, orf, mask_srf);
+									}
 								}
 							}
 						}
@@ -664,11 +681,15 @@ void IMB_rectblend(ImBuf *dbuf, ImBuf *obuf, ImBuf *sbuf, unsigned short *dmask,
 							mask = min_ff(mask, 65535.0);
 
 							if (srf[3] && (mask > 0.0f)) {
-								float mask_srf[4];
+								if (mode == IMB_BLEND_INTERPOLATE) {
+									blend_color_interpolate_float(drf, orf, srf, mask / 65535.0f);
+								}
+								else {
+									float mask_srf[4];
+									mul_v4_v4fl(mask_srf, srf, mask / 65535.0f);
+									func_float(drf, orf, mask_srf);
+								}
 
-								mul_v4_v4fl(mask_srf, srf, mask / 65535.0f);
-
-								func_float(drf, orf, mask_srf);
 							}
 						}
 					}
@@ -690,6 +711,69 @@ void IMB_rectblend(ImBuf *dbuf, ImBuf *obuf, ImBuf *sbuf, unsigned short *dmask,
 				srectf += srcskip * 4;
 			}
 		}
+	}
+}
+
+typedef struct RectBlendThreadData {
+	ImBuf *dbuf, *obuf, *sbuf;
+	unsigned short *dmask, *curvemask, *texmask;
+	float mask_max;
+	int destx, desty, origx, origy;
+	int srcx, srcy, width;
+	IMB_BlendMode mode;
+	bool accumulate;
+} RectBlendThreadData;
+
+static void rectblend_thread_do(void *data_v,
+                                int start_scanline,
+                                int num_scanlines)
+{
+	RectBlendThreadData *data = (RectBlendThreadData *)data_v;
+	IMB_rectblend(data->dbuf, data->obuf, data->sbuf,
+	              data->dmask, data->curvemask, data->texmask,
+	              data->mask_max,
+	              data->destx,
+	              data->desty + start_scanline,
+	              data->origx,
+	              data->origy + start_scanline,
+	              data->srcx,
+	              data->srcy + start_scanline,
+	              data->width, num_scanlines,
+	              data->mode, data->accumulate);
+}
+
+void IMB_rectblend_threaded(ImBuf *dbuf, ImBuf *obuf, ImBuf *sbuf,
+                            unsigned short *dmask, unsigned short *curvemask,
+                            unsigned short *texmask, float mask_max,
+                            int destx, int desty, int origx, int origy,
+                            int srcx, int srcy, int width, int height,
+                            IMB_BlendMode mode, bool accumulate)
+{
+	if (((size_t)width) * height < 64 * 64) {
+		IMB_rectblend(dbuf, obuf, sbuf, dmask, curvemask, texmask,
+		              mask_max, destx,  desty, origx, origy,
+		              srcx, srcy, width, height, mode, accumulate);
+	}
+	else {
+		RectBlendThreadData data;
+		data.dbuf = dbuf;
+		data.obuf = obuf;
+		data.sbuf = sbuf;
+		data.dmask = dmask;
+		data.curvemask = curvemask;
+		data.texmask = texmask;
+		data.mask_max = mask_max;
+		data.destx = destx;
+		data.desty = desty;
+		data.origx = origx;
+		data.origy = origy;
+		data.srcx = srcx;
+		data.srcy = srcy;
+		data.width = width;
+		data.mode = mode;
+		data.accumulate = accumulate;
+		IMB_processor_apply_threaded_scanlines(
+		    height, rectblend_thread_do, &data);
 	}
 }
 

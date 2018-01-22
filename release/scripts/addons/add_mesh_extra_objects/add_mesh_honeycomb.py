@@ -1,26 +1,19 @@
-# ##### BEGIN GPL LICENSE BLOCK #####
-#
-#  This program is free software; you can redistribute it and/or
-#  modify it under the terms of the GNU General Public License
-#  as published by the Free Software Foundation; either version 2
-#  of the License, or (at your option) any later version.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU General Public License for more details.
-#
-#  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software Foundation,
-#  Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-#
-# ##### END GPL LICENSE BLOCK #####
-'''
-    "name": "HoneyComb",
-    "author": "Kayo Phoenix <kayo@illumium.org>",
-    "version": (0, 1),
-'''
-from math import pi, sin, cos
+# GPL # "author": "Kayo Phoenix"
+
+import bpy
+from bpy_extras import object_utils
+from math import (
+        pi, sin,
+        cos,
+        )
+from bpy.props import (
+        IntProperty,
+        BoolProperty,
+        BoolVectorProperty,
+        FloatProperty,
+        FloatVectorProperty,
+        )
+
 
 class honeycomb_geometry():
     def __init__(self, rows, cols, D, E):
@@ -41,7 +34,6 @@ class honeycomb_geometry():
         self.r = self.R - self.e
         self.hr = 0.5 * self.r
 
-
         self.H = self.R * (1.5 * self.rows + 0.5) + self.e
         if self.rows > 1:
             self.W = self.d * (self.cols + 0.5) + self.E
@@ -61,47 +53,64 @@ class honeycomb_geometry():
 
     def vert(self, row, col):
         # full cell
-        if row >= 0 and row < self.rows and col >= 0 and col < self.cols: return [0, 1, 2, 3, 4, 5]
+        if row >= 0 and row < self.rows and col >= 0 and col < self.cols:
+            return [0, 1, 2, 3, 4, 5]
         # right down corner
-        if row == -1 and col == self.cols - 1: return [1, 2]
-        if row == 0 and self.rows > 1 and col == self.cols: return [1, 2, 3]
+        if row == -1 and col == self.cols - 1:
+            return [1, 2]
+        if row == 0 and self.rows > 1 and col == self.cols:
+            return [1, 2, 3]
         # left down corner
-        if row == -1 and col == -1: return [0, 1]
+        if row == -1 and col == -1:
+            return [0, 1]
         if self.rows % 2:
             # left up corner
-            if row == self.rows and col == -1: return [4, 5]
+            if row == self.rows and col == -1:
+                return [4, 5]
             # right up corner
-            if row == self.rows and col == self.cols - 1: return [3, 4]
-            if row == self.rows - 1 and self.rows > 1 and col == self.cols: return [2, 3, 4]
+            if row == self.rows and col == self.cols - 1:
+                return [3, 4]
+            if row == self.rows - 1 and self.rows > 1 and col == self.cols:
+                return [2, 3, 4]
         else:
             # left up corner
-            if row == self.rows and col == 0: return [4, 5]
-            if row == self.rows - 1 and self.rows > 1 and col == -1: return [0, 4, 5]
+            if row == self.rows and col == 0:
+                return [4, 5]
+            if row == self.rows - 1 and self.rows > 1 and col == -1:
+                return [0, 4, 5]
             # right up corner
-            if row == self.rows and col == self.cols: return [3, 4]
+            if row == self.rows and col == self.cols:
+                return [3, 4]
         # horizontal lines
         if col >= 0 and col < self.cols:
-            if row == -1: return [0, 1, 2]
-            if row == self.rows: return [3, 4, 5]
+            if row == -1:
+                return [0, 1, 2]
+            if row == self.rows:
+                return [3, 4, 5]
         # vertical lines
         if row >= 0 and row < self.rows:
             if col == -1:
-                if row % 2: return [0, 1, 4, 5]
-                else: return [0, 5]
+                if row % 2:
+                    return [0, 1, 4, 5]
+                else:
+                    return [0, 5]
             if col == self.cols:
-                if row % 2 or self.rows == 1: return [2, 3]
-                else: return [1, 2, 3, 4]
+                if row % 2 or self.rows == 1:
+                    return [2, 3]
+                else:
+                    return [1, 2, 3, 4]
         return []
 
     def cell(self, row, col, idx):
-        cp = [self.sx + self.dx * col, self.sy + self.dy * row, 0] # central point
-        if row % 2: cp[0] += self.gx
-        co = [] # vertexes coords
+        cp = [self.sx + self.dx * col, self.sy + self.dy * row, 0]  # central point
+        if row % 2:
+            cp[0] += self.gx
+        co = []  # vertices coords
         vi = self.vert(row, col)
         ap = {}
 
         for i in vi:
-            a = pi / 6 + i * pi / 3 # angle
+            a = pi / 6 + i * pi / 3  # angle
             ap[i] = idx + len(co)
             co.append((cp[0] + cos(a) * self.r, cp[1] + sin(a) * self.r, cp[2]))
         return co, ap
@@ -135,7 +144,8 @@ class honeycomb_geometry():
         # top row
         row = len(cells) - 1
         cs = 0
-        if row % 2: cs += 1
+        if row % 2:
+            cs += 1
         for col in range(1 + cs, len(cells[row]) - 1):
             s = cells[row][col]
             l = cells[row][col - 1]
@@ -146,7 +156,8 @@ class honeycomb_geometry():
         # middle rows
         for row in range(1, len(cells) - 1):
             cs = 0
-            if row % 2: cs += 1
+            if row % 2:
+                cs += 1
             for col in range(1, len(cells[row]) - 1):
                 s = cells[row][col]
                 l = cells[row][col - 1]
@@ -164,7 +175,8 @@ class honeycomb_geometry():
         col = len(cells[row]) - 1
         for row in range(1, len(cells) - 1):
             cs = 0
-            if row % 2: cs += 1
+            if row % 2:
+                cs += 1
 
             s = cells[row][col]
             l = cells[row][col - 1]
@@ -190,86 +202,79 @@ class honeycomb_geometry():
 
         return verts, faces
 
-import bpy
-from bpy.props import *
-from bpy_extras import object_utils
 
 def edge_max(diam):
     return diam * sin(pi / 3)
 
+
 class add_mesh_honeycomb(bpy.types.Operator):
-    """Simple honeycomb mesh generator"""
-    bl_idname = 'mesh.honeycomb_add'
-    bl_label = 'Add HoneyComb'
+    bl_idname = "mesh.honeycomb_add"
+    bl_label = "Add HoneyComb"
+    bl_description = "Simple honeycomb mesh generator"
     bl_options = {'REGISTER', 'UNDO'}
-
-    rows = IntProperty(
-        name = 'Num of rows', default = 2,
-        min = 1, max = 100,
-        description='Number of the rows')
-
-    cols = IntProperty(
-        name = 'Num of cols', default = 2,
-        min = 1, max = 100,
-        description='Number of the columns')
 
     def fix_edge(self, context):
         m = edge_max(self.diam)
-        if self.edge > m: self.edge = m
+        if self.edge > m:
+            self.edge = m
 
+    rows = IntProperty(
+            name="Num of rows",
+            default=2,
+            min=1, max=100,
+            description='Number of the rows'
+            )
+    cols = IntProperty(
+            name='Num of cols',
+            default=2,
+            min=1, max=100,
+            description='Number of the columns'
+            )
+    layers = BoolVectorProperty(
+            name="Layers",
+            size=20,
+            subtype='LAYER',
+            options={'HIDDEN', 'SKIP_SAVE'},
+            )
     diam = FloatProperty(
-        name = 'Cell Diameter', default = 1.0,
-        min = 0.0, update = fix_edge,
-        description='Diameter of the cell')
-
+            name='Cell Diameter',
+            default=1.0,
+            min=0.0, update=fix_edge,
+            description='Diameter of the cell'
+            )
     edge = FloatProperty(
-        name = 'Edge Width', default = 0.1,
-        min = 0.0, update = fix_edge,
-        description='Width of the edge')
-
+            name='Edge Width',
+            default=0.1,
+            min=0.0, update=fix_edge,
+            description='Width of the edge'
+            )
     # generic transform props
     view_align = BoolProperty(
-        name="Align to View",
-        default=False)
+            name="Align to View",
+            default=False
+            )
     location = FloatVectorProperty(
-        name="Location",
-        subtype='TRANSLATION')
+            name="Location",
+            subtype='TRANSLATION'
+            )
     rotation = FloatVectorProperty(
-        name="Rotation",
-        subtype='EULER')
+            name="Rotation",
+            subtype='EULER'
+            )
 
-    ##### POLL #####
     @classmethod
     def poll(cls, context):
         return context.scene is not None
 
-    ##### EXECUTE #####
     def execute(self, context):
         mesh = bpy.data.meshes.new(name='honeycomb')
 
         comb = honeycomb_geometry(self.rows, self.cols, self.diam, self.edge)
         verts, faces = comb.generate()
 
-        mesh.from_pydata(vertices = verts, edges = [], faces = faces)
+        mesh.from_pydata(vertices=verts, edges=[], faces=faces)
         mesh.update()
 
         object_utils.object_data_add(context, mesh, operator=self)
 
         return {'FINISHED'}
-'''
-def menu_func(self, context):
-    self.layout.operator(add_mesh_honeycomb.bl_idname, text = bl_info['name'], icon="PLUGIN")
-
-def register():
-    bpy.utils.register_module(__name__)
-
-    bpy.types.INFO_MT_mesh_add.append(menu_func)
-
-def unregister():
-    bpy.utils.unregister_module(__name__)
-
-    bpy.types.INFO_MT_mesh_add.remove(menu_func)
-
-if __name__ == "__main__":
-    register()
-'''

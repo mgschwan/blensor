@@ -55,6 +55,7 @@ class KX_Scene;
 struct PHY_ShapeProps;
 struct PHY_MaterialProps;
 class PHY_IMotionState;
+struct bRigidBodyJointConstraint;
 
 /**
  * pass back information from rayTest
@@ -115,7 +116,7 @@ public:
 class PHY_IPhysicsEnvironment
 {
 	public:
-		virtual		~PHY_IPhysicsEnvironment(){}
+		virtual		~PHY_IPhysicsEnvironment() {}
 		virtual	void		BeginFrame() = 0;
 		virtual void		EndFrame() = 0;
 		/// Perform an integration step of duration 'timeStep'.
@@ -167,7 +168,7 @@ class PHY_IPhysicsEnvironment
 			float axis1X=0,float axis1Y=0,float axis1Z=0,
 			float axis2X=0,float axis2Y=0,float axis2Z=0,int flag=0
 		)=0;
-		virtual void		RemoveConstraint(int	constraintid)=0;
+		virtual void RemoveConstraintById(int constraintid) = 0;
 		virtual float		GetAppliedImpulse(int	constraintid) { return 0.0f; }
 
 
@@ -182,7 +183,7 @@ class PHY_IPhysicsEnvironment
 		//culling based on physical broad phase
 		// the plane number must be set as follow: near, far, left, right, top, botton
 		// the near plane must be the first one and must always be present, it is used to get the direction of the view
-		virtual bool CullingTest(PHY_CullingCallback callback, void *userData, MT_Vector4* planeNormals, int planeNumber, int occlusionRes, const int *viewport, double modelview[16], double projection[16]) = 0;
+		virtual bool CullingTest(PHY_CullingCallback callback, void *userData, MT_Vector4* planeNormals, int planeNumber, int occlusionRes, const int *viewport, float modelview[16], float projection[16]) = 0;
 
 		//Methods for gamelogic collision/physics callbacks
 		//todo:
@@ -213,6 +214,9 @@ class PHY_IPhysicsEnvironment
 							bool isCompoundChild,
 							bool hasCompoundChildren) = 0;
 
+		/* Set the rigid body joints constraints values for converted objects and replicated group instances. */
+		virtual void SetupObjectConstraints(KX_GameObject *obj_src, KX_GameObject *obj_dest,
+		                                    bRigidBodyJointConstraint *dat) {}
 
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("GE:PHY_IPhysicsEnvironment")

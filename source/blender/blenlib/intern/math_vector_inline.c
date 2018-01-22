@@ -97,7 +97,29 @@ MINLINE void copy_v4_fl(float r[4], float f)
 	r[3] = f;
 }
 
-/* short */
+/* unsigned char */
+MINLINE void copy_v2_v2_uchar(unsigned char r[2], const unsigned char a[2])
+{
+	r[0] = a[0];
+	r[1] = a[1];
+}
+
+MINLINE void copy_v3_v3_uchar(unsigned char r[3], const unsigned char a[3])
+{
+	r[0] = a[0];
+	r[1] = a[1];
+	r[2] = a[2];
+}
+
+MINLINE void copy_v4_v4_uchar(unsigned char r[4], const unsigned char a[4])
+{
+	r[0] = a[0];
+	r[1] = a[1];
+	r[2] = a[2];
+	r[3] = a[3];
+}
+
+/* char */
 MINLINE void copy_v2_v2_char(char r[2], const char a[2])
 {
 	r[0] = a[0];
@@ -457,7 +479,18 @@ MINLINE void mul_v2_v2_ccw(float r[2], const float mat[2], const float vec[2])
 	r[1] = mat[1] * vec[0] + (+mat[0]) * vec[1];
 }
 
-/* note: could add a matrix inline */
+/**
+ * Convenience function to get the projected depth of a position.
+ * This avoids creating a temporary 4D vector and multiplying it - only for the 4th component.
+ *
+ * Matches logic for:
+ *
+ * \code{.c}
+ * float co_4d[4] = {co[0], co[1], co[2], 1.0};
+ * mul_m4_v4(mat, co_4d);
+ * return co_4d[3];
+ * \endcode
+ */
 MINLINE float mul_project_m4_v3_zfac(float mat[4][4], const float co[3])
 {
 	return (mat[0][3] * co[0]) +
@@ -611,6 +644,20 @@ MINLINE void negate_v3_short(short r[3])
 	r[2] = (short)-r[2];
 }
 
+MINLINE void negate_v3_db(double r[3])
+{
+	r[0] = -r[0];
+	r[1] = -r[1];
+	r[2] = -r[2];
+}
+
+MINLINE void invert_v2(float r[2])
+{
+	BLI_assert(!ELEM(0.0f, r[0], r[1]));
+	r[0] = 1.0f / r[0];
+	r[1] = 1.0f / r[1];
+}
+
 MINLINE void abs_v2(float r[2])
 {
 	r[0] = fabsf(r[0]);
@@ -678,6 +725,11 @@ MINLINE float dot_v3v3v3(const float p[3], const float a[3], const float b[3])
 MINLINE float dot_v4v4(const float a[4], const float b[4])
 {
 	return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+}
+
+MINLINE double dot_v3db_v3fl(const double a[3], const float b[3])
+{
+	return a[0] * (double)b[0] + a[1] * (double)b[1] + a[2] * (double)b[2];
 }
 
 MINLINE float cross_v2v2(const float a[2], const float b[2])
@@ -818,13 +870,13 @@ MINLINE float len_v3v3(const float a[3], const float b[3])
 	return len_v3(d);
 }
 
-MINLINE float normalize_v2_v2(float r[2], const float a[2])
+MINLINE float normalize_v2_v2_length(float r[2], const float a[2], const float unit_length)
 {
 	float d = dot_v2v2(a, a);
 
 	if (d > 1.0e-35f) {
 		d = sqrtf(d);
-		mul_v2_v2fl(r, a, 1.0f / d);
+		mul_v2_v2fl(r, a, unit_length / d);
 	}
 	else {
 		zero_v2(r);
@@ -833,13 +885,22 @@ MINLINE float normalize_v2_v2(float r[2], const float a[2])
 
 	return d;
 }
+MINLINE float normalize_v2_v2(float r[2], const float a[2])
+{
+	return normalize_v2_v2_length(r, a, 1.0f);
+}
 
 MINLINE float normalize_v2(float n[2])
 {
 	return normalize_v2_v2(n, n);
 }
 
-MINLINE float normalize_v3_v3(float r[3], const float a[3])
+MINLINE float normalize_v2_length(float n[2], const float unit_length)
+{
+	return normalize_v2_v2_length(n, n, unit_length);
+}
+
+MINLINE float normalize_v3_v3_length(float r[3], const float a[3], const float unit_length)
 {
 	float d = dot_v3v3(a, a);
 
@@ -847,7 +908,7 @@ MINLINE float normalize_v3_v3(float r[3], const float a[3])
 	 * scaled down models with camera extreme close */
 	if (d > 1.0e-35f) {
 		d = sqrtf(d);
-		mul_v3_v3fl(r, a, 1.0f / d);
+		mul_v3_v3fl(r, a, unit_length / d);
 	}
 	else {
 		zero_v3(r);
@@ -856,8 +917,12 @@ MINLINE float normalize_v3_v3(float r[3], const float a[3])
 
 	return d;
 }
+MINLINE float normalize_v3_v3(float r[3], const float a[3])
+{
+	return normalize_v3_v3_length(r, a, 1.0f);
+}
 
-MINLINE double normalize_v3_d(double n[3])
+MINLINE double normalize_v3_length_d(double n[3], const double unit_length)
 {
 	double d = n[0] * n[0] + n[1] * n[1] + n[2] * n[2];
 
@@ -867,7 +932,7 @@ MINLINE double normalize_v3_d(double n[3])
 		double mul;
 
 		d = sqrt(d);
-		mul = 1.0 / d;
+		mul = unit_length / d;
 
 		n[0] *= mul;
 		n[1] *= mul;
@@ -879,6 +944,15 @@ MINLINE double normalize_v3_d(double n[3])
 	}
 
 	return d;
+}
+MINLINE double normalize_v3_d(double n[3])
+{
+	return normalize_v3_length_d(n, 1.0);
+}
+
+MINLINE float normalize_v3_length(float n[3], const float unit_length)
+{
+	return normalize_v3_v3_length(n, n, unit_length);
 }
 
 MINLINE float normalize_v3(float n[3])
@@ -918,21 +992,6 @@ MINLINE bool is_zero_v4(const float v[4])
 	return (v[0] == 0.0f && v[1] == 0.0f && v[2] == 0.0f && v[3] == 0.0f);
 }
 
-MINLINE bool is_finite_v2(const float v[2])
-{
-	return (finite(v[0]) && finite(v[1]));
-}
-
-MINLINE bool is_finite_v3(const float v[3])
-{
-	return (finite(v[0]) && finite(v[1]) && finite(v[2]));
-}
-
-MINLINE bool is_finite_v4(const float v[4])
-{
-	return (finite(v[0]) && finite(v[1]) && finite(v[2]) && finite(v[3]));
-}
-
 MINLINE bool is_one_v3(const float v[3])
 {
 	return (v[0] == 1.0f && v[1] == 1.0f && v[2] == 1.0f);
@@ -961,22 +1020,46 @@ MINLINE bool equals_v4v4(const float v1[4], const float v2[4])
 
 MINLINE bool compare_v2v2(const float v1[2], const float v2[2], const float limit)
 {
-	if (fabsf(v1[0] - v2[0]) <= limit)
-		if (fabsf(v1[1] - v2[1]) <= limit)
-			return true;
-
-	return false;
+	return (compare_ff(v1[0], v2[0], limit) &&
+	        compare_ff(v1[1], v2[1], limit));
 }
 
 MINLINE bool compare_v3v3(const float v1[3], const float v2[3], const float limit)
 {
-	if (fabsf(v1[0] - v2[0]) <= limit)
-		if (fabsf(v1[1] - v2[1]) <= limit)
-			if (fabsf(v1[2] - v2[2]) <= limit)
-				return true;
-
-	return false;
+	return (compare_ff(v1[0], v2[0], limit) &&
+	        compare_ff(v1[1], v2[1], limit) &&
+	        compare_ff(v1[2], v2[2], limit));
 }
+
+MINLINE bool compare_v4v4(const float v1[4], const float v2[4], const float limit)
+{
+	return (compare_ff(v1[0], v2[0], limit) &&
+	        compare_ff(v1[1], v2[1], limit) &&
+	        compare_ff(v1[2], v2[2], limit) &&
+	        compare_ff(v1[3], v2[3], limit));
+}
+
+MINLINE bool compare_v2v2_relative(const float v1[2], const float v2[2], const float limit, const int max_ulps)
+{
+	return (compare_ff_relative(v1[0], v2[0], limit, max_ulps) &&
+	        compare_ff_relative(v1[1], v2[1], limit, max_ulps));
+}
+
+MINLINE bool compare_v3v3_relative(const float v1[3], const float v2[3], const float limit, const int max_ulps)
+{
+	return (compare_ff_relative(v1[0], v2[0], limit, max_ulps) &&
+	        compare_ff_relative(v1[1], v2[1], limit, max_ulps) &&
+	        compare_ff_relative(v1[2], v2[2], limit, max_ulps));
+}
+
+MINLINE bool compare_v4v4_relative(const float v1[4], const float v2[4], const float limit, const int max_ulps)
+{
+	return (compare_ff_relative(v1[0], v2[0], limit, max_ulps) &&
+	        compare_ff_relative(v1[1], v2[1], limit, max_ulps) &&
+	        compare_ff_relative(v1[2], v2[2], limit, max_ulps) &&
+	        compare_ff_relative(v1[3], v2[3], limit, max_ulps));
+}
+
 
 MINLINE bool compare_len_v3v3(const float v1[3], const float v2[3], const float limit)
 {
@@ -998,17 +1081,6 @@ MINLINE bool compare_len_squared_v3v3(const float v1[3], const float v2[3], cons
 	z = v1[2] - v2[2];
 
 	return ((x * x + y * y + z * z) <= limit_sq);
-}
-
-MINLINE bool compare_v4v4(const float v1[4], const float v2[4], const float limit)
-{
-	if (fabsf(v1[0] - v2[0]) <= limit)
-		if (fabsf(v1[1] - v2[1]) <= limit)
-			if (fabsf(v1[2] - v2[2]) <= limit)
-				if (fabsf(v1[3] - v2[3]) <= limit)
-					return true;
-
-	return false;
 }
 
 /**

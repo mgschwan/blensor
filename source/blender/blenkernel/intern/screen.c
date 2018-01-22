@@ -180,6 +180,8 @@ ARegion *BKE_area_region_copy(SpaceType *st, ARegion *ar)
 	BLI_listbase_clear(&newar->panels_category_active);
 	BLI_listbase_clear(&newar->ui_lists);
 	newar->swinid = 0;
+	newar->regiontimer = NULL;
+	newar->headerstr = NULL;
 	
 	/* use optional regiondata callback */
 	if (ar->regiondata) {
@@ -272,6 +274,20 @@ void BKE_spacedata_draw_locks(int set)
 	}
 }
 
+static void (*spacedata_id_remap_cb)(struct ScrArea *sa, struct SpaceLink *sl, ID *old_id, ID *new_id) = NULL;
+
+void BKE_spacedata_callback_id_remap_set(void (*func)(ScrArea *sa, SpaceLink *sl, ID *, ID *))
+{
+	spacedata_id_remap_cb = func;
+}
+
+/* UNUSED!!! */
+void BKE_spacedata_id_unref(struct ScrArea *sa, struct SpaceLink *sl, struct ID *id)
+{
+	if (spacedata_id_remap_cb) {
+		spacedata_id_remap_cb(sa, sl, id, NULL);
+	}
+}
 
 /* not region itself */
 void BKE_area_region_free(SpaceType *st, ARegion *ar)
@@ -295,7 +311,16 @@ void BKE_area_region_free(SpaceType *st, ARegion *ar)
 		ar->v2d.tab_offset = NULL;
 	}
 
-	BLI_freelistN(&ar->panels);
+	if (!BLI_listbase_is_empty(&ar->panels)) {
+		Panel *pa, *pa_next;
+		for (pa = ar->panels.first; pa; pa = pa_next) {
+			pa_next = pa->next;
+			if (pa->activedata) {
+				MEM_freeN(pa->activedata);
+			}
+			MEM_freeN(pa);
+		}
+	}
 
 	for (uilst = ar->ui_lists.first; uilst; uilst = uilst->next) {
 		if (uilst->dyn_data) {
@@ -335,11 +360,13 @@ void BKE_screen_area_free(ScrArea *sa)
 	BLI_freelistN(&sa->actionzones);
 }
 
-/* don't free screen itself */
+/** Free (or release) any data used by this screen (does not free the screen itself). */
 void BKE_screen_free(bScreen *sc)
 {
 	ScrArea *sa, *san;
 	ARegion *ar;
+
+	/* No animdata here. */
 	
 	for (ar = sc->regionbase.first; ar; ar = ar->next)
 		BKE_area_region_free(NULL, ar);
@@ -403,6 +430,23 @@ ARegion *BKE_area_find_region_active_win(ScrArea *sa)
 		return BKE_area_find_region_type(sa, RGN_TYPE_WINDOW);
 	}
 	return NULL;
+}
+
+ARegion *BKE_area_find_region_xy(ScrArea *sa, const int regiontype, int x, int y)
+{
+	ARegion *ar_found = NULL;
+	if (sa) {
+		ARegion *ar;
+		for (ar = sa->regionbase.first; ar; ar = ar->next) {
+			if ((regiontype == RGN_TYPE_ANY) || (ar->regiontype == regiontype)) {
+				if (BLI_rcti_isect_pt(&ar->winrct, x, y)) {
+					ar_found = ar;
+					break;
+				}
+			}
+		}
+	}
+	return ar_found;
 }
 
 /**
@@ -486,6 +530,23 @@ unsigned int BKE_screen_view3d_layer_active_ex(const View3D *v3d, const Scene *s
 unsigned int BKE_screen_view3d_layer_active(const struct View3D *v3d, const struct Scene *scene)
 {
 	return BKE_screen_view3d_layer_active_ex(v3d, scene, true);
+}
+
+/**
+ * Accumulate all visible layers on this screen.
+ */
+unsigned int BKE_screen_view3d_layer_all(const bScreen *sc)
+{
+	const ScrArea *sa;
+	unsigned int lay = 0;
+	for (sa = sc->areabase.first; sa; sa = sa->next) {
+		if (sa->spacetype == SPACE_VIEW3D) {
+			View3D *v3d = sa->spacedata.first;
+			lay |= v3d->lay;
+		}
+	}
+
+	return lay;
 }
 
 void BKE_screen_view3d_sync(View3D *v3d, struct Scene *scene)

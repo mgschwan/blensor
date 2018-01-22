@@ -37,14 +37,14 @@
 
 #include <iostream>
 #include "SCA_PropertySensor.h"
-#include "Operator2Expr.h"
-#include "ConstExpr.h"
-#include "InputParser.h"
-#include "StringValue.h"
+#include "EXP_Operator2Expr.h"
+#include "EXP_ConstExpr.h"
+#include "EXP_InputParser.h"
+#include "EXP_StringValue.h"
 #include "SCA_EventManager.h"
 #include "SCA_LogicManager.h"
-#include "BoolValue.h"
-#include "FloatValue.h"
+#include "EXP_BoolValue.h"
+#include "EXP_FloatValue.h"
 #include <stdio.h>
 
 SCA_PropertySensor::SCA_PropertySensor(SCA_EventManager* eventmgr,
@@ -133,7 +133,7 @@ bool	SCA_PropertySensor::CheckPropertyCondition()
 	{
 	case KX_PROPSENSOR_NOTEQUAL:
 		reverse = true;
-		/* fall-through */
+		ATTR_FALLTHROUGH;
 	case KX_PROPSENSOR_EQUAL:
 		{
 			CValue* orgprop = GetParent()->FindIdentifier(m_checkpropname);
@@ -199,7 +199,7 @@ bool	SCA_PropertySensor::CheckPropertyCondition()
 				const float max = m_checkpropmaxval.ToFloat();
 				float val;
 
-				if (orgprop->GetValueType() == VALUE_STRING_TYPE){
+				if (orgprop->GetValueType() == VALUE_STRING_TYPE) {
 					val = orgprop->GetText().ToFloat();
 				}
 				else {
@@ -231,7 +231,7 @@ bool	SCA_PropertySensor::CheckPropertyCondition()
 		}
 	case KX_PROPSENSOR_LESSTHAN:
 		reverse = true;
-		/* fall-through */
+		ATTR_FALLTHROUGH;
 	case KX_PROPSENSOR_GREATERTHAN:
 		{
 			CValue* orgprop = GetParent()->FindIdentifier(m_checkpropname);
@@ -240,7 +240,7 @@ bool	SCA_PropertySensor::CheckPropertyCondition()
 				const float ref = m_checkpropval.ToFloat();
 				float val;
 
-				if (orgprop->GetValueType() == VALUE_STRING_TYPE){
+				if (orgprop->GetValueType() == VALUE_STRING_TYPE) {
 					val = orgprop->GetText().ToFloat();
 				}
 				else {
@@ -265,13 +265,8 @@ bool	SCA_PropertySensor::CheckPropertyCondition()
 
 	//the concept of Edge and Level triggering has unwanted effect for KX_PROPSENSOR_CHANGED
 	//see Game Engine bugtracker [ #3809 ]
-	if (m_checktype != KX_PROPSENSOR_CHANGED)
-	{
-		m_recentresult=result;
-	} else
-	{
-		m_recentresult=result;//true;
-	}
+	m_recentresult = result;
+
 	return result;
 }
 

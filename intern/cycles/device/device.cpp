@@ -17,25 +17,74 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "device.h"
-#include "device_intern.h"
+#include "device/device.h"
+#include "device/device_intern.h"
 
-#include "util_debug.h"
-#include "util_foreach.h"
-#include "util_half.h"
-#include "util_math.h"
-#include "util_opengl.h"
-#include "util_time.h"
-#include "util_types.h"
-#include "util_vector.h"
+#include "util/util_debug.h"
+#include "util/util_foreach.h"
+#include "util/util_half.h"
+#include "util/util_math.h"
+#include "util/util_opengl.h"
+#include "util/util_time.h"
+#include "util/util_types.h"
+#include "util/util_vector.h"
+#include "util/util_string.h"
 
 CCL_NAMESPACE_BEGIN
 
+bool Device::need_types_update = true;
+bool Device::need_devices_update = true;
+vector<DeviceType> Device::types;
+vector<DeviceInfo> Device::devices;
+
+/* Device Requested Features */
+
+std::ostream& operator <<(std::ostream &os,
+                          const DeviceRequestedFeatures& requested_features)
+{
+	os << "Experimental features: "
+	   << (requested_features.experimental ? "On" : "Off") << std::endl;
+	os << "Max closure count: " << requested_features.max_closure << std::endl;
+	os << "Max nodes group: " << requested_features.max_nodes_group << std::endl;
+	/* TODO(sergey): Decode bitflag into list of names. */
+	os << "Nodes features: " << requested_features.nodes_features << std::endl;
+	os << "Use Hair: "
+	   << string_from_bool(requested_features.use_hair) << std::endl;
+	os << "Use Object Motion: "
+	   << string_from_bool(requested_features.use_object_motion) << std::endl;
+	os << "Use Camera Motion: "
+	   << string_from_bool(requested_features.use_camera_motion) << std::endl;
+	os << "Use Baking: "
+	   << string_from_bool(requested_features.use_baking) << std::endl;
+	os << "Use Subsurface: "
+	   << string_from_bool(requested_features.use_subsurface) << std::endl;
+	os << "Use Volume: "
+	   << string_from_bool(requested_features.use_volume) << std::endl;
+	os << "Use Branched Integrator: "
+	   << string_from_bool(requested_features.use_integrator_branched) << std::endl;
+	os << "Use Patch Evaluation: "
+	   << string_from_bool(requested_features.use_patch_evaluation) << std::endl;
+	os << "Use Transparent Shadows: "
+	   << string_from_bool(requested_features.use_transparent) << std::endl;
+	os << "Use Principled BSDF: "
+	   << string_from_bool(requested_features.use_principled) << std::endl;
+	os << "Use Denoising: "
+	   << string_from_bool(requested_features.use_denoising) << std::endl;
+	return os;
+}
+
 /* Device */
+
+Device::~Device()
+{
+	if(!background && vertex_buffer != 0) {
+		glDeleteBuffers(1, &vertex_buffer);
+	}
+}
 
 void Device::pixels_alloc(device_memory& mem)
 {
-	mem_alloc(mem, MEM_READ_WRITE);
+	mem_alloc("pixels", mem, MEM_READ_WRITE);
 }
 
 void Device::pixels_copy_from(device_memory& mem, int y, int w, int h)
@@ -51,7 +100,7 @@ void Device::pixels_free(device_memory& mem)
 	mem_free(mem);
 }
 
-void Device::draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int width, int height, bool transparent,
+void Device::draw_pixels(device_memory& rgba, int y, int w, int h, int dx, int dy, int width, int height, bool transparent,
 	const DeviceDrawParams &draw_params)
 {
 	pixels_copy_from(rgba, y, w, h);
@@ -67,6 +116,9 @@ void Device::draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int w
 		/* for multi devices, this assumes the inefficient method that we allocate
 		 * all pixels on the device even though we only render to a subset */
 		GLhalf *data_pointer = (GLhalf*)rgba.data_pointer;
+		float vbuffer[16], *basep;
+		float *vp = NULL;
+
 		data_pointer += 4*y*w;
 
 		/* draw half float texture, GLSL shader for display transform assumed to be bound */
@@ -83,23 +135,63 @@ void Device::draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int w
 			draw_params.bind_display_space_shader_cb();
 		}
 
-		glPushMatrix();
-		glTranslatef(0.0f, (float)dy, 0.0f);
+		if(GLEW_VERSION_1_5) {
+			if(!vertex_buffer)
+				glGenBuffers(1, &vertex_buffer);
 
-		glBegin(GL_QUADS);
-		
-		glTexCoord2f(0.0f, 0.0f);
-		glVertex2f(0.0f, 0.0f);
-		glTexCoord2f(1.0f, 0.0f);
-		glVertex2f((float)width, 0.0f);
-		glTexCoord2f(1.0f, 1.0f);
-		glVertex2f((float)width, (float)height);
-		glTexCoord2f(0.0f, 1.0f);
-		glVertex2f(0.0f, (float)height);
+			glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+			/* invalidate old contents - avoids stalling if buffer is still waiting in queue to be rendered */
+			glBufferData(GL_ARRAY_BUFFER, 16 * sizeof(float), NULL, GL_STREAM_DRAW);
 
-		glEnd();
+			vp = (float *)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
 
-		glPopMatrix();
+			basep = NULL;
+		}
+		else {
+			basep = vbuffer;
+			vp = vbuffer;
+		}
+
+		if(vp) {
+			/* texture coordinate - vertex pair */
+			vp[0] = 0.0f;
+			vp[1] = 0.0f;
+			vp[2] = dx;
+			vp[3] = dy;
+
+			vp[4] = 1.0f;
+			vp[5] = 0.0f;
+			vp[6] = (float)width + dx;
+			vp[7] = dy;
+
+			vp[8] = 1.0f;
+			vp[9] = 1.0f;
+			vp[10] = (float)width + dx;
+			vp[11] = (float)height + dy;
+
+			vp[12] = 0.0f;
+			vp[13] = 1.0f;
+			vp[14] = dx;
+			vp[15] = (float)height + dy;
+
+			if(vertex_buffer)
+				glUnmapBuffer(GL_ARRAY_BUFFER);
+		}
+
+		glTexCoordPointer(2, GL_FLOAT, 4 * sizeof(float), basep);
+		glVertexPointer(2, GL_FLOAT, 4 * sizeof(float), ((char *)basep) + 2 * sizeof(float));
+
+		glEnableClientState(GL_VERTEX_ARRAY);
+		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+
+		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+		glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+		glDisableClientState(GL_VERTEX_ARRAY);
+
+		if(vertex_buffer) {
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
+		}
 
 		if(draw_params.unbind_display_space_shader_cb) {
 			draw_params.unbind_display_space_shader_cb();
@@ -113,7 +205,7 @@ void Device::draw_pixels(device_memory& rgba, int y, int w, int h, int dy, int w
 		/* fallback for old graphics cards that don't support GLSL, half float,
 		 * and non-power-of-two textures */
 		glPixelZoom((float)width/(float)w, (float)height/(float)h);
-		glRasterPos2f(0, dy);
+		glRasterPos2f(dx, dy);
 
 		uint8_t *pixels = (uint8_t*)rgba.data_pointer;
 
@@ -172,42 +264,40 @@ Device *Device::create(DeviceInfo& info, Stats &stats, bool background)
 
 DeviceType Device::type_from_string(const char *name)
 {
-	if(strcmp(name, "cpu") == 0)
+	if(strcmp(name, "CPU") == 0)
 		return DEVICE_CPU;
-	else if(strcmp(name, "cuda") == 0)
+	else if(strcmp(name, "CUDA") == 0)
 		return DEVICE_CUDA;
-	else if(strcmp(name, "opencl") == 0)
+	else if(strcmp(name, "OPENCL") == 0)
 		return DEVICE_OPENCL;
-	else if(strcmp(name, "network") == 0)
+	else if(strcmp(name, "NETWORK") == 0)
 		return DEVICE_NETWORK;
-	else if(strcmp(name, "multi") == 0)
+	else if(strcmp(name, "MULTI") == 0)
 		return DEVICE_MULTI;
-	
+
 	return DEVICE_NONE;
 }
 
 string Device::string_from_type(DeviceType type)
 {
 	if(type == DEVICE_CPU)
-		return "cpu";
+		return "CPU";
 	else if(type == DEVICE_CUDA)
-		return "cuda";
+		return "CUDA";
 	else if(type == DEVICE_OPENCL)
-		return "opencl";
+		return "OPENCL";
 	else if(type == DEVICE_NETWORK)
-		return "network";
+		return "NETWORK";
 	else if(type == DEVICE_MULTI)
-		return "multi";
-	
+		return "MULTI";
+
 	return "";
 }
 
 vector<DeviceType>& Device::available_types()
 {
-	static vector<DeviceType> types;
-	static bool types_init = false;
-
-	if(!types_init) {
+	if(need_types_update) {
+		types.clear();
 		types.push_back(DEVICE_CPU);
 
 #ifdef WITH_CUDA
@@ -223,11 +313,8 @@ vector<DeviceType>& Device::available_types()
 #ifdef WITH_NETWORK
 		types.push_back(DEVICE_NETWORK);
 #endif
-#ifdef WITH_MULTI
-		types.push_back(DEVICE_MULTI);
-#endif
 
-		types_init = true;
+		need_types_update = false;
 	}
 
 	return types;
@@ -235,10 +322,8 @@ vector<DeviceType>& Device::available_types()
 
 vector<DeviceInfo>& Device::available_devices()
 {
-	static vector<DeviceInfo> devices;
-	static bool devices_init = false;
-
-	if(!devices_init) {
+	if(need_devices_update) {
+		devices.clear();
 #ifdef WITH_CUDA
 		if(device_cuda_init())
 			device_cuda_info(devices);
@@ -249,17 +334,13 @@ vector<DeviceInfo>& Device::available_devices()
 			device_opencl_info(devices);
 #endif
 
-#ifdef WITH_MULTI
-		device_multi_info(devices);
-#endif
-
 		device_cpu_info(devices);
 
 #ifdef WITH_NETWORK
 		device_network_info(devices);
 #endif
 
-		devices_init = true;
+		need_devices_update = false;
 	}
 
 	return devices;
@@ -277,16 +358,62 @@ string Device::device_capabilities()
 #endif
 
 #ifdef WITH_OPENCL
-	/* TODO(sergey): Needs proper usable implementation. */
-	/*
 	if(device_opencl_init()) {
 		capabilities += "\nOpenCL device capabilities:\n";
 		capabilities += device_opencl_capabilities();
 	}
-	*/
 #endif
 
 	return capabilities;
+}
+
+DeviceInfo Device::get_multi_device(vector<DeviceInfo> subdevices)
+{
+	assert(subdevices.size() > 1);
+
+	DeviceInfo info;
+	info.type = DEVICE_MULTI;
+	info.id = "MULTI";
+	info.description = "Multi Device";
+	info.multi_devices = subdevices;
+	info.num = 0;
+
+	info.has_bindless_textures = true;
+	info.pack_images = false;
+	foreach(DeviceInfo &device, subdevices) {
+		assert(device.type == info.multi_devices[0].type);
+
+		info.pack_images |= device.pack_images;
+		info.has_bindless_textures &= device.has_bindless_textures;
+	}
+
+	return info;
+}
+
+void Device::tag_update()
+{
+	need_types_update = true;
+	need_devices_update = true;
+}
+
+void Device::free_memory()
+{
+	need_types_update = true;
+	need_devices_update = true;
+	types.free_memory();
+	devices.free_memory();
+}
+
+
+device_sub_ptr::device_sub_ptr(Device *device, device_memory& mem, int offset, int size, MemoryType type)
+ : device(device)
+{
+	ptr = device->mem_alloc_sub_ptr(mem, offset, size, type);
+}
+
+device_sub_ptr::~device_sub_ptr()
+{
+	device->mem_free_sub_ptr(ptr);
 }
 
 CCL_NAMESPACE_END

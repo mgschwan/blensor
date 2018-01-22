@@ -29,6 +29,7 @@ set(INC
 	../blenkernel
 	../blenlib
 	../blenloader
+	../blentranslation
 	../compositor
 	../editors/include
 	../gpu
@@ -57,13 +58,16 @@ set(SRC
 	intern/wm_draw.c
 	intern/wm_event_system.c
 	intern/wm_files.c
+	intern/wm_files_link.c
 	intern/wm_gesture.c
 	intern/wm_init_exit.c
 	intern/wm_jobs.c
 	intern/wm_keymap.c
+	intern/wm_operator_props.c
 	intern/wm_operators.c
 	intern/wm_subwindow.c
 	intern/wm_window.c
+	intern/wm_stereo.c
 
 	WM_api.h
 	WM_keymap.h
@@ -77,6 +81,14 @@ set(SRC
 	wm_subwindow.h
 	wm_window.h
 )
+
+if(WITH_AUDASPACE)
+	add_definitions(${AUDASPACE_DEFINITIONS})
+
+	list(APPEND INC_SYS
+		${AUDASPACE_C_INCLUDE_DIRS}
+	)
+endif()
 
 add_definitions(${GL_DEFINITIONS})
 
@@ -116,10 +128,6 @@ if(WITH_PYTHON)
 		../python
 	)
 	add_definitions(-DWITH_PYTHON)
-
-	if(WITH_PYTHON_SECURITY)
-		add_definitions(-DWITH_PYTHON_SECURITY)
-	endif()
 endif()
 
 if(WITH_GAMEENGINE)
@@ -128,6 +136,14 @@ endif()
 
 if(WITH_BUILDINFO)
 	add_definitions(-DWITH_BUILDINFO)
+endif()
+
+if(WITH_OPENSUBDIV)
+	add_definitions(-DWITH_OPENSUBDIV)
+endif()
+
+if(WITH_INPUT_NDOF)
+	add_definitions(-DWITH_INPUT_NDOF)
 endif()
 
 if(WIN32)

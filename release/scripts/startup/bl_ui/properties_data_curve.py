@@ -125,7 +125,7 @@ class DATA_PT_shape_curve(CurveButtonsPanel, Panel):
             col.prop(curve, "use_fill_deform")
 
         if is_curve:
-            col.label(text="Path / Curve-Deform:")
+            col.label(text="Path/Curve-Deform:")
             sub = col.column()
             subsub = sub.row()
             subsub.prop(curve, "use_radius")
@@ -188,7 +188,10 @@ class DATA_PT_geometry_curve(CurveButtonsPanelCurve, Panel):
             row.label(text="Bevel Factor:")
 
             col = layout.column()
-            col.active = (curve.bevel_depth > 0 or curve.bevel_object is not None)
+            col.active = (
+                    (curve.bevel_depth > 0.0) or
+                    (curve.extrude > 0.0) or
+                    (curve.bevel_object is not None))
             row = col.row(align=True)
             row.prop(curve, "bevel_factor_mapping_start", text="")
             row.prop(curve, "bevel_factor_start", text="Start")
@@ -286,7 +289,7 @@ class DATA_PT_active_spline(CurveButtonsPanelActive, Panel):
                 sub.prop(act_spline, "order_v", text="V")
                 sub.prop(act_spline, "resolution_v", text="V")
 
-            if not is_surf:
+            if act_spline.type == 'BEZIER':
                 col = layout.column()
                 col.label(text="Interpolation:")
 
@@ -321,7 +324,7 @@ class DATA_PT_font(CurveButtonsPanelText, Panel):
         row.label(text="Bold & Italic")
         row.template_ID(text, "font_bold_italic", open="font.open", unlink="font.unlink")
 
-        #layout.prop(text, "font")
+        # layout.prop(text, "font")
 
         split = layout.split()
 
@@ -367,8 +370,11 @@ class DATA_PT_paragraph(CurveButtonsPanelText, Panel):
 
         text = context.curve
 
-        layout.label(text="Align:")
-        layout.prop(text, "align", expand=True)
+        layout.label(text="Horizontal Alignment:")
+        layout.row().prop(text, "align_x", expand=True)
+
+        layout.label(text="Vertical Alignment:")
+        layout.row().prop(text, "align_y", expand=True)
 
         split = layout.split()
 
@@ -425,5 +431,21 @@ class DATA_PT_custom_props_curve(CurveButtonsPanel, PropertyPanel, Panel):
     _context_path = "object.data"
     _property_type = bpy.types.Curve
 
+
+classes = (
+    DATA_PT_context_curve,
+    DATA_PT_shape_curve,
+    DATA_PT_curve_texture_space,
+    DATA_PT_geometry_curve,
+    DATA_PT_pathanim,
+    DATA_PT_active_spline,
+    DATA_PT_font,
+    DATA_PT_paragraph,
+    DATA_PT_text_boxes,
+    DATA_PT_custom_props_curve,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

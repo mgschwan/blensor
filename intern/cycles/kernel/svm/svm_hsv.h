@@ -19,18 +19,20 @@
 
 CCL_NAMESPACE_BEGIN
 
-ccl_device void svm_node_hsv(KernelGlobals *kg, ShaderData *sd, float *stack, uint in_color_offset, uint fac_offset, uint out_color_offset, int *offset)
+ccl_device void svm_node_hsv(KernelGlobals *kg, ShaderData *sd, float *stack, uint4 node, int *offset)
 {
-	/* read extra data */
-	uint4 node1 = read_node(kg, offset);
+	uint in_color_offset, fac_offset, out_color_offset;
+	uint hue_offset, sat_offset, val_offset;
+	decode_node_uchar4(node.y, &in_color_offset, &fac_offset, &out_color_offset, NULL);
+	decode_node_uchar4(node.z, &hue_offset, &sat_offset, &val_offset, NULL);
 
 	float fac = stack_load_float(stack, fac_offset);
 	float3 in_color = stack_load_float3(stack, in_color_offset);
 	float3 color = in_color;
 
-	float hue = stack_load_float(stack, node1.y);
-	float sat = stack_load_float(stack, node1.z);
-	float val = stack_load_float(stack, node1.w);
+	float hue = stack_load_float(stack, hue_offset);
+	float sat = stack_load_float(stack, sat_offset);
+	float val = stack_load_float(stack, val_offset);
 
 	color = rgb_to_hsv(color);
 
@@ -46,12 +48,12 @@ ccl_device void svm_node_hsv(KernelGlobals *kg, ShaderData *sd, float *stack, ui
 	color.y = fac*color.y + (1.0f - fac)*in_color.y;
 	color.z = fac*color.z + (1.0f - fac)*in_color.z;
 
-	/* Clamp color to prevent negative values cauzed by oversaturation. */
+	/* Clamp color to prevent negative values caused by oversaturation. */
 	color.x = max(color.x, 0.0f);
 	color.y = max(color.y, 0.0f);
 	color.z = max(color.z, 0.0f);
 
-	if (stack_valid(out_color_offset))
+	if(stack_valid(out_color_offset))
 		stack_store_float3(stack, out_color_offset, color);
 }
 

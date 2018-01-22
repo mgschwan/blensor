@@ -39,6 +39,7 @@
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
 #include "DNA_brush_types.h"
+#include "DNA_gpencil_types.h"
 #include "DNA_lattice_types.h"
 #include "DNA_screen_types.h"
 #include "DNA_sequence_types.h"
@@ -57,7 +58,7 @@
 #include "BLI_rand.h"
 #include "BLI_utildefines.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "RNA_access.h"
 
@@ -73,6 +74,7 @@
 #include "BKE_depsgraph.h"
 #include "BKE_fcurve.h"
 #include "BKE_lattice.h"
+#include "BKE_library.h"
 #include "BKE_nla.h"
 #include "BKE_context.h"
 #include "BKE_paint.h"
@@ -80,6 +82,7 @@
 #include "BKE_editmesh.h"
 #include "BKE_tracking.h"
 #include "BKE_mask.h"
+#include "BKE_utildefines.h"
 
 #include "ED_anim_api.h"
 #include "ED_armature.h"
@@ -277,7 +280,7 @@ static void animrecord_check_state(Scene *scene, ID *id, wmTimer *animtimer)
 					NlaStrip *strip = add_nlastrip_to_stack(adt, adt->action);
 					
 					/* clear reference to action now that we've pushed it onto the stack */
-					adt->action->id.us--;
+					id_us_min(&adt->action->id);
 					adt->action = NULL;
 					
 					/* adjust blending + extend so that they will behave correctly */
@@ -303,7 +306,7 @@ static bool fcu_test_selected(FCurve *fcu)
 		return 0;
 
 	for (i = 0; i < fcu->totvert; i++, bezt++) {
-		if (BEZSELECTED(bezt)) return 1;
+		if (BEZT_ISSEL_ANY(bezt)) return 1;
 	}
 
 	return 0;
@@ -419,7 +422,7 @@ static void recalcData_graphedit(TransInfo *t)
 /* helper for recalcData() - for NLA Editor transforms */
 static void recalcData_nla(TransInfo *t)
 {
-	TransDataNla *tdn = (TransDataNla *)t->customData;
+	TransDataNla *tdn = t->custom.type.data;
 	SpaceNla *snla = (SpaceNla *)t->sa->spacedata.first;
 	Scene *scene = t->scene;
 	double secf = FPS;
@@ -560,7 +563,7 @@ static void recalcData_nla(TransInfo *t)
 		}
 		
 		/* Use RNA to write the values to ensure that constraints on these are obeyed
-		 * (e.g. for transition strips, the values are taken from the neighbours)
+		 * (e.g. for transition strips, the values are taken from the neighbors)
 		 * 
 		 * NOTE: we write these twice to avoid truncation errors which can arise when
 		 * moving the strips a large distance using numeric input [#33852] 
@@ -707,7 +710,7 @@ static void recalcData_spaceclip(TransInfo *t)
 static void recalcData_objects(TransInfo *t)
 {
 	Base *base = t->scene->basact;
-	
+
 	if (t->obedit) {
 		if (ELEM(t->obedit->type, OB_CURVE, OB_SURF)) {
 			Curve *cu = t->obedit->data;
@@ -757,7 +760,14 @@ static void recalcData_objects(TransInfo *t)
 			}
 			if ((t->options & CTX_NO_MIRROR) == 0 && (t->flag & T_MIRROR))
 				editbmesh_apply_to_mirror(t);
-				
+
+			if (t->mode == TFM_EDGE_SLIDE) {
+				projectEdgeSlideData(t, false);
+			}
+			else if (t->mode == TFM_VERT_SLIDE) {
+				projectVertSlideData(t, false);
+			}
+
 			DAG_id_tag_update(t->obedit->data, 0);  /* sets recalc flags */
 			
 			EDBM_mesh_normals_update(em);
@@ -808,10 +818,14 @@ static void recalcData_objects(TransInfo *t)
 					ebo->rad_head *= ebo->length / ebo->oldlength;
 					ebo->rad_tail *= ebo->length / ebo->oldlength;
 					ebo->oldlength = ebo->length;
+
+					if (ebo_parent) {
+						ebo_parent->rad_tail = ebo->rad_head;
+					}
 				}
 			}
 			
-			if (!ELEM(t->mode, TFM_BONE_ROLL, TFM_BONE_ENVELOPE, TFM_BONESIZE)) {
+			if (!ELEM(t->mode, TFM_BONE_ROLL, TFM_BONE_ENVELOPE, TFM_BONE_ENVELOPE_DIST, TFM_BONESIZE)) {
 				/* fix roll */
 				for (i = 0; i < t->total; i++, td++) {
 					if (td->extra) {
@@ -938,7 +952,13 @@ static void recalcData_sequencer(TransInfo *t)
 		Sequence *seq = tdsq->seq;
 
 		if (seq != seq_prev) {
-			BKE_sequence_invalidate_dependent(t->scene, seq);
+			if (BKE_sequence_tx_fullupdate_test(seq)) {
+				/* A few effect strip types need a complete recache on transform. */
+				BKE_sequence_invalidate_cache(t->scene, seq);
+			}
+			else {
+				BKE_sequence_invalidate_dependent(t->scene, seq);
+			}
 		}
 
 		seq_prev = seq;
@@ -947,6 +967,18 @@ static void recalcData_sequencer(TransInfo *t)
 	BKE_sequencer_preprocessed_cache_cleanup();
 
 	flushTransSeq(t);
+}
+
+/* force recalculation of triangles during transformation */
+static void recalcData_gpencil_strokes(TransInfo *t)
+{
+	TransData *td = t->data;
+	for (int i = 0; i < t->total; i++, td++) {
+		bGPDstroke *gps = td->extra;
+		if (gps != NULL) {
+			gps->flag |= GP_STROKE_RECALC_CACHES;
+		}
+	}
 }
 
 /* called for updating while transform acts, once per redraw */
@@ -963,7 +995,8 @@ void recalcData(TransInfo *t)
 		flushTransPaintCurve(t);
 	}
 	else if (t->options & CTX_GPENCIL_STROKES) {
-		/* pass? */
+		/* set recalc triangle cache flag */
+		recalcData_gpencil_strokes(t);
 	}
 	else if (t->spacetype == SPACE_IMAGE) {
 		recalcData_image(t);
@@ -1020,7 +1053,7 @@ void drawLine(TransInfo *t, const float center[3], const float dir[3], char axis
 		glColor3ubv(col2);
 		
 		setlinestyle(0);
-		glBegin(GL_LINE_STRIP);
+		glBegin(GL_LINES);
 		glVertex3fv(v1);
 		glVertex3fv(v2);
 		glEnd();
@@ -1035,10 +1068,10 @@ void drawLine(TransInfo *t, const float center[3], const float dir[3], char axis
 void resetTransModal(TransInfo *t)
 {
 	if (t->mode == TFM_EDGE_SLIDE) {
-		freeEdgeSlideVerts(t);
+		freeEdgeSlideVerts(t, &t->custom.mode);
 	}
 	else if (t->mode == TFM_VERT_SLIDE) {
-		freeVertSlideVerts(t);
+		freeVertSlideVerts(t, &t->custom.mode);
 	}
 }
 
@@ -1065,6 +1098,8 @@ static int initTransInfo_edit_pet_to_flag(const int proportional)
  * Setup internal data, mouse, vectors
  *
  * \note \a op and \a event can be NULL
+ *
+ * \see #saveTransform does the reverse.
  */
 void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *event)
 {
@@ -1074,6 +1109,7 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 	ScrArea *sa = CTX_wm_area(C);
 	Object *obedit = CTX_data_edit_object(C);
 	Object *ob = CTX_data_active_object(C);
+	bGPdata *gpd = CTX_data_gpencil_data(C);
 	PropertyRNA *prop;
 	
 	t->scene = sce;
@@ -1098,19 +1134,19 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 	t->redraw = TREDRAW_HARD;  /* redraw first time */
 	
 	if (event) {
-		copy_v2_v2_int(t->imval, event->mval);
-		t->event_type = event->type;
+		t->mouse.imval[0] = event->mval[0];
+		t->mouse.imval[1] = event->mval[1];
 	}
 	else {
-		t->imval[0] = 0;
-		t->imval[1] = 0;
+		t->mouse.imval[0] = 0;
+		t->mouse.imval[1] = 0;
 	}
 	
-	t->con.imval[0] = t->imval[0];
-	t->con.imval[1] = t->imval[1];
+	t->con.imval[0] = t->mouse.imval[0];
+	t->con.imval[1] = t->mouse.imval[1];
 	
-	t->mval[0] = t->imval[0];
-	t->mval[1] = t->imval[1];
+	t->mval[0] = t->mouse.imval[0];
+	t->mval[1] = t->mouse.imval[1];
 	
 	t->transform        = NULL;
 	t->handleEvent      = NULL;
@@ -1121,6 +1157,7 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 
 	zero_v3(t->vec);
 	zero_v3(t->center);
+	zero_v3(t->center_global);
 
 	unit_m3(t->mat);
 	
@@ -1141,6 +1178,11 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 			t->remove_on_cancel = true;
 		}
 	}
+	
+	/* GPencil editing context */
+	if ((gpd) && (gpd->flag & GP_DATA_STROKE_EDITMODE)) {
+		t->options |= CTX_GPENCIL_STROKES;
+	}
 
 	/* Assign the space type, some exceptions for running in different mode */
 	if (sa == NULL) {
@@ -1156,6 +1198,19 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 		t->spacetype = sa->spacetype;
 	}
 
+	/* handle T_ALT_TRANSFORM initialization, we may use for different operators */
+	if (op) {
+		const char *prop_id = NULL;
+		if (t->mode == TFM_SHRINKFATTEN) {
+			prop_id = "use_even_offset";
+		}
+
+		if (prop_id && (prop = RNA_struct_find_property(op->ptr, prop_id)) &&
+		    RNA_property_is_set(op->ptr, prop))
+		{
+			BKE_BIT_TEST_SET(t->flag, RNA_property_boolean_get(op->ptr, prop), T_ALT_TRANSFORM);
+		}
+	}
 
 	if (t->spacetype == SPACE_VIEW3D) {
 		View3D *v3d = sa->spacedata.first;
@@ -1176,24 +1231,13 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 		
 		/* bend always uses the cursor */
 		if (t->mode == TFM_BEND) {
-			t->around = V3D_CURSOR;
+			t->around = V3D_AROUND_CURSOR;
 		}
 
-		if (op && ((prop = RNA_struct_find_property(op->ptr, "constraint_orientation")) &&
-		           RNA_property_is_set(op->ptr, prop)))
-		{
-			t->current_orientation = RNA_property_enum_get(op->ptr, prop);
-
-			if (t->current_orientation >= V3D_MANIP_CUSTOM + BIF_countTransformOrientation(C)) {
-				t->current_orientation = V3D_MANIP_GLOBAL;
-			}
-		}
-		else {
-			t->current_orientation = v3d->twmode;
-		}
+		t->current_orientation = v3d->twmode;
 
 		/* exceptional case */
-		if (t->around == V3D_LOCAL) {
+		if (t->around == V3D_AROUND_LOCAL_ORIGINS) {
 			if (ELEM(t->mode, TFM_ROTATION, TFM_RESIZE, TFM_TRACKBALL)) {
 				const bool use_island = transdata_check_local_islands(t, t->around);
 
@@ -1249,7 +1293,7 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 	else if (t->spacetype == SPACE_NODE) {
 		// XXX for now, get View2D from the active region
 		t->view = &ar->v2d;
-		t->around = V3D_CENTER;
+		t->around = V3D_AROUND_CENTER_BOUNDS;
 	}
 	else if (t->spacetype == SPACE_IPO) {
 		SpaceIpo *sipo = sa->spacedata.first;
@@ -1275,7 +1319,17 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 		else {
 			t->view = NULL;
 		}
-		t->around = V3D_CENTER;
+		t->around = V3D_AROUND_CENTER_BOUNDS;
+	}
+
+	if (op && ((prop = RNA_struct_find_property(op->ptr, "constraint_orientation")) &&
+	           RNA_property_is_set(op->ptr, prop)))
+	{
+		t->current_orientation = RNA_property_enum_get(op->ptr, prop);
+
+		if (t->current_orientation >= V3D_MANIP_CUSTOM + BIF_countTransformOrientation(C)) {
+			t->current_orientation = V3D_MANIP_GLOBAL;
+		}
 	}
 	
 	if (op && ((prop = RNA_struct_find_property(op->ptr, "release_confirm")) &&
@@ -1316,7 +1370,13 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 			/* use settings from scene only if modal */
 			if (t->flag & T_MODAL) {
 				if ((t->options & CTX_NO_PET) == 0) {
-					if (t->obedit) {
+					if (t->spacetype == SPACE_IPO) {
+						t->flag |= initTransInfo_edit_pet_to_flag(ts->proportional_fcurve);
+					}
+					else if (t->spacetype == SPACE_ACTION) {
+						t->flag |= initTransInfo_edit_pet_to_flag(ts->proportional_action);
+					}
+					else if (t->obedit) {
 						t->flag |= initTransInfo_edit_pet_to_flag(ts->proportional);
 					}
 					else if (t->options & CTX_GPENCIL_STROKES) {
@@ -1374,6 +1434,7 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 	}
 #endif
 
+	setTransformViewAspect(t, t->aspect);
 	setTransformViewMatrices(t);
 	initNumInput(&t->num);
 }
@@ -1392,14 +1453,20 @@ void postTrans(bContext *C, TransInfo *t)
 	if (t->draw_handle_cursor)
 		WM_paint_cursor_end(CTX_wm_manager(C), t->draw_handle_cursor);
 
-	if (t->customFree) {
-		/* Can take over freeing t->data and data2d etc... */
-		t->customFree(t);
-		BLI_assert(t->customData == NULL);
-	}
-	else if ((t->customData != NULL) && (t->flag & T_FREE_CUSTOMDATA)) {
-		MEM_freeN(t->customData);
-		t->customData = NULL;
+	/* Free all custom-data */
+	{
+		TransCustomData *custom_data = &t->custom.first_elem;
+		for (int i = 0; i < TRANS_CUSTOM_DATA_ELEM_MAX; i++, custom_data++) {
+			if (custom_data->free_cb) {
+				/* Can take over freeing t->data and data2d etc... */
+				custom_data->free_cb(t, custom_data);
+				BLI_assert(custom_data->data == NULL);
+			}
+			else if ((custom_data->data != NULL) && custom_data->use_free) {
+				MEM_freeN(custom_data->data);
+				custom_data->data = NULL;
+			}
+		}
 	}
 
 	/* postTrans can be called when nothing is selected, so data is NULL already */
@@ -1448,6 +1515,8 @@ void postTrans(bContext *C, TransInfo *t)
 	if (t->mouse.data) {
 		MEM_freeN(t->mouse.data);
 	}
+
+	freeSnapping(t);
 }
 
 void applyTransObjects(TransInfo *t)
@@ -1528,6 +1597,8 @@ void restoreTransObjects(TransInfo *t)
 
 void calculateCenter2D(TransInfo *t)
 {
+	BLI_assert(!is_zero_v3(t->aspect));
+
 	if (t->flag & (T_EDIT | T_POSE)) {
 		Object *ob = t->obedit ? t->obedit : t->poseobj;
 		float vec[3];
@@ -1538,6 +1609,21 @@ void calculateCenter2D(TransInfo *t)
 	}
 	else {
 		projectFloatView(t, t->center, t->center2d);
+	}
+}
+
+void calculateCenterGlobal(
+        TransInfo *t, const float center_local[3],
+        float r_center_global[3])
+{
+	/* setting constraint center */
+	/* note, init functions may over-ride t->center */
+	if (t->flag & (T_EDIT | T_POSE)) {
+		Object *ob = t->obedit ? t->obedit : t->poseobj;
+		mul_v3_m4v3(r_center_global, ob->obmat, center_local);
+	}
+	else {
+		copy_v3_v3(r_center_global, center_local);
 	}
 }
 
@@ -1569,30 +1655,17 @@ void calculateCenterCursor(TransInfo *t, float r_center[3])
 
 void calculateCenterCursor2D(TransInfo *t, float r_center[2])
 {
-	float aspx = 1.0, aspy = 1.0;
 	const float *cursor = NULL;
 	
 	if (t->spacetype == SPACE_IMAGE) {
 		SpaceImage *sima = (SpaceImage *)t->sa->spacedata.first;
-		if (t->options & CTX_MASK) {
-			ED_space_image_get_aspect(sima, &aspx, &aspy);
-		}
-		else {
-			ED_space_image_get_uv_aspect(sima, &aspx, &aspy);
-		}
 		cursor = sima->cursor;
 	}
 	else if (t->spacetype == SPACE_CLIP) {
 		SpaceClip *space_clip = (SpaceClip *) t->sa->spacedata.first;
-		if (t->options & CTX_MOVIECLIP) {
-			ED_space_clip_get_aspect_dimension_aware(space_clip, &aspx, &aspy);
-		}
-		else {
-			ED_space_clip_get_aspect(space_clip, &aspx, &aspy);
-		}
 		cursor = space_clip->cursor;
 	}
-	
+
 	if (cursor) {
 		if (t->options & CTX_MASK) {
 			float co[2];
@@ -1609,8 +1682,8 @@ void calculateCenterCursor2D(TransInfo *t, float r_center[2])
 				BLI_assert(!"Shall not happen");
 			}
 
-			r_center[0] = co[0] * aspx;
-			r_center[1] = co[1] * aspy;
+			r_center[0] = co[0] * t->aspect[0];
+			r_center[1] = co[1] * t->aspect[1];
 		}
 		else if (t->options & CTX_PAINT_CURVE) {
 			if (t->spacetype == SPACE_IMAGE) {
@@ -1619,8 +1692,8 @@ void calculateCenterCursor2D(TransInfo *t, float r_center[2])
 			}
 		}
 		else {
-			r_center[0] = cursor[0] * aspx;
-			r_center[1] = cursor[1] * aspy;
+			r_center[0] = cursor[0] * t->aspect[0];
+			r_center[1] = cursor[1] * t->aspect[1];
 		}
 	}
 }
@@ -1631,8 +1704,14 @@ void calculateCenterCursorGraph2D(TransInfo *t, float r_center[2])
 	Scene *scene = t->scene;
 	
 	/* cursor is combination of current frame, and graph-editor cursor value */
-	r_center[0] = (float)(scene->r.cfra);
-	r_center[1] = sipo->cursorVal;
+	if (sipo->mode == SIPO_MODE_DRIVERS) {
+		r_center[0] = sipo->cursorTime;
+		r_center[1] = sipo->cursorVal;
+	}
+	else {
+		r_center[0] = (float)(scene->r.cfra);
+		r_center[1] = sipo->cursorVal;
+	}
 }
 
 void calculateCenterMedian(TransInfo *t, float r_center[3])
@@ -1719,50 +1798,56 @@ bool calculateCenterActive(TransInfo *t, bool select_only, float r_center[3])
 	return ok;
 }
 
-
-void calculateCenter(TransInfo *t)
+static void calculateCenter_FromAround(TransInfo *t, int around, float r_center[3])
 {
-	switch (t->around) {
-		case V3D_CENTER:
-			calculateCenterBound(t, t->center);
+	switch (around) {
+		case V3D_AROUND_CENTER_BOUNDS:
+			calculateCenterBound(t, r_center);
 			break;
-		case V3D_CENTROID:
-			calculateCenterMedian(t, t->center);
+		case V3D_AROUND_CENTER_MEAN:
+			calculateCenterMedian(t, r_center);
 			break;
-		case V3D_CURSOR:
+		case V3D_AROUND_CURSOR:
 			if (ELEM(t->spacetype, SPACE_IMAGE, SPACE_CLIP))
-				calculateCenterCursor2D(t, t->center);
+				calculateCenterCursor2D(t, r_center);
 			else if (t->spacetype == SPACE_IPO)
-				calculateCenterCursorGraph2D(t, t->center);
+				calculateCenterCursorGraph2D(t, r_center);
 			else
-				calculateCenterCursor(t, t->center);
+				calculateCenterCursor(t, r_center);
 			break;
-		case V3D_LOCAL:
+		case V3D_AROUND_LOCAL_ORIGINS:
 			/* Individual element center uses median center for helpline and such */
-			calculateCenterMedian(t, t->center);
+			calculateCenterMedian(t, r_center);
 			break;
-		case V3D_ACTIVE:
+		case V3D_AROUND_ACTIVE:
 		{
-			if (calculateCenterActive(t, false, t->center)) {
+			if (calculateCenterActive(t, false, r_center)) {
 				/* pass */
 			}
 			else {
 				/* fallback */
-				calculateCenterMedian(t, t->center);
+				calculateCenterMedian(t, r_center);
 			}
 			break;
 		}
 	}
+}
+
+void calculateCenter(TransInfo *t)
+{
+	calculateCenter_FromAround(t, t->around, t->center);
+	calculateCenterGlobal(t, t->center, t->center_global);
+
+	/* avoid calculating again */
+	{
+		TransCenterData *cd = &t->center_cache[t->around];
+		copy_v3_v3(cd->local, t->center);
+		copy_v3_v3(cd->global, t->center_global);
+		cd->is_set = true;
+	}
 
 	calculateCenter2D(t);
 
-	/* setting constraint center */
-	copy_v3_v3(t->con.center, t->center);
-	if (t->flag & (T_EDIT | T_POSE)) {
-		Object *ob = t->obedit ? t->obedit : t->poseobj;
-		mul_m4_v3(ob->obmat, t->con.center);
-	}
-	
 	/* for panning from cameraview */
 	if (t->flag & T_OBJECT) {
 		if (t->spacetype == SPACE_VIEW3D && t->ar && t->ar->regiontype == RGN_TYPE_WINDOW) {
@@ -1783,7 +1868,7 @@ void calculateCenter(TransInfo *t)
 				/* rotate only needs correct 2d center, grab needs ED_view3d_calc_zfac() value */
 				if (t->mode == TFM_TRANSLATION) {
 					copy_v3_v3(t->center, axis);
-					copy_v3_v3(t->con.center, t->center);
+					copy_v3_v3(t->center_global, t->center);
 				}
 			}
 		}
@@ -1803,7 +1888,7 @@ void calculateCenter(TransInfo *t)
 		/* zfac is only used convertViewVec only in cases operator was invoked in RGN_TYPE_WINDOW
 		 * and never used in other cases.
 		 *
-		 * We need special case here as well, since ED_view3d_calc_zfac will crahs when called
+		 * We need special case here as well, since ED_view3d_calc_zfac will crash when called
 		 * for a region different from RGN_TYPE_WINDOW.
 		 */
 		if (t->ar->regiontype == RGN_TYPE_WINDOW) {
@@ -1813,6 +1898,23 @@ void calculateCenter(TransInfo *t)
 			t->zfac = 0.0f;
 		}
 	}
+}
+
+BLI_STATIC_ASSERT(ARRAY_SIZE(((TransInfo *)NULL)->center_cache) == (V3D_AROUND_ACTIVE + 1), "test size");
+
+/**
+ * Lazy initialize transform center data, when we need to access center values from other types.
+ */
+const TransCenterData *transformCenter_from_type(TransInfo *t, int around)
+{
+	BLI_assert(around <= V3D_AROUND_ACTIVE);
+	TransCenterData *cd = &t->center_cache[around];
+	if (cd->is_set == false) {
+		calculateCenter_FromAround(t, around, cd->local);
+		calculateCenterGlobal(t, cd->local, cd->global);
+		cd->is_set = true;
+	}
+	return cd;
 }
 
 void calculatePropRatio(TransInfo *t)
@@ -1934,3 +2036,110 @@ void calculatePropRatio(TransInfo *t)
 		}
 	}
 }
+
+/**
+ * Rotate an element, low level code, ignore protected channels.
+ * (use for objects or pose-bones)
+ * Similar to #ElementRotation.
+ */
+void transform_data_ext_rotate(TransData *td, float mat[3][3], bool use_drot)
+{
+	float totmat[3][3];
+	float smat[3][3];
+	float fmat[3][3];
+	float obmat[3][3];
+
+	float dmat[3][3];  /* delta rotation */
+	float dmat_inv[3][3];
+
+	mul_m3_m3m3(totmat, mat, td->mtx);
+	mul_m3_m3m3(smat, td->smtx, mat);
+
+	/* logic from BKE_object_rot_to_mat3 */
+	if (use_drot) {
+		if (td->ext->rotOrder > 0) {
+			eulO_to_mat3(dmat, td->ext->drot, td->ext->rotOrder);
+		}
+		else if (td->ext->rotOrder == ROT_MODE_AXISANGLE) {
+#if 0
+			axis_angle_to_mat3(dmat, td->ext->drotAxis, td->ext->drotAngle);
+#else
+			unit_m3(dmat);
+#endif
+		}
+		else {
+			float tquat[4];
+			normalize_qt_qt(tquat, td->ext->dquat);
+			quat_to_mat3(dmat, tquat);
+		}
+
+		invert_m3_m3(dmat_inv, dmat);
+	}
+
+
+	if (td->ext->rotOrder == ROT_MODE_QUAT) {
+		float quat[4];
+
+		/* calculate the total rotatation */
+		quat_to_mat3(obmat, td->ext->iquat);
+		if (use_drot) {
+			mul_m3_m3m3(obmat, dmat, obmat);
+		}
+
+		/* mat = transform, obmat = object rotation */
+		mul_m3_m3m3(fmat, smat, obmat);
+
+		if (use_drot) {
+			mul_m3_m3m3(fmat, dmat_inv, fmat);
+		}
+
+		mat3_to_quat(quat, fmat);
+
+		/* apply */
+		copy_qt_qt(td->ext->quat, quat);
+	}
+	else if (td->ext->rotOrder == ROT_MODE_AXISANGLE) {
+		float axis[3], angle;
+
+		/* calculate the total rotatation */
+		axis_angle_to_mat3(obmat, td->ext->irotAxis, td->ext->irotAngle);
+		if (use_drot) {
+			mul_m3_m3m3(obmat, dmat, obmat);
+		}
+
+		/* mat = transform, obmat = object rotation */
+		mul_m3_m3m3(fmat, smat, obmat);
+
+		if (use_drot) {
+			mul_m3_m3m3(fmat, dmat_inv, fmat);
+		}
+
+		mat3_to_axis_angle(axis, &angle, fmat);
+
+		/* apply */
+		copy_v3_v3(td->ext->rotAxis, axis);
+		*td->ext->rotAngle = angle;
+	}
+	else {
+		float eul[3];
+
+		/* calculate the total rotatation */
+		eulO_to_mat3(obmat, td->ext->irot, td->ext->rotOrder);
+		if (use_drot) {
+			mul_m3_m3m3(obmat, dmat, obmat);
+		}
+
+		/* mat = transform, obmat = object rotation */
+		mul_m3_m3m3(fmat, smat, obmat);
+
+		if (use_drot) {
+			mul_m3_m3m3(fmat, dmat_inv, fmat);
+		}
+
+		mat3_to_compatible_eulO(eul, td->ext->rot, td->ext->rotOrder, fmat);
+
+		/* apply */
+		copy_v3_v3(td->ext->rot, eul);
+	}
+}
+

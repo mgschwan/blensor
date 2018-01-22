@@ -38,6 +38,8 @@
 #include "BKE_colortools.h"
 #include "BKE_global.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
+#include "BKE_library_remap.h"
 #include "BKE_main.h"
 #include "BKE_paint.h"
 #include "BKE_texture.h"
@@ -103,8 +105,8 @@ static void brush_defaults(Brush *brush)
 	brush->jitter = 0.0f;
 
 	/* BRUSH TEXTURE SETTINGS */
-	default_mtex(&brush->mtex);
-	default_mtex(&brush->mask_mtex);
+	BKE_texture_mtex_default(&brush->mtex);
+	BKE_texture_mtex_default(&brush->mask_mtex);
 
 	brush->texture_sample_bias = 0; /* value to added to texture samples */
 	brush->texture_overlay_alpha = 33;
@@ -131,14 +133,12 @@ static void brush_defaults(Brush *brush)
 
 /* Datablock add/copy/free/make_local */
 
-Brush *BKE_brush_add(Main *bmain, const char *name)
+void BKE_brush_init(Brush *brush)
 {
-	Brush *brush;
-
-	brush = BKE_libblock_alloc(bmain, ID_BR, name);
+	BLI_assert(MEMCMP_STRUCT_OFS_IS_ZERO(brush, id));
 
 	/* enable fake user by default */
-	brush->id.flag |= LIB_FAKEUSER;
+	id_fake_user_set(&brush->id);
 
 	brush_defaults(brush);
 
@@ -146,15 +146,37 @@ Brush *BKE_brush_add(Main *bmain, const char *name)
 
 	/* the default alpha falloff curve */
 	BKE_brush_curve_preset(brush, CURVE_PRESET_SMOOTH);
+}
+
+Brush *BKE_brush_add(Main *bmain, const char *name, short ob_mode)
+{
+	Brush *brush;
+
+	brush = BKE_libblock_alloc(bmain, ID_BR, name);
+
+	BKE_brush_init(brush);
+
+	brush->ob_mode = ob_mode;
 
 	return brush;
 }
 
-Brush *BKE_brush_copy(Brush *brush)
+struct Brush *BKE_brush_first_search(struct Main *bmain, short ob_mode)
+{
+	Brush *brush;
+
+	for (brush = bmain->brush.first; brush; brush = brush->id.next) {
+		if (brush->ob_mode & ob_mode)
+			return brush;
+	}
+	return NULL;
+}
+
+Brush *BKE_brush_copy(Main *bmain, const Brush *brush)
 {
 	Brush *brushn;
 	
-	brushn = BKE_libblock_copy(&brush->id);
+	brushn = BKE_libblock_copy(bmain, &brush->id);
 
 	if (brush->mtex.tex)
 		id_us_plus((ID *)brush->mtex.tex);
@@ -173,95 +195,65 @@ Brush *BKE_brush_copy(Brush *brush)
 	brushn->curve = curvemapping_copy(brush->curve);
 
 	/* enable fake user by default */
-	if (!(brushn->id.flag & LIB_FAKEUSER)) {
-		brushn->id.flag |= LIB_FAKEUSER;
-		brushn->id.us++;
-	}
-	
-	if (brush->id.lib) {
-		BKE_id_lib_local_paths(G.main, brush->id.lib, &brushn->id);
-	}
+	id_fake_user_set(&brushn->id);
+
+	BKE_id_copy_ensure_local(bmain, &brush->id, &brushn->id);
 
 	return brushn;
 }
 
-/* not brush itself */
+/** Free (or release) any data used by this brush (does not free the brush itself). */
 void BKE_brush_free(Brush *brush)
 {
-	id_us_min((ID *)brush->mtex.tex);
-	id_us_min((ID *)brush->mask_mtex.tex);
-	id_us_min((ID *)brush->paint_curve);
-
-	if (brush->icon_imbuf)
+	if (brush->icon_imbuf) {
 		IMB_freeImBuf(brush->icon_imbuf);
-
-	BKE_previewimg_free(&(brush->preview));
+	}
 
 	curvemapping_free(brush->curve);
 
-	if (brush->gradient)
-		MEM_freeN(brush->gradient);
+	MEM_SAFE_FREE(brush->gradient);
+
+	BKE_previewimg_free(&(brush->preview));
 }
 
-static void extern_local_brush(Brush *brush)
+void BKE_brush_make_local(Main *bmain, Brush *brush, const bool lib_local)
 {
-	id_lib_extern((ID *)brush->mtex.tex);
-	id_lib_extern((ID *)brush->mask_mtex.tex);
-	id_lib_extern((ID *)brush->clone.image);
-	id_lib_extern((ID *)brush->paint_curve);
-}
+	bool is_local = false, is_lib = false;
 
-void BKE_brush_make_local(Brush *brush)
-{
-
-	/* - only lib users: do nothing
+	/* - only lib users: do nothing (unless force_local is set)
 	 * - only local users: set flag
 	 * - mixed: make copy
 	 */
 
-	Main *bmain = G.main;
-	Scene *scene;
-	bool is_local = false, is_lib = false;
-
-	if (brush->id.lib == NULL) return;
+	if (!ID_IS_LINKED_DATABLOCK(brush)) {
+		return;
+	}
 
 	if (brush->clone.image) {
-		/* special case: ima always local immediately. Clone image should only
-		 * have one user anyway. */
-		id_clear_lib_data(bmain, &brush->clone.image->id);
-		extern_local_brush(brush);
+		/* Special case: ima always local immediately. Clone image should only have one user anyway. */
+		id_make_local(bmain, &brush->clone.image->id, false, false);
 	}
 
-	for (scene = bmain->scene.first; scene && ELEM(0, is_lib, is_local); scene = scene->id.next) {
-		if (BKE_paint_brush(&scene->toolsettings->imapaint.paint) == brush) {
-			if (scene->id.lib) is_lib = true;
-			else is_local = true;
+	BKE_library_ID_test_usages(bmain, brush, &is_local, &is_lib);
+
+	if (lib_local || is_local) {
+		if (!is_lib) {
+			id_clear_lib_data(bmain, &brush->id);
+			BKE_id_expand_local(bmain, &brush->id);
+
+			/* enable fake user by default */
+			id_fake_user_set(&brush->id);
 		}
-	}
+		else {
+			Brush *brush_new = BKE_brush_copy(bmain, brush);  /* Ensures FAKE_USER is set */
 
-	if (is_local && is_lib == false) {
-		id_clear_lib_data(bmain, &brush->id);
-		extern_local_brush(brush);
+			brush_new->id.us = 0;
 
-		/* enable fake user by default */
-		if (!(brush->id.flag & LIB_FAKEUSER)) {
-			brush->id.flag |= LIB_FAKEUSER;
-			brush->id.us++;
-		}
-	}
-	else if (is_local && is_lib) {
-		Brush *brush_new = BKE_brush_copy(brush);
-		brush_new->id.us = 1; /* only keep fake user */
-		brush_new->id.flag |= LIB_FAKEUSER;
+			/* setting newid is mandatory for complex make_lib_local logic... */
+			ID_NEW_SET(brush, brush_new);
 
-		/* Remap paths of new ID using old library as base. */
-		BKE_id_lib_local_paths(bmain, brush->id.lib, &brush_new->id);
-		
-		for (scene = bmain->scene.first; scene; scene = scene->id.next) {
-			if (BKE_paint_brush(&scene->toolsettings->imapaint.paint) == brush) {
-				if (scene->id.lib == NULL) {
-					BKE_paint_brush_set(&scene->toolsettings->imapaint.paint, brush_new);
-				}
+			if (!lib_local) {
+				BKE_libblock_remap(bmain, brush, brush_new, ID_REMAP_SKIP_INDIRECT_USAGE);
 			}
 		}
 	}
@@ -297,7 +289,6 @@ void BKE_brush_debug_print_state(Brush *br)
 
 	/* br->flag */
 	BR_TEST_FLAG(BRUSH_AIRBRUSH);
-	BR_TEST_FLAG(BRUSH_TORUS);
 	BR_TEST_FLAG(BRUSH_ALPHA_PRESSURE);
 	BR_TEST_FLAG(BRUSH_SIZE_PRESSURE);
 	BR_TEST_FLAG(BRUSH_JITTER_PRESSURE);
@@ -460,6 +451,7 @@ void BKE_brush_curve_preset(Brush *b, int preset)
 	curvemapping_changed(b->curve, false);
 }
 
+/* XXX Unused function. */
 int BKE_brush_texture_set_nr(Brush *brush, int nr)
 {
 	ID *idtest, *id = NULL;
@@ -468,9 +460,9 @@ int BKE_brush_texture_set_nr(Brush *brush, int nr)
 
 	idtest = (ID *)BLI_findlink(&G.main->tex, nr - 1);
 	if (idtest == NULL) { /* new tex */
-		if (id) idtest = (ID *)BKE_texture_copy((Tex *)id);
-		else idtest = (ID *)add_texture(G.main, "Tex");
-		idtest->us--;
+		if (id) idtest = (ID *)BKE_texture_copy(G.main, (Tex *)id);
+		else idtest = (ID *)BKE_texture_add(G.main, "Tex");
+		id_us_min(idtest);
 	}
 	if (idtest != id) {
 		BKE_brush_texture_delete(brush);
@@ -487,7 +479,7 @@ int BKE_brush_texture_set_nr(Brush *brush, int nr)
 int BKE_brush_texture_delete(Brush *brush)
 {
 	if (brush->mtex.tex)
-		brush->mtex.tex->id.us--;
+		id_us_min(&brush->mtex.tex->id);
 
 	return 1;
 }
@@ -513,7 +505,7 @@ int BKE_brush_clone_image_set_nr(Brush *brush, int nr)
 int BKE_brush_clone_image_delete(Brush *brush)
 {
 	if (brush && brush->clone.image) {
-		brush->clone.image->id.us--;
+		id_us_min(&brush->clone.image->id);
 		brush->clone.image = NULL;
 		return 1;
 	}
@@ -542,7 +534,7 @@ float BKE_brush_sample_tex_3D(const Scene *scene, Brush *br,
 		/* Get strength by feeding the vertex
 		 * location directly into a texture */
 		hasrgb = externtex(mtex, point, &intensity,
-		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
+		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false, false);
 	}
 	else if (mtex->brush_map_mode == MTEX_MAP_MODE_STENCIL) {
 		float rotation = -mtex->rot;
@@ -573,7 +565,7 @@ float BKE_brush_sample_tex_3D(const Scene *scene, Brush *br,
 		co[2] = 0.0f;
 
 		hasrgb = externtex(mtex, co, &intensity,
-		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
+		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false, false);
 	}
 	else {
 		float rotation = -mtex->rot;
@@ -630,7 +622,7 @@ float BKE_brush_sample_tex_3D(const Scene *scene, Brush *br,
 		co[2] = 0.0f;
 
 		hasrgb = externtex(mtex, co, &intensity,
-		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
+		                   rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false, false);
 	}
 
 	intensity += br->texture_sample_bias;
@@ -690,7 +682,7 @@ float BKE_brush_sample_masktex(const Scene *scene, Brush *br,
 		co[2] = 0.0f;
 
 		externtex(mtex, co, &intensity,
-		          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
+		          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false, false);
 	}
 	else {
 		float rotation = -mtex->rot;
@@ -747,7 +739,7 @@ float BKE_brush_sample_masktex(const Scene *scene, Brush *br,
 		co[2] = 0.0f;
 
 		externtex(mtex, co, &intensity,
-		          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false);
+		          rgba, rgba + 1, rgba + 2, rgba + 3, thread, pool, false, false);
 	}
 
 	CLAMP(intensity, 0.0f, 1.0f);
@@ -782,13 +774,13 @@ float BKE_brush_sample_masktex(const Scene *scene, Brush *br,
  * inconsistency. */
 
 
-float *BKE_brush_color_get(const struct Scene *scene, struct Brush *brush)
+const float *BKE_brush_color_get(const struct Scene *scene, const struct Brush *brush)
 {
 	UnifiedPaintSettings *ups = &scene->toolsettings->unified_paint_settings;
 	return (ups->flag & UNIFIED_PAINT_COLOR) ? ups->rgb : brush->rgb;
 }
 
-float *BKE_brush_secondary_color_get(const struct Scene *scene, struct Brush *brush)
+const float *BKE_brush_secondary_color_get(const struct Scene *scene, const struct Brush *brush)
 {
 	UnifiedPaintSettings *ups = &scene->toolsettings->unified_paint_settings;
 	return (ups->flag & UNIFIED_PAINT_COLOR) ? ups->secondary_rgb : brush->secondary_rgb;
@@ -807,9 +799,7 @@ void BKE_brush_color_set(struct Scene *scene, struct Brush *brush, const float c
 void BKE_brush_size_set(Scene *scene, Brush *brush, int size)
 {
 	UnifiedPaintSettings *ups = &scene->toolsettings->unified_paint_settings;
-	
-	size = (int)((float)size / U.pixelsize);
-	
+
 	/* make sure range is sane */
 	CLAMP(size, 1, MAX_BRUSH_PIXEL_RADIUS);
 
@@ -819,15 +809,15 @@ void BKE_brush_size_set(Scene *scene, Brush *brush, int size)
 		brush->size = size;
 }
 
-int BKE_brush_size_get(const Scene *scene, Brush *brush)
+int BKE_brush_size_get(const Scene *scene, const Brush *brush)
 {
 	UnifiedPaintSettings *ups = &scene->toolsettings->unified_paint_settings;
 	int size = (ups->flag & UNIFIED_PAINT_SIZE) ? ups->size : brush->size;
 	
-	return (int)((float)size * U.pixelsize);
+	return size;
 }
 
-int BKE_brush_use_locked_size(const Scene *scene, Brush *brush)
+int BKE_brush_use_locked_size(const Scene *scene, const Brush *brush)
 {
 	const short us_flag = scene->toolsettings->unified_paint_settings.flag;
 
@@ -836,7 +826,7 @@ int BKE_brush_use_locked_size(const Scene *scene, Brush *brush)
 	       (brush->flag & BRUSH_LOCK_SIZE);
 }
 
-int BKE_brush_use_size_pressure(const Scene *scene, Brush *brush)
+int BKE_brush_use_size_pressure(const Scene *scene, const Brush *brush)
 {
 	const short us_flag = scene->toolsettings->unified_paint_settings.flag;
 
@@ -845,7 +835,7 @@ int BKE_brush_use_size_pressure(const Scene *scene, Brush *brush)
 	       (brush->flag & BRUSH_SIZE_PRESSURE);
 }
 
-int BKE_brush_use_alpha_pressure(const Scene *scene, Brush *brush)
+int BKE_brush_use_alpha_pressure(const Scene *scene, const Brush *brush)
 {
 	const short us_flag = scene->toolsettings->unified_paint_settings.flag;
 
@@ -864,7 +854,7 @@ void BKE_brush_unprojected_radius_set(Scene *scene, Brush *brush, float unprojec
 		brush->unprojected_radius = unprojected_radius;
 }
 
-float BKE_brush_unprojected_radius_get(const Scene *scene, Brush *brush)
+float BKE_brush_unprojected_radius_get(const Scene *scene, const Brush *brush)
 {
 	UnifiedPaintSettings *ups = &scene->toolsettings->unified_paint_settings;
 
@@ -883,14 +873,14 @@ void BKE_brush_alpha_set(Scene *scene, Brush *brush, float alpha)
 		brush->alpha = alpha;
 }
 
-float BKE_brush_alpha_get(const Scene *scene, Brush *brush)
+float BKE_brush_alpha_get(const Scene *scene, const Brush *brush)
 {
 	UnifiedPaintSettings *ups = &scene->toolsettings->unified_paint_settings;
 
 	return (ups->flag & UNIFIED_PAINT_ALPHA) ? ups->alpha : brush->alpha;
 }
 
-float BKE_brush_weight_get(const Scene *scene, Brush *brush)
+float BKE_brush_weight_get(const Scene *scene, const Brush *brush)
 {
 	UnifiedPaintSettings *ups = &scene->toolsettings->unified_paint_settings;
 
@@ -920,9 +910,10 @@ void BKE_brush_scale_unprojected_radius(float *unprojected_radius,
 }
 
 /* scale brush size to reflect a change in the brush's unprojected radius */
-void BKE_brush_scale_size(int *r_brush_size,
-                          float new_unprojected_radius,
-                          float old_unprojected_radius)
+void BKE_brush_scale_size(
+        int *r_brush_size,
+        float new_unprojected_radius,
+        float old_unprojected_radius)
 {
 	float scale = new_unprojected_radius;
 	/* avoid division by zero */
@@ -970,7 +961,7 @@ void BKE_brush_randomize_texture_coords(UnifiedPaintSettings *ups, bool mask)
 	}
 }
 
-/* Uses the brush curve control to find a strength value between 0 and 1 */
+/* Uses the brush curve control to find a strength value */
 float BKE_brush_curve_strength(Brush *br, float p, const float len)
 {
 	float strength;
@@ -979,6 +970,15 @@ float BKE_brush_curve_strength(Brush *br, float p, const float len)
 	else p = p / len;
 
 	strength = curvemapping_evaluateF(br->curve, 0, p);
+
+	return strength;
+}
+
+
+/* Uses the brush curve control to find a strength value between 0 and 1 */
+float BKE_brush_curve_strength_clamped(Brush *br, float p, const float len)
+{
+	float strength = BKE_brush_curve_strength(br, p, len);
 
 	CLAMP(strength, 0.0f, 1.0f);
 
@@ -1010,7 +1010,7 @@ unsigned int *BKE_brush_gen_texture_cache(Brush *br, int half_side, bool use_sec
 				/* This is copied from displace modifier code */
 				/* TODO(sergey): brush are always cacheing with CM enabled for now. */
 				externtex(mtex, co, &intensity,
-				          rgba, rgba + 1, rgba + 2, rgba + 3, 0, NULL, false);
+				          rgba, rgba + 1, rgba + 2, rgba + 3, 0, NULL, false, false);
 
 				((char *)texcache)[(iy * side + ix) * 4] =
 				((char *)texcache)[(iy * side + ix) * 4 + 1] =
@@ -1041,7 +1041,7 @@ struct ImBuf *BKE_brush_gen_radial_control_imbuf(Brush *br, bool secondary)
 	for (i = 0; i < side; ++i) {
 		for (j = 0; j < side; ++j) {
 			float magn = sqrtf(pow2f(i - half) + pow2f(j - half));
-			im->rect_float[i * side + j] = BKE_brush_curve_strength(br, magn, half);
+			im->rect_float[i * side + j] = BKE_brush_curve_strength_clamped(br, magn, half);
 		}
 	}
 

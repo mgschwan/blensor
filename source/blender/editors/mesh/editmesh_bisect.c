@@ -33,7 +33,7 @@
 
 #include "BLI_math.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_global.h"
 #include "BKE_context.h"
@@ -73,6 +73,7 @@ static bool mesh_bisect_interactive_calc(
 	wmGesture *gesture = op->customdata;
 	BisectData *opdata;
 
+	View3D *v3d = CTX_wm_view3d(C);
 	ARegion *ar = CTX_wm_region(C);
 	RegionView3D *rv3d = ar->regiondata;
 
@@ -101,7 +102,7 @@ static bool mesh_bisect_interactive_calc(
 	normalize_v3(plane_no);  /* not needed but nicer for user */
 
 	/* point on plane, can use either start or endpoint */
-	ED_view3d_win_to_3d(ar, co_ref, co_a_ss, plane_co);
+	ED_view3d_win_to_3d(v3d, ar, co_ref, co_a_ss, plane_co);
 
 	if (opdata->is_first == false)
 		EDBM_redo_state_restore(opdata->mesh_backup, em, false);
@@ -264,7 +265,7 @@ static int mesh_bisect_exec(bContext *C, wmOperator *op)
 
 	invert_m4_m4(imat, obedit->obmat);
 	mul_m4_v3(imat, plane_co);
-	mul_mat3_m4_v3(imat, plane_no);
+	mul_transposed_mat3_m4_v3(obedit->obmat, plane_no);
 
 	EDBM_op_init(em, &bmop, op,
 	             "bisect_plane geom=%hvef plane_co=%v plane_no=%v dist=%f clear_inner=%b clear_outer=%b",
@@ -285,13 +286,13 @@ static int mesh_bisect_exec(bContext *C, wmOperator *op)
 
 		/* Fill */
 		BMO_op_initf(
-		        bm, &bmop_fill, op->flag,
+		        bm, &bmop_fill, 0,
 		        "triangle_fill edges=%S normal=%v use_dissolve=%b",
 		        &bmop, "geom_cut.out", normal_fill, true);
 		BMO_op_exec(bm, &bmop_fill);
 
 		/* Copy Attributes */
-		BMO_op_initf(bm, &bmop_attr, op->flag,
+		BMO_op_initf(bm, &bmop_attr, 0,
 		             "face_attribute_fill faces=%S use_normals=%b use_data=%b",
 		             &bmop_fill, "geom.out", false, true);
 		BMO_op_exec(bm, &bmop_attr);
@@ -335,11 +336,11 @@ void MESH_OT_bisect(struct wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 
-	prop = RNA_def_float_vector(ot->srna, "plane_co", 3, NULL, -FLT_MAX, FLT_MAX,
-	                            "Plane Point", "A point on the plane", -FLT_MAX, FLT_MAX);
+	prop = RNA_def_float_vector(ot->srna, "plane_co", 3, NULL, -1e12f, 1e12f,
+	                            "Plane Point", "A point on the plane", -1e4f, 1e4f);
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-	prop = RNA_def_float_vector(ot->srna, "plane_no", 3, NULL, -FLT_MAX, FLT_MAX,
-	                            "Plane Normal", "The direction the plane points", -FLT_MAX, FLT_MAX);
+	prop = RNA_def_float_vector(ot->srna, "plane_no", 3, NULL, -1.0f, 1.0f,
+	                            "Plane Normal", "The direction the plane points", -1.0f, 1.0f);
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
 	RNA_def_boolean(ot->srna, "use_fill", false, "Fill", "Fill in the cut");

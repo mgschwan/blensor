@@ -106,7 +106,7 @@ public:
 	 * \return The validity of the window.
 	 */
 	virtual bool getValid() const { 
-		return m_context != 0;
+		return m_context != NULL;
 	}
 
 	/**
@@ -123,7 +123,7 @@ public:
 
 	/**
 	 * Set the shape of the cursor.
-	 * \param	cursor	The new cursor shape type id.
+	 * \param	cursorShape: The new cursor shape type id.
 	 * \return	Indication of success.
 	 */
 	GHOST_TSuccess setCursorShape(GHOST_TStandardCursor cursorShape);
@@ -182,7 +182,7 @@ public:
 	 * Sets the progress bar value displayed in the window/application icon
 	 * \param progress The progress % (0.0 to 1.0)
 	 */
-	virtual GHOST_TSuccess setProgressBar(float progress) {
+	virtual GHOST_TSuccess setProgressBar(float /*progress*/) {
 		return GHOST_kFailure;
 	}
 	
@@ -281,7 +281,7 @@ public:
 	
 	/**
 	 * Changes the window user data.
-	 * \param data The window user data.
+	 * \param userData: The window user data.
 	 */
 	void setUserData(const GHOST_TUserDataPtr userData)
 	{
@@ -293,6 +293,15 @@ public:
 		if (m_nativePixelSize > 0.0f)
 			return m_nativePixelSize;
 		return 1.0f;
+	}
+
+	/**
+	* Returns the recommended DPI for this window.
+	* \return The recommended DPI for this window.
+	*/
+	virtual inline GHOST_TUns16 getDPIHint()
+	{
+		return 96;
 	}
 
 #ifdef WITH_INPUT_IME
@@ -329,7 +338,7 @@ protected:
 	 * Sets the cursor grab on the window using
 	 * native window system calls.
 	 */
-	virtual GHOST_TSuccess setWindowCursorGrab(GHOST_TGrabCursorMode mode) {
+	virtual GHOST_TSuccess setWindowCursorGrab(GHOST_TGrabCursorMode /*mode*/) {
 		return GHOST_kSuccess;
 	}
 	

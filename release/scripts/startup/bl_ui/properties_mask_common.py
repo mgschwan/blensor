@@ -36,7 +36,7 @@ class MASK_UL_layers(UIList):
             row.prop(mask, "hide", text="", emboss=False)
             row.prop(mask, "hide_select", text="", emboss=False)
             row.prop(mask, "hide_render", text="", emboss=False)
-        elif self.layout_type in {'GRID'}:
+        elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label(text="", icon_value=icon)
 
@@ -190,7 +190,7 @@ class MASK_PT_point:
             col.prop_search(parent, "parent", tracking,
                             "objects", icon='OBJECT_DATA', text="Object:")
 
-            tracks_list = "tracks" if parent.type == 'POINT_TRACK' else 'plane_tracks'
+            tracks_list = "tracks" if parent.type == 'POINT_TRACK' else "plane_tracks"
 
             if parent.parent in tracking.objects:
                 object = tracking.objects[parent.parent]
@@ -392,5 +392,17 @@ class MASK_MT_select(Menu):
         layout.operator("mask.select_all", text="Inverse").action = 'INVERT'
         layout.operator("mask.select_linked", text="Select Linked")
 
+
+classes = (
+    MASK_UL_layers,
+    MASK_MT_mask,
+    MASK_MT_visibility,
+    MASK_MT_transform,
+    MASK_MT_animation,
+    MASK_MT_select,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

@@ -35,7 +35,7 @@
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_global.h"
@@ -133,6 +133,7 @@ static void node_tree_interface_panel(const bContext *C, Panel *pa)
 	int in_out;
 	uiLayout *layout = pa->layout, *row, *split, *col;
 	PointerRNA ptr, sockptr, opptr;
+	wmOperatorType *ot;
 
 	if (!ntree)
 		return;
@@ -146,23 +147,25 @@ static void node_tree_interface_panel(const bContext *C, Panel *pa)
 	
 	split = uiLayoutRow(row, true);
 	col = uiLayoutColumn(split, true);
+	ot = WM_operatortype_find("NODE_OT_tree_socket_add", false);
 	uiItemL(col, IFACE_("Inputs:"), ICON_NONE);
 	uiTemplateList(col, (bContext *)C, "NODE_UL_interface_sockets", "inputs", &ptr, "inputs", &ptr, "active_input",
 	               NULL, 0, 0, 0, 0);
-	opptr = uiItemFullO(col, "NODE_OT_tree_socket_add", "", ICON_PLUS, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
+	opptr = uiItemFullO_ptr(col, ot, "", ICON_PLUS, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 	RNA_enum_set(&opptr, "in_out", SOCK_IN);
 	
 	col = uiLayoutColumn(split, true);
 	uiItemL(col, IFACE_("Outputs:"), ICON_NONE);
 	uiTemplateList(col, (bContext *)C, "NODE_UL_interface_sockets", "outputs", &ptr, "outputs", &ptr, "active_output",
 	               NULL, 0, 0, 0, 0);
-	opptr = uiItemFullO(col, "NODE_OT_tree_socket_add", "", ICON_PLUS, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
+	opptr = uiItemFullO_ptr(col, ot, "", ICON_PLUS, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 	RNA_enum_set(&opptr, "in_out", SOCK_OUT);
 	
+	ot = WM_operatortype_find("NODE_OT_tree_socket_move", false);
 	col = uiLayoutColumn(row, true);
-	opptr = uiItemFullO(col, "NODE_OT_tree_socket_move", "", ICON_TRIA_UP, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
+	opptr = uiItemFullO_ptr(col, ot, "", ICON_TRIA_UP, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 	RNA_enum_set(&opptr, "direction", 1);
-	opptr = uiItemFullO(col, "NODE_OT_tree_socket_move", "", ICON_TRIA_DOWN, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
+	opptr = uiItemFullO_ptr(col, ot, "", ICON_TRIA_DOWN, NULL, WM_OP_EXEC_DEFAULT, UI_ITEM_O_RETURN_PROPS);
 	RNA_enum_set(&opptr, "direction", 2);
 	
 	if (sock) {
@@ -186,7 +189,7 @@ void node_buttons_register(ARegionType *art)
 	pt = MEM_callocN(sizeof(PanelType), "spacetype node panel node sockets");
 	strcpy(pt->idname, "NODE_PT_sockets");
 	strcpy(pt->label, N_("Sockets"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = node_sockets_panel;
 	pt->poll = node_sockets_poll;
 	pt->flag |= PNL_DEFAULT_CLOSED;
@@ -195,7 +198,7 @@ void node_buttons_register(ARegionType *art)
 	pt = MEM_callocN(sizeof(PanelType), "spacetype node panel tree interface");
 	strcpy(pt->idname, "NODE_PT_node_tree_interface");
 	strcpy(pt->label, N_("Interface"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = node_tree_interface_panel;
 	pt->poll = node_tree_interface_poll;
 	BLI_addtail(&art->paneltypes, pt);
@@ -222,7 +225,7 @@ static int node_properties_poll(bContext *C)
 void NODE_OT_properties(wmOperatorType *ot)
 {
 	ot->name = "Properties";
-	ot->description = "Toggles the properties panel display";
+	ot->description = "Toggle the properties region visibility";
 	ot->idname = "NODE_OT_properties";
 	
 	ot->exec = node_properties_toggle_exec;

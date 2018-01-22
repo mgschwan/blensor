@@ -18,11 +18,10 @@
 #ifndef __BVH_H__
 #define __BVH_H__
 
-#include "bvh_params.h"
+#include "bvh/bvh_params.h"
 
-#include "util_string.h"
-#include "util_types.h"
-#include "util_vector.h"
+#include "util/util_types.h"
+#include "util/util_vector.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -30,15 +29,12 @@ class BVHNode;
 struct BVHStackEntry;
 class BVHParams;
 class BoundBox;
-class CacheData;
 class LeafNode;
 class Object;
 class Progress;
 
-#define BVH_NODE_SIZE	4
-#define BVH_QNODE_SIZE	7
-#define BVH_ALIGN		4096
-#define TRI_NODE_SIZE	3
+#define BVH_ALIGN     4096
+#define TRI_NODE_SIZE 3
 
 /* Packed BVH
  *
@@ -47,11 +43,15 @@ class Progress;
 struct PackedBVH {
 	/* BVH nodes storage, one node is 4x int4, and contains two bounding boxes,
 	 * and child, triangle or object indexes depending on the node type */
-	array<int4> nodes; 
+	array<int4> nodes;
+	/* BVH leaf nodes storage. */
+	array<int4> leaf_nodes;
 	/* object index to BVH node index mapping for instances */
-	array<int> object_node; 
-	/* precomputed triangle intersection data, one triangle is 4x float4 */
-	array<float4> tri_woop;
+	array<int> object_node;
+	/* Mapping from primitive index to index in triangle array. */
+	array<uint> prim_tri_index;
+	/* Continuous storage of triangle vertices. */
+	array<float4> prim_tri_verts;
 	/* primitive type - triangle or strand */
 	array<int> prim_type;
 	/* visibility visibilitys for primitives */
@@ -61,20 +61,15 @@ struct PackedBVH {
 	array<int> prim_index;
 	/* mapping from BVH primitive index, to the object id of that primitive. */
 	array<int> prim_object;
-	/* quick array to lookup if a node is a leaf, not used for traversal, only
-	 * for instance BVH merging  */
-	array<bool> is_leaf;
+	/* Time range of BVH primitive. */
+	array<float2> prim_time;
 
 	/* index of the root node. */
 	int root_index;
 
-	/* surface area heuristic, for building top level BVH */
-	float SAH;
-
 	PackedBVH()
 	{
 		root_index = 0;
-		SAH = 0.0f;
 	}
 };
 
@@ -86,7 +81,6 @@ public:
 	PackedBVH pack;
 	BVHParams params;
 	vector<Object*> objects;
-	string cache_filename;
 
 	static BVH *create(const BVHParams& params, const vector<Object*>& objects);
 	virtual ~BVH() {}
@@ -94,69 +88,31 @@ public:
 	void build(Progress& progress);
 	void refit(Progress& progress);
 
-	void clear_cache_except();
-
 protected:
 	BVH(const BVHParams& params, const vector<Object*>& objects);
 
-	/* cache */
-	bool cache_read(CacheData& key);
-	void cache_write(CacheData& key);
-
-	/* triangles and strands*/
+	/* triangles and strands */
 	void pack_primitives();
-	void pack_triangle(int idx, float4 woop[3]);
+	void pack_triangle(int idx, float4 storage[3]);
 
 	/* merge instance BVH's */
-	void pack_instances(size_t nodes_size);
+	void pack_instances(size_t nodes_size, size_t leaf_nodes_size);
 
 	/* for subclasses to implement */
 	virtual void pack_nodes(const BVHNode *root) = 0;
 	virtual void refit_nodes() = 0;
 };
 
-/* Regular BVH
- *
- * Typical BVH with each node having two children. */
+/* Pack Utility */
+struct BVHStackEntry
+{
+	const BVHNode *node;
+	int idx;
 
-class RegularBVH : public BVH {
-protected:
-	/* constructor */
-	friend class BVH;
-	RegularBVH(const BVHParams& params, const vector<Object*>& objects);
-
-	/* pack */
-	void pack_nodes(const BVHNode *root);
-	void pack_leaf(const BVHStackEntry& e, const LeafNode *leaf);
-	void pack_inner(const BVHStackEntry& e, const BVHStackEntry& e0, const BVHStackEntry& e1);
-	void pack_node(int idx, const BoundBox& b0, const BoundBox& b1, int c0, int c1, uint visibility0, uint visibility1);
-
-	/* refit */
-	void refit_nodes();
-	void refit_node(int idx, bool leaf, BoundBox& bbox, uint& visibility);
-};
-
-/* QBVH
- *
- * Quad BVH, with each node having four children, to use with SIMD instructions. */
-
-class QBVH : public BVH {
-protected:
-	/* constructor */
-	friend class BVH;
-	QBVH(const BVHParams& params, const vector<Object*>& objects);
-
-	/* pack */
-	void pack_nodes(const BVHNode *root);
-	void pack_leaf(const BVHStackEntry& e, const LeafNode *leaf);
-	void pack_inner(const BVHStackEntry& e, const BVHStackEntry *en, int num);
-
-	/* refit */
-	void refit_nodes();
-	void refit_node(int idx, bool leaf, BoundBox& bbox, uint& visibility);
+	BVHStackEntry(const BVHNode *n = 0, int i = 0);
+	int encodeIdx() const;
 };
 
 CCL_NAMESPACE_END
 
 #endif /* __BVH_H__ */
-

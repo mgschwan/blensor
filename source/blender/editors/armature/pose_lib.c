@@ -34,8 +34,9 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_dlrbTree.h"
+#include "BLI_string_utils.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "DNA_anim_types.h"
 #include "DNA_armature_types.h"
@@ -175,6 +176,15 @@ static int has_poselib_pose_data_poll(bContext *C)
 {
 	Object *ob = get_poselib_object(C);
 	return (ob && ob->poselib);
+}
+
+/* Poll callback for operators that require existing PoseLib data (with poses)
+ * as they need to do some editing work on those poses (i.e. not on lib-linked actions)
+ */
+static int has_poselib_pose_data_for_editing_poll(bContext *C)
+{
+	Object *ob = get_poselib_object(C);
+	return (ob && ob->poselib && !ID_IS_LINKED_DATABLOCK(ob->poselib));
 }
 
 /* ----------------------------------- */
@@ -318,7 +328,7 @@ static int poselib_sanitize_exec(bContext *C, wmOperator *op)
 			/* add pose to poselib */
 			marker = MEM_callocN(sizeof(TimeMarker), "ActionMarker");
 			
-			BLI_strncpy(marker->name, "Pose", sizeof(marker->name));
+			BLI_snprintf(marker->name, sizeof(marker->name), "F%d Pose", (int)ak->cfra);
 			
 			marker->frame = (int)ak->cfra;
 			marker->flag = -1;
@@ -357,13 +367,32 @@ void POSELIB_OT_action_sanitize(wmOperatorType *ot)
 	
 	/* callbacks */
 	ot->exec = poselib_sanitize_exec;
-	ot->poll = has_poselib_pose_data_poll;
+	ot->poll = has_poselib_pose_data_for_editing_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
 /* ------------------------------------------ */
+
+/* Poll callback for adding poses to a PoseLib */
+static int poselib_add_poll(bContext *C)
+{
+	/* There are 2 cases we need to be careful with:
+	 *  1) When this operator is invoked from a hotkey, there may be no PoseLib yet
+	 *  2) If a PoseLib already exists, we can't edit the action if it is a lib-linked
+	 *     actions, as data will be lost when saving the file
+	 */
+	if (ED_operator_posemode(C)) {
+		Object *ob = get_poselib_object(C);
+		if (ob) {
+			if ((ob->poselib == NULL) || !ID_IS_LINKED_DATABLOCK(ob->poselib)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
 
 static void poselib_add_menu_invoke__replacemenu(bContext *C, uiLayout *layout, void *UNUSED(arg))
 {
@@ -433,7 +462,7 @@ static int poselib_add_exec(bContext *C, wmOperator *op)
 	bAction *act = poselib_validate(ob);
 	bPose *pose = (ob) ? ob->pose : NULL;
 	TimeMarker *marker;
-	KeyingSet *ks = ANIM_builtin_keyingset_get_named(NULL, ANIM_KS_WHOLE_CHARACTER_ID); /* this includes custom props :)*/
+	KeyingSet *ks;
 	int frame = RNA_int_get(op->ptr, "frame");
 	char name[64];
 	
@@ -467,8 +496,7 @@ static int poselib_add_exec(bContext *C, wmOperator *op)
 	BLI_uniquename(&act->markers, marker, DATA_("Pose"), '.', offsetof(TimeMarker, name), sizeof(marker->name));
 	
 	/* use Keying Set to determine what to store for the pose */
-	/* FIXME: in the past, the Keying Set respected selections (LocRotScale), but the current one doesn't
-	 * (WholeCharacter) so perhaps we need either a new Keying Set, or just to add overrides here... */
+	ks = ANIM_builtin_keyingset_get_named(NULL, ANIM_KS_WHOLE_CHARACTER_SELECTED_ID); /* this includes custom props :)*/
 	ANIM_apply_keyingset(C, NULL, act, ks, MODIFYKEY_MODE_INSERT, (float)frame);
 	
 	/* store new 'active' pose number */
@@ -488,7 +516,7 @@ void POSELIB_OT_pose_add(wmOperatorType *ot)
 	/* api callbacks */
 	ot->invoke = poselib_add_menu_invoke;
 	ot->exec = poselib_add_exec;
-	ot->poll = ED_operator_posemode;
+	ot->poll = poselib_add_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -604,7 +632,7 @@ void POSELIB_OT_pose_remove(wmOperatorType *ot)
 	/* api callbacks */
 	ot->invoke = WM_menu_invoke;
 	ot->exec = poselib_remove_exec;
-	ot->poll = has_poselib_pose_data_poll;
+	ot->poll = has_poselib_pose_data_for_editing_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -692,7 +720,7 @@ void POSELIB_OT_pose_rename(wmOperatorType *ot)
 	/* api callbacks */
 	ot->invoke = poselib_rename_invoke;
 	ot->exec = poselib_rename_exec;
-	ot->poll = has_poselib_pose_data_poll;
+	ot->poll = has_poselib_pose_data_for_editing_poll;
 	
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
@@ -704,6 +732,89 @@ void POSELIB_OT_pose_rename(wmOperatorType *ot)
 	RNA_def_enum_funcs(prop, poselib_stored_pose_itemf);
 	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
 }
+
+static int poselib_move_exec(bContext *C, wmOperator *op)
+{
+	Object *ob = get_poselib_object(C);
+	bAction *act = (ob) ? ob->poselib : NULL;
+	TimeMarker *marker;
+	int marker_index;
+	int dir;
+	PropertyRNA *prop;
+
+	/* check if valid poselib */
+	if (act == NULL) {
+		BKE_report(op->reports, RPT_ERROR, "Object does not have pose lib data");
+		return OPERATOR_CANCELLED;
+	}
+
+	prop = RNA_struct_find_property(op->ptr, "pose");
+	if (RNA_property_is_set(op->ptr, prop)) {
+		marker_index = RNA_property_enum_get(op->ptr, prop);
+	}
+	else {
+		marker_index = act->active_marker - 1;
+	}
+
+	/* get index (and pointer) of pose to remove */
+	marker = BLI_findlink(&act->markers, marker_index);
+	if (marker == NULL) {
+		BKE_reportf(op->reports, RPT_ERROR, "Invalid pose specified %d", marker_index);
+		return OPERATOR_CANCELLED;
+	}
+
+	dir = RNA_enum_get(op->ptr, "direction");
+
+	/* move pose */
+	if (BLI_listbase_link_move(&act->markers, marker, dir)) {
+		act->active_marker = marker_index + dir + 1;
+
+		/* send notifiers for this - using keyframe editing notifiers, since action
+		 * may be being shown in anim editors as active action
+		 */
+		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_EDITED, NULL);
+	}
+	else {
+		return OPERATOR_CANCELLED;
+	}
+
+	/* done */
+	return OPERATOR_FINISHED;
+}
+
+void POSELIB_OT_pose_move(wmOperatorType *ot)
+{
+	PropertyRNA *prop;
+	static EnumPropertyItem pose_lib_pose_move[] = {
+		{-1, "UP", 0, "Up", ""},
+		{1, "DOWN", 0, "Down", ""},
+		{0, NULL, 0, NULL, NULL}
+	};
+
+	/* identifiers */
+	ot->name = "PoseLib Move Pose";
+	ot->idname = "POSELIB_OT_pose_move";
+	ot->description = "Move the pose up or down in the active Pose Library";
+
+	/* api callbacks */
+	ot->invoke = WM_menu_invoke;
+	ot->exec = poselib_move_exec;
+	ot->poll = has_poselib_pose_data_for_editing_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+
+	/* properties */
+	prop = RNA_def_enum(ot->srna, "pose", DummyRNA_NULL_items, 0, "Pose", "The pose to move");
+	RNA_def_enum_funcs(prop, poselib_stored_pose_itemf);
+	RNA_def_property_flag(prop, PROP_ENUM_NO_TRANSLATE);
+	ot->prop = prop;
+
+	RNA_def_enum(ot->srna, "direction", pose_lib_pose_move, 0, "Direction",
+	             "Direction to move the chosen pose towards");
+}
+
+
 
 /* ************************************************************* */
 /* Pose-Lib Browsing/Previewing Operator */
@@ -734,7 +845,7 @@ typedef struct tPoseLib_PreviewData {
 	char searchstr[64];     /* (Part of) Name to search for to filter poses that get shown */
 	char searchold[64];     /* Previously set searchstr (from last loop run), so that we can detected when to rebuild searchp */
 	
-	char headerstr[200];    /* Info-text to print in header */
+	char headerstr[UI_MAX_DRAW_STR];    /* Info-text to print in header */
 } tPoseLib_PreviewData;
 
 /* defines for tPoseLib_PreviewData->state values */
@@ -988,7 +1099,7 @@ static void poselib_preview_apply(bContext *C, wmOperator *op)
 	if (pld->state == PL_PREVIEW_RUNNING) {
 		if (pld->flag & PL_PREVIEW_SHOWORIGINAL) {
 			BLI_strncpy(pld->headerstr,
-			            "PoseLib Previewing Pose: [Showing Original Pose] | Use Tab to start previewing poses again",
+			            IFACE_("PoseLib Previewing Pose: [Showing Original Pose] | Use Tab to start previewing poses again"),
 			            sizeof(pld->headerstr));
 			ED_area_headerprint(pld->sa, pld->headerstr);
 		}
@@ -1013,16 +1124,16 @@ static void poselib_preview_apply(bContext *C, wmOperator *op)
 			BLI_strncpy(markern, pld->marker ? pld->marker->name : "No Matches", sizeof(markern));
 
 			BLI_snprintf(pld->headerstr, sizeof(pld->headerstr),
-			             "PoseLib Previewing Pose: Filter - [%s] | "
-			             "Current Pose - \"%s\"  | "
-			             "Use ScrollWheel or PageUp/Down to change",
+			             IFACE_("PoseLib Previewing Pose: Filter - [%s] | "
+			                    "Current Pose - \"%s\"  | "
+			                    "Use ScrollWheel or PageUp/Down to change"),
 			             tempstr, markern);
 			ED_area_headerprint(pld->sa, pld->headerstr);
 		}
 		else {
 			BLI_snprintf(pld->headerstr, sizeof(pld->headerstr),
-			             "PoseLib Previewing Pose: \"%s\"  | "
-			             "Use ScrollWheel or PageUp/Down to change",
+			             IFACE_("PoseLib Previewing Pose: \"%s\"  | "
+			                    "Use ScrollWheel or PageUp/Down to change"),
 			             pld->marker->name);
 			ED_area_headerprint(pld->sa, pld->headerstr);
 		}
@@ -1196,7 +1307,7 @@ static int poselib_preview_handle_event(bContext *UNUSED(C), wmOperator *op, con
 	
 	/* only accept 'press' event, and ignore 'release', so that we don't get double actions */
 	if (ELEM(event->val, KM_PRESS, KM_NOTHING) == 0) {
-		//printf("PoseLib: skipping event with type '%s' and val %d\n", WM_key_event_string(event->type), event->val);
+		//printf("PoseLib: skipping event with type '%s' and val %d\n", WM_key_event_string(event->type, false), event->val);
 		return ret; 
 	}
 	

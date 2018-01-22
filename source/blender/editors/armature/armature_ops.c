@@ -49,6 +49,7 @@ void ED_operatortypes_armature(void)
 	
 	WM_operatortype_append(ARMATURE_OT_align);
 	WM_operatortype_append(ARMATURE_OT_calculate_roll);
+	WM_operatortype_append(ARMATURE_OT_roll_clear);
 	WM_operatortype_append(ARMATURE_OT_switch_direction);
 	WM_operatortype_append(ARMATURE_OT_subdivide);
 	
@@ -65,6 +66,7 @@ void ED_operatortypes_armature(void)
 	WM_operatortype_append(ARMATURE_OT_shortest_path_pick);
 
 	WM_operatortype_append(ARMATURE_OT_delete);
+	WM_operatortype_append(ARMATURE_OT_dissolve);
 	WM_operatortype_append(ARMATURE_OT_duplicate);
 	WM_operatortype_append(ARMATURE_OT_symmetrize);
 	WM_operatortype_append(ARMATURE_OT_extrude);
@@ -149,6 +151,7 @@ void ED_operatortypes_armature(void)
 	WM_operatortype_append(POSELIB_OT_pose_add);
 	WM_operatortype_append(POSELIB_OT_pose_remove);
 	WM_operatortype_append(POSELIB_OT_pose_rename);
+	WM_operatortype_append(POSELIB_OT_pose_move);
 	
 	WM_operatortype_append(POSELIB_OT_new);
 	WM_operatortype_append(POSELIB_OT_unlink);
@@ -227,6 +230,7 @@ void ED_keymap_armature(wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "ARMATURE_OT_reveal", HKEY, KM_PRESS, KM_ALT, 0);
 	WM_keymap_add_item(keymap, "ARMATURE_OT_align", AKEY, KM_PRESS, KM_CTRL | KM_ALT, 0);
 	WM_keymap_add_item(keymap, "ARMATURE_OT_calculate_roll", NKEY, KM_PRESS, KM_CTRL, 0);
+	WM_keymap_add_item(keymap, "ARMATURE_OT_roll_clear", RKEY, KM_PRESS, KM_ALT, 0);
 	
 	WM_keymap_add_item(keymap, "ARMATURE_OT_switch_direction", FKEY, KM_PRESS, KM_ALT, 0);
 	
@@ -266,8 +270,9 @@ void ED_keymap_armature(wmKeyConfig *keyconf)
 
 	WM_keymap_add_item(keymap, "ARMATURE_OT_shortest_path_pick", SELECTMOUSE, KM_PRESS, KM_CTRL, 0);
 	
-	WM_keymap_add_item(keymap, "ARMATURE_OT_delete", XKEY, KM_PRESS, 0, 0);
-	WM_keymap_add_item(keymap, "ARMATURE_OT_delete", DELKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_menu(keymap, "VIEW3D_MT_edit_armature_delete", XKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_menu(keymap, "VIEW3D_MT_edit_armature_delete", DELKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "ARMATURE_OT_dissolve", XKEY, KM_PRESS, KM_CTRL, 0);
 	WM_keymap_add_item(keymap, "ARMATURE_OT_duplicate_move", DKEY, KM_PRESS, KM_SHIFT, 0);
 	WM_keymap_add_item(keymap, "ARMATURE_OT_extrude_move", EKEY, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "ARMATURE_OT_extrude_forked", EKEY, KM_PRESS, KM_SHIFT, 0);
@@ -276,7 +281,7 @@ void ED_keymap_armature(wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "ARMATURE_OT_merge", MKEY, KM_PRESS, KM_ALT, 0);
 	WM_keymap_add_item(keymap, "ARMATURE_OT_split", YKEY, KM_PRESS, 0, 0);
 	
-	WM_keymap_add_item(keymap, "ARMATURE_OT_separate", PKEY, KM_PRESS, KM_CTRL | KM_ALT, 0);
+	WM_keymap_add_item(keymap, "ARMATURE_OT_separate", PKEY, KM_PRESS, 0, 0);
 	
 	/* set flags */
 	WM_keymap_add_menu(keymap, "VIEW3D_MT_bone_options_toggle", WKEY, KM_PRESS, KM_SHIFT, 0);
@@ -412,5 +417,6 @@ void ED_keymap_armature(wmKeyConfig *keyconf)
 
 	/* menus */
 	WM_keymap_add_menu(keymap, "VIEW3D_MT_pose_specials", WKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_menu(keymap, "VIEW3D_MT_pose_propagate", PKEY, KM_PRESS, KM_ALT, 0);
 }
 

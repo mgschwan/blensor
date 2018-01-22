@@ -153,7 +153,7 @@ void UI_view2d_curRect_reset(struct View2D *v2d);
 void UI_view2d_sync(struct bScreen *screen, struct ScrArea *sa, struct View2D *v2dcur, int flag);
 
 void UI_view2d_totRect_set(struct View2D *v2d, int width, int height);
-void UI_view2d_totRect_set_resize(struct View2D *v2d, int width, int height, int resize);
+void UI_view2d_totRect_set_resize(struct View2D *v2d, int width, int height, bool resize);
 
 /* per tab offsets, returns 1 if tab changed */
 bool UI_view2d_tab_set(struct View2D *v2d, int tab);
@@ -233,7 +233,6 @@ void ED_keymap_view2d(struct wmKeyConfig *keyconf);
 
 void UI_view2d_smooth_view(struct bContext *C, struct ARegion *ar,
                            const struct rctf *cur, const int smooth_viewtx);
-
 #define UI_MARKER_MARGIN_Y (42 * UI_DPI_FAC)
 
 #endif /* __UI_VIEW2D_H__ */

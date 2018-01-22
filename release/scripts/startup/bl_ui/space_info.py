@@ -127,6 +127,18 @@ class INFO_MT_file(Menu):
         layout.operator("wm.save_homefile", icon='SAVE_PREFS')
         layout.operator("wm.read_factory_settings", icon='LOAD_FACTORY')
 
+        if any(bpy.utils.app_template_paths()):
+            app_template = context.user_preferences.app_template
+            if app_template:
+                layout.operator(
+                    "wm.read_factory_settings",
+                    text="Load Factory Template Settings",
+                    icon='LOAD_FACTORY',
+                ).app_template = app_template
+            del app_template
+
+        layout.menu("USERPREF_MT_app_templates", icon='FILE_BLEND')
+
         layout.separator()
 
         layout.operator_context = 'INVOKE_AREA'
@@ -158,6 +170,8 @@ class INFO_MT_file_import(Menu):
     def draw(self, context):
         if bpy.app.build_options.collada:
             self.layout.operator("wm.collada_import", text="Collada (Default) (.dae)")
+        if bpy.app.build_options.alembic:
+            self.layout.operator("wm.alembic_import", text="Alembic (.abc)")
 
 
 class INFO_MT_file_export(Menu):
@@ -167,6 +181,8 @@ class INFO_MT_file_export(Menu):
     def draw(self, context):
         if bpy.app.build_options.collada:
             self.layout.operator("wm.collada_export", text="Collada (Default) (.dae)")
+        if bpy.app.build_options.alembic:
+            self.layout.operator("wm.alembic_export", text="Alembic (.abc)")
 
 
 class INFO_MT_file_external_data(Menu):
@@ -203,6 +219,12 @@ class INFO_MT_file_previews(Menu):
         layout = self.layout
 
         layout.operator("wm.previews_ensure")
+        layout.operator("wm.previews_batch_generate")
+
+        layout.separator()
+
+        layout.operator("wm.previews_clear")
+        layout.operator("wm.previews_batch_clear")
 
 
 class INFO_MT_game(Menu):
@@ -256,8 +278,9 @@ class INFO_MT_opengl_render(Menu):
         layout = self.layout
 
         rd = context.scene.render
-
         layout.prop(rd, "use_antialiasing")
+        layout.prop(rd, "use_full_sample")
+
         layout.prop_menu_enum(rd, "antialiasing_samples")
         layout.prop_menu_enum(rd, "alpha_mode")
 
@@ -282,6 +305,10 @@ class INFO_MT_window(Menu):
             layout.separator()
             layout.operator("wm.console_toggle", icon='CONSOLE')
 
+        if context.scene.render.use_multiview:
+            layout.separator()
+            layout.operator("wm.set_stereo_3d", icon='CAMERA_STEREO')
+
 
 class INFO_MT_help(Menu):
     bl_label = "Help"
@@ -289,24 +316,59 @@ class INFO_MT_help(Menu):
     def draw(self, context):
         layout = self.layout
 
-        layout.operator("wm.url_open", text="Manual", icon='HELP').url = "http://www.blender.org/manual"
-        layout.operator("wm.url_open", text="Release Log", icon='URL').url = "http://wiki.blender.org/index.php/Dev:Ref/Release_Notes/%d.%d" % bpy.app.version[:2]
+        layout.operator(
+                "wm.url_open", text="Manual", icon='HELP',
+                ).url = "https://docs.blender.org/manual/en/dev/"
+        layout.operator(
+                "wm.url_open", text="Release Log", icon='URL',
+                ).url = "http://wiki.blender.org/index.php/Dev:Ref/Release_Notes/%d.%d" % bpy.app.version[:2]
         layout.separator()
 
-        layout.operator("wm.url_open", text="Blender Website", icon='URL').url = "http://www.blender.org"
-        layout.operator("wm.url_open", text="Blender e-Shop", icon='URL').url = "http://www.blender.org/e-shop"
-        layout.operator("wm.url_open", text="Developer Community", icon='URL').url = "http://www.blender.org/get-involved/"
-        layout.operator("wm.url_open", text="User Community", icon='URL').url = "http://www.blender.org/community/user-community"
+        layout.operator(
+                "wm.url_open", text="Blender Website", icon='URL',
+                ).url = "https://www.blender.org"
+        layout.operator(
+                "wm.url_open", text="Blender Store", icon='URL',
+                ).url = "https://store.blender.org"
+        layout.operator(
+                "wm.url_open", text="Developer Community", icon='URL',
+                ).url = "https://www.blender.org/get-involved/"
+        layout.operator(
+                "wm.url_open", text="User Community", icon='URL',
+                ).url = "https://www.blender.org/support/user-community"
         layout.separator()
-        layout.operator("wm.url_open", text="Report a Bug", icon='URL').url = "http://developer.blender.org/maniphest/task/create/?project=2&type=Bug"
+        layout.operator(
+                "wm.url_open", text="Report a Bug", icon='URL',
+                ).url = "https://developer.blender.org/maniphest/task/edit/form/1"
         layout.separator()
 
-        layout.operator("wm.url_open", text="Python API Reference", icon='URL').url = bpy.types.WM_OT_doc_view._prefix
+        layout.operator(
+                "wm.url_open", text="Python API Reference", icon='URL',
+                ).url = bpy.types.WM_OT_doc_view._prefix
+
         layout.operator("wm.operator_cheat_sheet", icon='TEXT')
         layout.operator("wm.sysinfo", icon='TEXT')
         layout.separator()
 
         layout.operator("wm.splash", icon='BLENDER')
 
+
+classes = (
+    INFO_HT_header,
+    INFO_MT_editor_menus,
+    INFO_MT_file,
+    INFO_MT_file_import,
+    INFO_MT_file_export,
+    INFO_MT_file_external_data,
+    INFO_MT_file_previews,
+    INFO_MT_game,
+    INFO_MT_render,
+    INFO_MT_opengl_render,
+    INFO_MT_window,
+    INFO_MT_help,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

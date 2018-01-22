@@ -37,10 +37,7 @@
 #include <mmsystem.h>
 #include <memory.h>
 #include <commdlg.h>
-
-#ifndef FREE_WINDOWS
 #include <vfw.h>
-#endif
 
 #undef AVIIF_KEYFRAME /* redefined in AVI_avi.h */
 #undef AVIIF_LIST /* redefined in AVI_avi.h */
@@ -85,31 +82,20 @@
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
 
+#include "IMB_colormanagement.h"
+#include "IMB_colormanagement_intern.h"
+
 #include "IMB_anim.h"
 #include "IMB_indexer.h"
 
 #ifdef WITH_FFMPEG
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/rational.h>
-#include <libswscale/swscale.h>
+#  include <libavformat/avformat.h>
+#  include <libavcodec/avcodec.h>
+#  include <libavutil/rational.h>
+#  include <libswscale/swscale.h>
 
-#include "ffmpeg_compat.h"
-
+#  include "ffmpeg_compat.h"
 #endif //WITH_FFMPEG
-
-#ifdef WITH_REDCODE
-#ifdef _WIN32 /* on windows we use the ones in extern instead */
-#include "libredcode/format.h"
-#include "libredcode/codec.h"
-#else
-#include "libredcode/format.h"
-#include "libredcode/codec.h"
-#endif
-#endif
-
-#include "IMB_colormanagement.h"
-#include "IMB_colormanagement_intern.h"
 
 int ismovie(const char *UNUSED(filepath))
 {
@@ -132,9 +118,9 @@ static void free_anim_movie(struct anim *UNUSED(anim))
 
 
 #if defined(_WIN32)
-# define PATHSEPERATOR '\\'
+# define PATHSEPARATOR '\\'
 #else
-# define PATHSEPERATOR '/'
+# define PATHSEPARATOR '/'
 #endif
 
 static int an_stringdec(const char *string, char *head, char *tail, unsigned short *numlen)
@@ -147,7 +133,7 @@ static int an_stringdec(const char *string, char *head, char *tail, unsigned sho
 	nume = len;
 
 	for (i = len - 1; i >= 0; i--) {
-		if (string[i] == PATHSEPERATOR) break;
+		if (string[i] == PATHSEPARATOR) break;
 		if (isdigit(string[i])) {
 			if (found) {
 				nums = i;
@@ -184,7 +170,7 @@ static void an_stringenc(char *string, const char *head, const char *tail, unsig
 #ifdef WITH_AVI
 static void free_anim_avi(struct anim *anim)
 {
-#if defined(_WIN32) && !defined(FREE_WINDOWS)
+#if defined(_WIN32)
 	int i;
 #endif
 
@@ -195,7 +181,7 @@ static void free_anim_avi(struct anim *anim)
 	MEM_freeN(anim->avi);
 	anim->avi = NULL;
 
-#if defined(_WIN32) && !defined(FREE_WINDOWS)
+#if defined(_WIN32)
 
 	if (anim->pgf) {
 		AVIStreamGetFrameClose(anim->pgf);
@@ -221,9 +207,6 @@ static void free_anim_avi(struct anim *anim)
 #ifdef WITH_FFMPEG
 static void free_anim_ffmpeg(struct anim *anim);
 #endif
-#ifdef WITH_REDCODE
-static void free_anim_redcode(struct anim *anim);
-#endif
 
 void IMB_free_anim(struct anim *anim)
 {
@@ -243,9 +226,6 @@ void IMB_free_anim(struct anim *anim)
 #endif
 #ifdef WITH_FFMPEG
 	free_anim_ffmpeg(anim);
-#endif
-#ifdef WITH_REDCODE
-	free_anim_redcode(anim);
 #endif
 	IMB_free_indices(anim);
 
@@ -271,6 +251,8 @@ struct anim *IMB_open_anim(const char *name, int ib_flags, int streamindex, char
 {
 	struct anim *anim;
 
+	BLI_assert(!BLI_path_is_rel(name));
+
 	anim = (struct anim *)MEM_callocN(sizeof(struct anim), "anim struct");
 	if (anim != NULL) {
 		if (colorspace) {
@@ -288,12 +270,17 @@ struct anim *IMB_open_anim(const char *name, int ib_flags, int streamindex, char
 	return(anim);
 }
 
+void IMB_suffix_anim(struct anim *anim, const char *suffix)
+{
+	BLI_strncpy(anim->suffix, suffix, sizeof(anim->suffix));
+}
+
 #ifdef WITH_AVI
 static int startavi(struct anim *anim)
 {
 
 	AviError avierror;
-#if defined(_WIN32) && !defined(FREE_WINDOWS)
+#if defined(_WIN32)
 	HRESULT hr;
 	int i, firstvideo = -1;
 	int streamcount;
@@ -314,7 +301,7 @@ static int startavi(struct anim *anim)
 
 	avierror = AVI_open_movie(anim->name, anim->avi);
 
-#if defined(_WIN32) && !defined(FREE_WINDOWS)
+#if defined(_WIN32)
 	if (avierror == AVI_ERROR_COMPRESSION) {
 		AVIFileInit();
 		hr = AVIFileOpen(&anim->pfile, anim->name, OF_READ, 0L);
@@ -411,7 +398,7 @@ static ImBuf *avi_fetchibuf(struct anim *anim, int position)
 		return NULL;
 	}
 
-#if defined(_WIN32) && !defined(FREE_WINDOWS)
+#if defined(_WIN32)
 	if (anim->avistreams) {
 		LPBITMAPINFOHEADER lpbi;
 
@@ -452,6 +439,11 @@ static ImBuf *avi_fetchibuf(struct anim *anim, int position)
 #endif  /* WITH_AVI */
 
 #ifdef WITH_FFMPEG
+
+BLI_INLINE bool need_aligned_ffmpeg_buffer(struct anim *anim)
+{
+	return (anim->x & 31) != 0;
+}
 
 static int startffmpeg(struct anim *anim)
 {
@@ -523,9 +515,14 @@ static int startffmpeg(struct anim *anim)
 	}
 
 	frame_rate = av_get_r_frame_rate_compat(pFormatCtx->streams[videoStream]);
-	anim->duration = ceil(pFormatCtx->duration *
-	                      av_q2d(frame_rate) /
-	                      AV_TIME_BASE);
+	if (pFormatCtx->streams[videoStream]->nb_frames != 0) {
+		anim->duration = pFormatCtx->streams[videoStream]->nb_frames;
+	}
+	else {
+		anim->duration = (int)(pFormatCtx->duration *
+		                       av_q2d(frame_rate) /
+		                       AV_TIME_BASE + 0.5f);
+	}
 
 	frs_num = frame_rate.num;
 	frs_den = frame_rate.den;
@@ -560,21 +557,38 @@ static int startffmpeg(struct anim *anim)
 	anim->next_pts = -1;
 	anim->next_packet.stream_index = -1;
 
-	anim->pFrame = avcodec_alloc_frame();
+	anim->pFrame = av_frame_alloc();
 	anim->pFrameComplete = false;
-	anim->pFrameDeinterlaced = avcodec_alloc_frame();
-	anim->pFrameRGB = avcodec_alloc_frame();
+	anim->pFrameDeinterlaced = av_frame_alloc();
+	anim->pFrameRGB = av_frame_alloc();
 
-	if (avpicture_get_size(PIX_FMT_RGBA, anim->x, anim->y) !=
+	if (need_aligned_ffmpeg_buffer(anim)) {
+		anim->pFrameRGB->format = AV_PIX_FMT_RGBA;
+		anim->pFrameRGB->width  = anim->x;
+		anim->pFrameRGB->height = anim->y;
+
+		if (av_frame_get_buffer(anim->pFrameRGB, 32) < 0) {
+			fprintf(stderr, "Could not allocate frame data.\n");
+			avcodec_close(anim->pCodecCtx);
+			avformat_close_input(&anim->pFormatCtx);
+			av_frame_free(&anim->pFrameRGB);
+			av_frame_free(&anim->pFrameDeinterlaced);
+			av_frame_free(&anim->pFrame);
+			anim->pCodecCtx = NULL;
+			return -1;
+		}
+	}
+
+	if (avpicture_get_size(AV_PIX_FMT_RGBA, anim->x, anim->y) !=
 	    anim->x * anim->y * 4)
 	{
 		fprintf(stderr,
 		        "ffmpeg has changed alloc scheme ... ARGHHH!\n");
 		avcodec_close(anim->pCodecCtx);
 		avformat_close_input(&anim->pFormatCtx);
-		av_free(anim->pFrameRGB);
-		av_free(anim->pFrameDeinterlaced);
-		av_free(anim->pFrame);
+		av_frame_free(&anim->pFrameRGB);
+		av_frame_free(&anim->pFrameDeinterlaced);
+		av_frame_free(&anim->pFrame);
 		anim->pCodecCtx = NULL;
 		return -1;
 	}
@@ -604,7 +618,7 @@ static int startffmpeg(struct anim *anim)
 	        anim->pCodecCtx->pix_fmt,
 	        anim->x,
 	        anim->y,
-	        PIX_FMT_RGBA,
+	        AV_PIX_FMT_RGBA,
 	        SWS_FAST_BILINEAR | SWS_PRINT_INFO | SWS_FULL_CHR_H_INT,
 	        NULL, NULL, NULL);
 		
@@ -613,9 +627,9 @@ static int startffmpeg(struct anim *anim)
 		        "Can't transform color space??? Bailing out...\n");
 		avcodec_close(anim->pCodecCtx);
 		avformat_close_input(&anim->pFormatCtx);
-		av_free(anim->pFrameRGB);
-		av_free(anim->pFrameDeinterlaced);
-		av_free(anim->pFrame);
+		av_frame_free(&anim->pFrameRGB);
+		av_frame_free(&anim->pFrameDeinterlaced);
+		av_frame_free(&anim->pFrame);
 		anim->pCodecCtx = NULL;
 		return -1;
 	}
@@ -690,10 +704,12 @@ static void ffmpeg_postprocess(struct anim *anim)
 			input = anim->pFrameDeinterlaced;
 		}
 	}
-	
-	avpicture_fill((AVPicture *) anim->pFrameRGB,
-	               (unsigned char *) ibuf->rect,
-	               PIX_FMT_RGBA, anim->x, anim->y);
+
+	if (!need_aligned_ffmpeg_buffer(anim)) {
+		avpicture_fill((AVPicture *) anim->pFrameRGB,
+		               (unsigned char *) ibuf->rect,
+		               AV_PIX_FMT_RGBA, anim->x, anim->y);
+	}
 
 	if (ENDIAN_ORDER == B_ENDIAN) {
 		int *dstStride   = anim->pFrameRGB->linesize;
@@ -756,6 +772,16 @@ static void ffmpeg_postprocess(struct anim *anim)
 		          anim->y,
 		          dst2,
 		          dstStride2);
+	}
+
+	if (need_aligned_ffmpeg_buffer(anim)) {
+		uint8_t *src = anim->pFrameRGB->data[0];
+		uint8_t *dst = (uint8_t *) ibuf->rect;
+		for (int y = 0; y < anim->y; y++) {
+			memcpy(dst, src, anim->x * 4);
+			dst += anim->x * 4;
+			src += anim->pFrameRGB->linesize[0];
+		}
 	}
 
 	if (filter_y) {
@@ -824,7 +850,7 @@ static int ffmpeg_decode_video_frame(struct anim *anim)
 		 * which is necessary to decode the remaining data
 		 * in the decoder engine after EOF. It also prevents a memory
 		 * leak, since av_read_frame spills out a full size packet even
-		 * on EOF... (and: it's save to call on NULL packets) */
+		 * on EOF... (and: it's safe to call on NULL packets) */
 
 		av_free_packet(&anim->next_packet);
 
@@ -1139,74 +1165,33 @@ static void free_anim_ffmpeg(struct anim *anim)
 	if (anim->pCodecCtx) {
 		avcodec_close(anim->pCodecCtx);
 		avformat_close_input(&anim->pFormatCtx);
-		av_free(anim->pFrameRGB);
+
+		/* Special case here: pFrame could share pointers with codec,
+		 * so in order to avoid double-free we don't use av_frame_free()
+		 * to free the frame.
+		 *
+		 * Could it be a bug in FFmpeg?
+		 */
 		av_free(anim->pFrame);
 
-		if (anim->ib_flags & IB_animdeinterlace) {
-			MEM_freeN(anim->pFrameDeinterlaced->data[0]);
+		if (!need_aligned_ffmpeg_buffer(anim)) {
+			/* If there's no need for own aligned buffer it means that FFmpeg's
+			 * frame shares the same buffer as temporary ImBuf. In this case we
+			 * should not free the buffer when freeing the FFmpeg buffer.
+			 */
+			avpicture_fill((AVPicture *)anim->pFrameRGB,
+			               NULL,
+			               AV_PIX_FMT_RGBA,
+			               anim->x, anim->y);
 		}
-		av_free(anim->pFrameDeinterlaced);
+		av_frame_free(&anim->pFrameRGB);
+		av_frame_free(&anim->pFrameDeinterlaced);
+
 		sws_freeContext(anim->img_convert_ctx);
 		IMB_freeImBuf(anim->last_frame);
 		if (anim->next_packet.stream_index != -1) {
 			av_free_packet(&anim->next_packet);
 		}
-	}
-	anim->duration = 0;
-}
-
-#endif
-
-#ifdef WITH_REDCODE
-
-static int startredcode(struct anim *anim)
-{
-	anim->redcodeCtx = redcode_open(anim->name);
-	if (!anim->redcodeCtx) {
-		return -1;
-	}
-	anim->duration = redcode_get_length(anim->redcodeCtx);
-	
-	return 0;
-}
-
-static ImBuf *redcode_fetchibuf(struct anim *anim, int position)
-{
-	struct ImBuf *ibuf;
-	struct redcode_frame *frame;
-	struct redcode_frame_raw *raw_frame;
-
-	if (!anim->redcodeCtx) {
-		return NULL;
-	}
-
-	frame = redcode_read_video_frame(anim->redcodeCtx, position);
-	
-	if (!frame) {
-		return NULL;
-	}
-
-	raw_frame = redcode_decode_video_raw(frame, 1);
-
-	redcode_free_frame(frame);
-
-	if (!raw_frame) {
-		return NULL;
-	}
-	
-	ibuf = IMB_allocImBuf(raw_frame->width * 2,
-	                      raw_frame->height * 2, 32, IB_rectfloat);
-
-	redcode_decode_video_float(raw_frame, ibuf->rect_float, 1);
-
-	return ibuf;
-}
-
-static void free_anim_redcode(struct anim *anim)
-{
-	if (anim->redcodeCtx) {
-		redcode_close(anim->redcodeCtx);
-		anim->redcodeCtx = 0;
 	}
 	anim->duration = 0;
 }
@@ -1235,10 +1220,6 @@ static ImBuf *anim_getnew(struct anim *anim)
 #ifdef WITH_FFMPEG
 	free_anim_ffmpeg(anim);
 #endif
-#ifdef WITH_REDCODE
-	free_anim_redcode(anim);
-#endif
-
 
 	if (anim->curtype != 0) return (NULL);
 	anim->curtype = imb_get_anim_type(anim->name);
@@ -1274,12 +1255,6 @@ static ImBuf *anim_getnew(struct anim *anim)
 		case ANIM_FFMPEG:
 			if (startffmpeg(anim)) return (0);
 			ibuf = IMB_allocImBuf(anim->x, anim->y, 24, 0);
-			break;
-#endif
-#ifdef WITH_REDCODE
-		case ANIM_REDCODE:
-			if (startredcode(anim)) return (0);
-			ibuf = IMB_allocImBuf(8, 8, 32, 0);
 			break;
 #endif
 	}
@@ -1388,12 +1363,6 @@ struct ImBuf *IMB_anim_absolute(struct anim *anim, int position,
 			filter_y = 0; /* done internally */
 			break;
 #endif
-#ifdef WITH_REDCODE
-		case ANIM_REDCODE:
-			ibuf = redcode_fetchibuf(anim, position);
-			if (ibuf) anim->curposition = position;
-			break;
-#endif
 	}
 
 	if (ibuf) {
@@ -1422,11 +1391,18 @@ int IMB_anim_get_duration(struct anim *anim, IMB_Timecode_Type tc)
 }
 
 bool IMB_anim_get_fps(struct anim *anim,
-                     short *frs_sec, float *frs_sec_base)
+                     short *frs_sec, float *frs_sec_base, bool no_av_base)
 {
 	if (anim->frs_sec) {
 		*frs_sec = anim->frs_sec;
 		*frs_sec_base = anim->frs_sec_base;
+#ifdef WITH_FFMPEG
+		if (no_av_base) {
+			*frs_sec_base /= AV_TIME_BASE;
+		}
+#else
+		UNUSED_VARS(no_av_base);
+#endif
 		return true;
 	}
 	return false;

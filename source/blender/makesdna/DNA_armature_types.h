@@ -68,11 +68,18 @@ typedef struct Bone {
 	float        xwidth, length, zwidth; /*  width: for block bones. keep in this order, transform! */
 	float        ease1, ease2;           /*  length of bezier handles */
 	float        rad_head, rad_tail;     /* radius for head/tail sphere, defining deform as well, parent->rad_tip overrides rad_head */
-
+	
+	float        roll1, roll2;           /* curved bones settings - these define the "restpose" for a curved bone */
+	float		 curveInX, curveInY;
+	float		 curveOutX, curveOutY;
+	float		 scaleIn, scaleOut;
+	
 	float        size[3];        /*  patch for upward compat, UNUSED! */
 	int          layer;          /* layers that bone appears on */
 	short        segments;       /*  for B-bones */
-	short        pad[1];
+	
+	short		 pad1;
+
 } Bone;
 
 typedef struct bArmature {
@@ -153,16 +160,15 @@ typedef enum eArmature_DeformFlag {
 	ARM_DEF_VGROUP			= (1<<0),
 	ARM_DEF_ENVELOPE		= (1<<1),
 	ARM_DEF_QUATERNION		= (1<<2),
+#ifdef DNA_DEPRECATED
 	ARM_DEF_B_BONE_REST		= (1<<3),	/* deprecated */
+#endif
 	ARM_DEF_INVERT_VGROUP	= (1<<4)
 } eArmature_DeformFlag;
 
-#if (DNA_DEPRECATED_GCC_POISON == 1)
-#pragma GCC poison ARM_DEF_B_BONE_REST
-#endif
-
 /* armature->pathflag */
 // XXX deprecated... old animation system (armature only viz)
+#ifdef DNA_DEPRECATED
 typedef enum eArmature_PathFlag {
 	ARM_PATH_FNUMS		= (1<<0),
 	ARM_PATH_KFRAS		= (1<<1),
@@ -170,9 +176,6 @@ typedef enum eArmature_PathFlag {
 	ARM_PATH_ACFRA		= (1<<3),
 	ARM_PATH_KFNOS		= (1<<4)
 } eArmature_PathFlag;
-
-#if (DNA_DEPRECATED_GCC_POISON == 1)
-#pragma GCC poison ARM_PATH_FNUMS ARM_PATH_KFRAS ARM_PATH_HEADS ARM_PATH_ACFRA ARM_PATH_KFNOS
 #endif
 
 /* armature->ghosttype */
@@ -208,7 +211,8 @@ typedef enum eBone_Flag {
 	BONE_TRANSFORM_CHILD        = (1 << 20),  /* Indicates that a parent is also being transformed */
 	BONE_UNSELECTABLE           = (1 << 21),  /* bone cannot be selected */
 	BONE_NO_LOCAL_LOCATION      = (1 << 22),  /* bone location is in armature space */
-	BONE_RELATIVE_PARENTING     = (1 << 23)   /* object child will use relative transform (like deform) */
+	BONE_RELATIVE_PARENTING     = (1 << 23),  /* object child will use relative transform (like deform) */
+	BONE_ADD_PARENT_END_ROLL    = (1 << 24)   /* it will add the parent end roll to the inroll */
 	
 } eBone_Flag;
 

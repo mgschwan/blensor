@@ -49,6 +49,7 @@
 #include "BKE_depsgraph.h"
 #include "BKE_global.h"
 #include "BKE_group.h"
+#include "BKE_icons.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_object.h"
@@ -59,78 +60,19 @@ static void free_group_object(GroupObject *go)
 	MEM_freeN(go);
 }
 
-
+/** Free (or release) any data used by this group (does not free the group itself). */
 void BKE_group_free(Group *group)
 {
 	/* don't free group itself */
 	GroupObject *go;
-	
+
+	/* No animdata here. */
+
 	while ((go = BLI_pophead(&group->gobject))) {
 		free_group_object(go);
 	}
-}
 
-void BKE_group_unlink(Group *group)
-{
-	Main *bmain = G.main;
-	Material *ma;
-	Object *ob;
-	Scene *sce;
-	SceneRenderLayer *srl;
-	ParticleSystem *psys;
-	
-	for (ma = bmain->mat.first; ma; ma = ma->id.next) {
-		if (ma->group == group)
-			ma->group = NULL;
-	}
-	for (ma = bmain->mat.first; ma; ma = ma->id.next) {
-		if (ma->group == group)
-			ma->group = NULL;
-	}
-	for (sce = bmain->scene.first; sce; sce = sce->id.next) {
-		Base *base = sce->base.first;
-		
-		/* ensure objects are not in this group */
-		for (; base; base = base->next) {
-			if (BKE_group_object_unlink(group, base->object, sce, base) &&
-			    BKE_group_object_find(NULL, base->object) == NULL)
-			{
-				base->object->flag &= ~OB_FROMGROUP;
-				base->flag &= ~OB_FROMGROUP;
-			}
-		}
-		
-		for (srl = sce->r.layers.first; srl; srl = srl->next) {
-			FreestyleLineSet *lineset;
-
-			if (srl->light_override == group)
-				srl->light_override = NULL;
-			for (lineset = srl->freestyleConfig.linesets.first; lineset; lineset = lineset->next) {
-				if (lineset->group == group)
-					lineset->group = NULL;
-			}
-		}
-	}
-	
-	for (ob = bmain->object.first; ob; ob = ob->id.next) {
-		
-		if (ob->dup_group == group) {
-			ob->dup_group = NULL;
-		}
-		
-		for (psys = ob->particlesystem.first; psys; psys = psys->next) {
-			if (psys->part->dup_group == group)
-				psys->part->dup_group = NULL;
-#if 0       /* not used anymore, only keps for readfile.c, no need to account for this */
-			if (psys->part->eff_group == group)
-				psys->part->eff_group = NULL;
-#endif
-		}
-	}
-	
-	/* group stays in library, but no members */
-	BKE_group_free(group);
-	group->id.us = 0;
+	BKE_previewimg_free(&group->preview);
 }
 
 Group *BKE_group_add(Main *bmain, const char *name)
@@ -138,22 +80,33 @@ Group *BKE_group_add(Main *bmain, const char *name)
 	Group *group;
 	
 	group = BKE_libblock_alloc(bmain, ID_GR, name);
+	id_us_min(&group->id);
+	id_us_ensure_real(&group->id);
 	group->layer = (1 << 20) - 1;
+
+	group->preview = NULL;
+
 	return group;
 }
 
-Group *BKE_group_copy(Group *group)
+Group *BKE_group_copy(Main *bmain, const Group *group)
 {
 	Group *groupn;
 
-	groupn = BKE_libblock_copy(&group->id);
+	groupn = BKE_libblock_copy(bmain, &group->id);
 	BLI_duplicatelist(&groupn->gobject, &group->gobject);
 
-	if (group->id.lib) {
-		BKE_id_lib_local_paths(G.main, group->id.lib, &groupn->id);
-	}
+	/* Do not copy group's preview (same behavior as for objects). */
+	groupn->preview = NULL;
+
+	BKE_id_copy_ensure_local(bmain, &group->id, &groupn->id);
 
 	return groupn;
+}
+
+void BKE_group_make_local(Main *bmain, Group *group, const bool lib_local)
+{
+	BKE_id_make_local_generic(bmain, &group->id, true, lib_local);
 }
 
 /* external */
@@ -174,6 +127,7 @@ static bool group_object_add_internal(Group *group, Object *ob)
 	BLI_addtail(&group->gobject, go);
 	
 	go->ob = ob;
+	id_us_ensure_real(&go->ob->id);
 	
 	return true;
 }
@@ -223,12 +177,12 @@ static bool group_object_cyclic_check_internal(Object *object, Group *group)
 {
 	if (object->dup_group) {
 		Group *dup_group = object->dup_group;
-		if ((dup_group->id.flag & LIB_DOIT) == 0) {
+		if ((dup_group->id.tag & LIB_TAG_DOIT) == 0) {
 			/* Cycle already exists in groups, let's prevent further crappyness */
 			return true;
 		}
 		/* flag the object to identify cyclic dependencies in further dupli groups */
-		dup_group->id.flag &= ~LIB_DOIT;
+		dup_group->id.tag &= ~LIB_TAG_DOIT;
 
 		if (dup_group == group)
 			return true;
@@ -242,7 +196,7 @@ static bool group_object_cyclic_check_internal(Object *object, Group *group)
 		}
 
 		/* un-flag the object, it's allowed to have the same group multiple times in parallel */
-		dup_group->id.flag |= LIB_DOIT;
+		dup_group->id.tag |= LIB_TAG_DOIT;
 	}
 
 	return false;
@@ -251,7 +205,7 @@ static bool group_object_cyclic_check_internal(Object *object, Group *group)
 bool BKE_group_object_cyclic_check(Main *bmain, Object *object, Group *group)
 {
 	/* first flag all groups */
-	BKE_main_id_tag_listbase(&bmain->group, true);
+	BKE_main_id_tag_listbase(&bmain->group, LIB_TAG_DOIT, true);
 
 	return group_object_cyclic_check_internal(object, group);
 }

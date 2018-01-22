@@ -1,11 +1,6 @@
 
 set(INC
-	../render
-	../device
-	../kernel
-	../kernel/svm
-	../util
-	../subd
+	..
 	../../glew-mx
 	../../guardedalloc
 	../../mikktspace
@@ -24,6 +19,7 @@ set(SRC
 	blender_camera.cpp
 	blender_mesh.cpp
 	blender_object.cpp
+	blender_object_cull.cpp
 	blender_particles.cpp
 	blender_curves.cpp
 	blender_logging.cpp
@@ -31,10 +27,13 @@ set(SRC
 	blender_session.cpp
 	blender_shader.cpp
 	blender_sync.cpp
+	blender_texture.cpp
 
 	CCL_api.h
+	blender_object_cull.h
 	blender_sync.h
 	blender_session.h
+	blender_texture.h
 	blender_util.h
 )
 
@@ -49,6 +48,10 @@ set(ADDON_FILES
 )
 
 add_definitions(${GL_DEFINITIONS})
+
+if(WITH_CYCLES_NETWORK)
+	add_definitions(-DWITH_NETWORK)
+endif()
 
 blender_add_lib(bf_intern_cycles "${SRC}" "${INC}" "${INC_SYS}")
 

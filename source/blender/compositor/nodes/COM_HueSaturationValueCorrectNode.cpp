@@ -27,7 +27,6 @@
 #include "COM_MixOperation.h"
 #include "COM_SetColorOperation.h"
 #include "COM_SetValueOperation.h"
-#include "COM_ChangeHSVOperation.h"
 #include "DNA_node_types.h"
 #include "COM_HueSaturationValueCorrectOperation.h"
 
@@ -36,7 +35,7 @@ HueSaturationValueCorrectNode::HueSaturationValueCorrectNode(bNode *editorNode) 
 	/* pass */
 }
 
-void HueSaturationValueCorrectNode::convertToOperations(NodeConverter &converter, const CompositorContext &context) const
+void HueSaturationValueCorrectNode::convertToOperations(NodeConverter &converter, const CompositorContext &/*context*/) const
 {
 	NodeInput *valueSocket = this->getInputSocket(0);
 	NodeInput *colorSocket = this->getInputSocket(1);

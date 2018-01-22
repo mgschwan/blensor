@@ -21,8 +21,15 @@
 /** \file blender/blenlib/intern/polyfill2d.c
  *  \ingroup bli
  *
- * A simple implementation of the ear cutting algorithm
- * to triangulate simple polygons without holes.
+ * An ear clipping algorithm to triangulate single boundary polygons.
+ *
+ * Details:
+ *
+ * - The algorithm guarantees all triangles are assigned (number of coords - 2)
+ *   and that triangles will have non-overlapping indices (even for degenerate geometry).
+ * - Self-intersections are considered degenerate (resulting triangles will overlap).
+ * - While multiple polygons aren't supported, holes can still be defined using *key-holes*
+ *   (where the polygon doubles back on its self with *exactly* matching coordinates).
  *
  * \note
  *
@@ -61,6 +68,9 @@
 #  define USE_KDTREE
 #endif
 
+/* disable in production, it can fail on near zero area ngons */
+// #define USE_STRICT_ASSERT
+
 // #define DEBUG_TIME
 #ifdef DEBUG_TIME
 #  include "PIL_time_utildefines.h"
@@ -71,6 +81,12 @@ typedef signed char eSign;
 
 #ifdef USE_KDTREE
 /**
+ * Spatial optimization for point-in-triangle intersection checks.
+ * The simple version of this algorithm is ``O(n^2)`` complexity
+ * (every point needing to check the triangle defined by every other point),
+ * Using a binary-tree reduces the complexity to ``O(n log n)``
+ * plus some overhead of creating the tree.
+ *
  * This is a single purpose KDTree based on BLI_kdtree with some modifications
  * to better suit polyfill2d.
  *
@@ -89,24 +105,24 @@ typedef bool axis_t;
 
 /* use for sorting */
 typedef struct KDTreeNode2D_head {
-	unsigned int neg, pos;
-	unsigned int index;
+	uint neg, pos;
+	uint index;
 } KDTreeNode2D_head;
 
 typedef struct KDTreeNode2D {
-	unsigned int neg, pos;
-	unsigned int index;
+	uint neg, pos;
+	uint index;
 	axis_t axis;  /* range is only (0-1) */
-	unsigned short flag;
-	unsigned int parent;
+	ushort flag;
+	uint parent;
 } KDTreeNode2D;
 
 struct KDTree2D {
 	KDTreeNode2D *nodes;
 	const float (*coords)[2];
-	unsigned int root;
-	unsigned int totnode;
-	unsigned int *nodes_map;  /* index -> node lookup */
+	uint root;
+	uint totnode;
+	uint *nodes_map;  /* index -> node lookup */
 };
 
 struct KDRange2D {
@@ -124,14 +140,14 @@ typedef struct PolyFill {
 	struct PolyIndex *indices;  /* vertex aligned */
 
 	const float (*coords)[2];
-	unsigned int  coords_tot;
+	uint  coords_tot;
 #ifdef USE_CONVEX_SKIP
-	unsigned int  coords_tot_concave;
+	uint  coords_tot_concave;
 #endif
 
 	/* A polygon with n vertices has a triangulation of n-2 triangles. */
-	unsigned int (*tris)[3];
-	unsigned int   tris_tot;
+	uint (*tris)[3];
+	uint   tris_tot;
 
 #ifdef USE_KDTREE
 	struct KDTree2D kdtree;
@@ -142,7 +158,7 @@ typedef struct PolyFill {
 /* circular linklist */
 typedef struct PolyIndex {
 	struct PolyIndex *next, *prev;
-	unsigned int index;
+	uint index;
 	eSign sign;
 } PolyIndex;
 
@@ -179,7 +195,7 @@ BLI_INLINE eSign signum_enum(float a)
  * alternative version of #area_tri_signed_v2
  * needed because of float precision issues
  *
- * \note removes / 2 since its not needed since we only need ths sign.
+ * \note removes / 2 since its not needed since we only need the sign.
  */
 BLI_INLINE float area_tri_signed_v2_alt_2x(const float v1[2], const float v2[2], const float v3[2])
 {
@@ -196,7 +212,7 @@ static eSign span_tri_v2_sign(const float v1[2], const float v2[2], const float 
 
 
 #ifdef USE_KDTREE
-#define KDNODE_UNSET ((unsigned int)-1)
+#define KDNODE_UNSET ((uint)-1)
 
 enum {
 	KDNODE_FLAG_REMOVED = (1 << 0),
@@ -204,7 +220,7 @@ enum {
 
 static void kdtree2d_new(
         struct KDTree2D *tree,
-        unsigned int tot,
+        uint tot,
         const float (*coords)[2])
 {
 	/* set by caller */
@@ -219,11 +235,11 @@ static void kdtree2d_new(
  */
 static void kdtree2d_init(
         struct KDTree2D *tree,
-        const unsigned int coords_tot,
+        const uint coords_tot,
         const PolyIndex *indices)
 {
 	KDTreeNode2D *node;
-	unsigned int i;
+	uint i;
 
 	for (i = 0, node = tree->nodes; i < coords_tot; i++) {
 		if (indices[i].sign != CONVEX) {
@@ -235,15 +251,15 @@ static void kdtree2d_init(
 		}
 	}
 
-	BLI_assert(tree->totnode == (unsigned int)(node - tree->nodes));
+	BLI_assert(tree->totnode == (uint)(node - tree->nodes));
 }
 
-static unsigned int kdtree2d_balance_recursive(
-        KDTreeNode2D *nodes, unsigned int totnode, axis_t axis,
-        const float (*coords)[2], const unsigned int ofs)
+static uint kdtree2d_balance_recursive(
+        KDTreeNode2D *nodes, uint totnode, axis_t axis,
+        const float (*coords)[2], const uint ofs)
 {
 	KDTreeNode2D *node;
-	unsigned int neg, pos, median, i, j;
+	uint neg, pos, median, i, j;
 
 	if (totnode <= 0) {
 		return KDNODE_UNSET;
@@ -301,7 +317,7 @@ static void kdtree2d_balance(
 static void kdtree2d_init_mapping(
         struct KDTree2D *tree)
 {
-	unsigned int i;
+	uint i;
 	KDTreeNode2D *node;
 
 	for (i = 0, node = tree->nodes; i < tree->totnode; i++, node++) {
@@ -322,9 +338,9 @@ static void kdtree2d_init_mapping(
 
 static void kdtree2d_node_remove(
         struct KDTree2D *tree,
-        unsigned int index)
+        uint index)
 {
-	unsigned int node_index = tree->nodes_map[index];
+	uint node_index = tree->nodes_map[index];
 	KDTreeNode2D *node;
 
 	if (node_index == KDNODE_UNSET) {
@@ -346,7 +362,7 @@ static void kdtree2d_node_remove(
 	{
 		KDTreeNode2D *node_parent = &tree->nodes[node->parent];
 
-		BLI_assert((unsigned int)(node - tree->nodes) == node_index);
+		BLI_assert((uint)(node - tree->nodes) == node_index);
 		if (node_parent->neg == node_index) {
 			node_parent->neg = KDNODE_UNSET;
 		}
@@ -367,7 +383,7 @@ static void kdtree2d_node_remove(
 
 static bool kdtree2d_isect_tri_recursive(
         const struct KDTree2D *tree,
-        const unsigned int tri_index[3],
+        const uint         tri_index[3],
         const float       *tri_coords[3],
         const float        tri_center[2],
         const struct KDRange2D bounds[2],
@@ -430,10 +446,10 @@ static bool kdtree2d_isect_tri_recursive(
 
 static bool kdtree2d_isect_tri(
         struct KDTree2D *tree,
-        const unsigned int ind[3])
+        const uint ind[3])
 {
 	const float *vs[3];
-	unsigned int i;
+	uint i;
 	struct KDRange2D bounds[2] = {
 	    {FLT_MAX, -FLT_MAX},
 	    {FLT_MAX, -FLT_MAX},
@@ -459,7 +475,7 @@ static bool kdtree2d_isect_tri(
 #endif  /* USE_KDTREE */
 
 
-static unsigned int *pf_tri_add(PolyFill *pf)
+static uint *pf_tri_add(PolyFill *pf)
 {
 	return pf->tris[pf->tris_tot++];
 }
@@ -480,7 +496,7 @@ static void pf_coord_remove(PolyFill *pf, PolyIndex *pi)
 		pf->indices = pi->next;
 	}
 #ifdef DEBUG
-	pi->index = (unsigned int)-1;
+	pi->index = (uint)-1;
 	pi->next = pi->prev = NULL;
 #endif
 
@@ -512,18 +528,6 @@ static void pf_triangulate(PolyFill *pf)
 		        , reverse
 #endif
 		        );
-
-#ifdef USE_CLIP_SWEEP
-#ifdef USE_CLIP_EVEN
-		if (pi_ear != pi_ear_init) {
-			reverse = !reverse;
-		}
-#else
-		if (pi_ear != pf->indices) {
-			reverse = !reverse;
-		}
-#endif
-#endif
 
 #ifdef USE_CONVEX_SKIP
 		if (pi_ear->sign != CONVEX) {
@@ -573,10 +577,24 @@ static void pf_triangulate(PolyFill *pf)
 #endif
 #endif
 
+#ifdef USE_CLIP_EVEN
+#ifdef USE_CLIP_SWEEP
+		if (pi_ear_init->sign != CONVEX) {
+			/* take the extra step since this ear isn't a good candidate */
+			pi_ear_init = reverse ? pi_ear_init->prev : pi_ear_init->next;
+			reverse = !reverse;
+		}
+#endif
+#else
+		if ((reverse ? pi_prev->prev : pi_next->next)->sign != CONVEX) {
+			reverse = !reverse;
+		}
+#endif
+
 	}
 
 	if (pf->coords_tot == 3) {
-		unsigned int *tri = pf_tri_add(pf);
+		uint *tri = pf_tri_add(pf);
 		pi_ear = pf->indices;
 		tri[0] = pi_ear->index; pi_ear = pi_ear->next;
 		tri[1] = pi_ear->index; pi_ear = pi_ear->next;
@@ -609,10 +627,10 @@ static PolyIndex *pf_ear_tip_find(
         )
 {
 	/* localize */
-	const unsigned int coords_tot = pf->coords_tot;
+	const uint coords_tot = pf->coords_tot;
 	PolyIndex *pi_ear;
 
-	unsigned int i;
+	uint i;
 
 #ifdef USE_CLIP_EVEN
 	pi_ear = pi_ear_init;
@@ -670,7 +688,7 @@ static bool pf_ear_tip_check(PolyFill *pf, PolyIndex *pi_ear_tip)
 #endif
 
 #if defined(USE_CONVEX_SKIP) && !defined(USE_KDTREE)
-	unsigned int coords_tot_concave_checked = 0;
+	uint coords_tot_concave_checked = 0;
 #endif
 
 
@@ -679,8 +697,8 @@ static bool pf_ear_tip_check(PolyFill *pf, PolyIndex *pi_ear_tip)
 #ifdef USE_CONVEX_SKIP_TEST
 	/* check if counting is wrong */
 	{
-		unsigned int coords_tot_concave_test = 0;
-		unsigned int i = pf->coords_tot;
+		uint coords_tot_concave_test = 0;
+		uint i = pf->coords_tot;
 		while (i--) {
 			if (coords_sign[indices[i]] != CONVEX) {
 				coords_tot_concave_test += 1;
@@ -702,7 +720,7 @@ static bool pf_ear_tip_check(PolyFill *pf, PolyIndex *pi_ear_tip)
 
 #ifdef USE_KDTREE
 	{
-		const unsigned int ind[3] = {
+		const uint ind[3] = {
 		    pi_ear_tip->index,
 		    pi_ear_tip->next->index,
 		    pi_ear_tip->prev->index};
@@ -753,7 +771,7 @@ static bool pf_ear_tip_check(PolyFill *pf, PolyIndex *pi_ear_tip)
 
 static void pf_ear_tip_cut(PolyFill *pf, PolyIndex *pi_ear_tip)
 {
-	unsigned int *tri = pf_tri_add(pf);
+	uint *tri = pf_tri_add(pf);
 
 	tri[0] = pi_ear_tip->prev->index;
 	tri[1] = pi_ear_tip->index;
@@ -763,24 +781,20 @@ static void pf_ear_tip_cut(PolyFill *pf, PolyIndex *pi_ear_tip)
 }
 
 /**
- * Triangulates the given (convex or concave) simple polygon to a list of triangle vertices.
- *
- * \param coords pairs describing vertices of the polygon, in either clockwise or counterclockwise order.
- * \return triples of triangle indices in clockwise order.
- *         Note the returned array is reused for later calls to the same method.
+ * Initializes the #PolyFill structure before tessellating with #polyfill_calc.
  */
 static void polyfill_prepare(
         PolyFill *pf,
         const float (*coords)[2],
-        const unsigned int coords_tot,
+        const uint coords_tot,
         int coords_sign,
-        unsigned int (*r_tris)[3],
+        uint (*r_tris)[3],
         PolyIndex *r_indices)
 {
 	/* localize */
 	PolyIndex *indices = r_indices;
 
-	unsigned int i;
+	uint i;
 
 	/* assign all polyfill members here */
 	pf->indices = r_indices;
@@ -796,7 +810,8 @@ static void polyfill_prepare(
 		coords_sign = (cross_poly_v2(coords, coords_tot) >= 0.0f) ? 1 : -1;
 	}
 	else {
-		/* chech we're passing in correcty args */
+		/* check we're passing in correcty args */
+#ifdef USE_STRICT_ASSERT
 #ifndef NDEBUG
 		if (coords_sign == 1) {
 			BLI_assert(cross_poly_v2(coords, coords_tot) >= 0.0f);
@@ -804,6 +819,7 @@ static void polyfill_prepare(
 		else {
 			BLI_assert(cross_poly_v2(coords, coords_tot) <= 0.0f);
 		}
+#endif
 #endif
 	}
 
@@ -816,7 +832,7 @@ static void polyfill_prepare(
 	}
 	else {
 		/* reversed */
-		unsigned int n = coords_tot - 1;
+		uint n = coords_tot - 1;
 		for (i = 0; i < coords_tot; i++) {
 			indices[i].next = &indices[i + 1];
 			indices[i].prev = &indices[i - 1];
@@ -855,11 +871,14 @@ static void polyfill_calc(
 	pf_triangulate(pf);
 }
 
+/**
+ * A version of #BLI_polyfill_calc that uses a memory arena to avoid re-allocations.
+ */
 void BLI_polyfill_calc_arena(
         const float (*coords)[2],
-        const unsigned int coords_tot,
+        const uint coords_tot,
         const int coords_sign,
-        unsigned int (*r_tris)[3],
+        uint (*r_tris)[3],
 
         struct MemArena *arena)
 {
@@ -898,11 +917,24 @@ void BLI_polyfill_calc_arena(
 #endif
 }
 
+/**
+ * Triangulates the given (convex or concave) simple polygon to a list of triangle vertices.
+ *
+ * \param coords: 2D coordinates describing vertices of the polygon,
+ * in either clockwise or counterclockwise order.
+ * \param coords_tot: Total points in the array.
+ * \param coords_sign: Pass this when we know the sign in advance to avoid extra calculations.
+ *
+ * \param r_tris: This array is filled in with triangle indices in clockwise order.
+ * The length of the array must be ``coords_tot - 2``.
+ * Indices are guaranteed to be assigned to unique triangles, with valid indices,
+ * even in the case of degenerate input (self intersecting polygons, zero area ears... etc).
+ */
 void BLI_polyfill_calc(
         const float (*coords)[2],
-        const unsigned int coords_tot,
+        const uint coords_tot,
         const int coords_sign,
-        unsigned int (*r_tris)[3])
+        uint (*r_tris)[3])
 {
 	PolyFill pf;
 	PolyIndex *indices = BLI_array_alloca(indices, coords_tot);

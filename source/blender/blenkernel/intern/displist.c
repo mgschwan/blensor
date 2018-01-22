@@ -53,6 +53,7 @@
 #include "BKE_cdderivedmesh.h"
 #include "BKE_object.h"
 #include "BKE_mball.h"
+#include "BKE_mball_tessellate.h"
 #include "BKE_curve.h"
 #include "BKE_key.h"
 #include "BKE_anim.h"
@@ -70,7 +71,7 @@ void BKE_displist_elem_free(DispList *dl)
 		if (dl->verts) MEM_freeN(dl->verts);
 		if (dl->nors) MEM_freeN(dl->nors);
 		if (dl->index) MEM_freeN(dl->index);
-		if (dl->bevelSplitFlag) MEM_freeN(dl->bevelSplitFlag);
+		if (dl->bevel_split) MEM_freeN(dl->bevel_split);
 		MEM_freeN(dl);
 	}
 }
@@ -143,8 +144,9 @@ void BKE_displist_copy(ListBase *lbn, ListBase *lb)
 		dln->nors = MEM_dupallocN(dl->nors);
 		dln->index = MEM_dupallocN(dl->index);
 
-		if (dl->bevelSplitFlag)
-			dln->bevelSplitFlag = MEM_dupallocN(dl->bevelSplitFlag);
+		if (dl->bevel_split) {
+			dln->bevel_split = MEM_dupallocN(dl->bevel_split);
+		}
 
 		dl = dl->next;
 	}
@@ -165,10 +167,12 @@ void BKE_displist_normals_add(ListBase *lb)
 			if (dl->nors == NULL) {
 				dl->nors = MEM_callocN(sizeof(float) * 3, "dlnors");
 
-				if (dl->verts[2] < 0.0f)
+				if (dl->flag & DL_BACK_CURVE) {
 					dl->nors[2] = -1.0f;
-				else
+				}
+				else {
 					dl->nors[2] = 1.0f;
+				}
 			}
 		}
 		else if (dl->type == DL_SURF) {
@@ -467,6 +471,7 @@ void BKE_displist_fill(ListBase *dispbase, ListBase *to, const float normal_proj
 	sf_arena = BLI_memarena_new(BLI_SCANFILL_ARENA_SIZE, __func__);
 
 	while (cont) {
+		int dl_flag_accum = 0;
 		cont = 0;
 		totvert = 0;
 		nextcol = 0;
@@ -512,11 +517,12 @@ void BKE_displist_fill(ListBase *dispbase, ListBase *to, const float normal_proj
 						nextcol = 1;
 					}
 				}
+				dl_flag_accum |= dl->flag;
 			}
 			dl = dl->next;
 		}
 
-		/* XXX (obedit && obedit->actcol) ? (obedit->actcol-1) : 0)) { */
+		/* XXX (obedit && obedit->actcol) ? (obedit->actcol - 1) : 0)) { */
 		if (totvert && (tot = BLI_scanfill_calc_ex(&sf_ctx,
 		                                           scanfill_flag,
 		                                           normal_proj)))
@@ -524,6 +530,7 @@ void BKE_displist_fill(ListBase *dispbase, ListBase *to, const float normal_proj
 			if (tot) {
 				dlnew = MEM_callocN(sizeof(DispList), "filldisplist");
 				dlnew->type = DL_INDEX3;
+				dlnew->flag = (dl_flag_accum & (DL_BACK_CURVE | DL_FRONT_CURVE));
 				dlnew->col = colnr;
 				dlnew->nr = totvert;
 				dlnew->parts = tot;
@@ -601,6 +608,7 @@ static void bevels_to_filledpoly(Curve *cu, ListBase *dispbase)
 					dlnew->nr = dl->parts;
 					dlnew->parts = 1;
 					dlnew->type = DL_POLY;
+					dlnew->flag = DL_BACK_CURVE;
 					dlnew->col = dl->col;
 					dlnew->charidx = dl->charidx;
 
@@ -621,6 +629,7 @@ static void bevels_to_filledpoly(Curve *cu, ListBase *dispbase)
 					dlnew->nr = dl->parts;
 					dlnew->parts = 1;
 					dlnew->type = DL_POLY;
+					dlnew->flag = DL_FRONT_CURVE;
 					dlnew->col = dl->col;
 					dlnew->charidx = dl->charidx;
 
@@ -763,7 +772,7 @@ static ModifierData *curve_get_tessellate_point(Scene *scene, Object *ob,
 
 	pretessellatePoint = NULL;
 	for (; md; md = md->next) {
-		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 		if (!modifier_isEnabled(scene, md, required_mode))
 			continue;
@@ -817,7 +826,7 @@ static void curve_calc_modifiers_pre(Scene *scene, Object *ob, ListBase *nurb,
 	if (editmode)
 		required_mode |= eModifierMode_Editmode;
 
-	if (cu->editnurb == NULL) {
+	if (!editmode) {
 		keyVerts = BKE_key_evaluate_object(ob, &numVerts);
 
 		if (keyVerts) {
@@ -832,7 +841,7 @@ static void curve_calc_modifiers_pre(Scene *scene, Object *ob, ListBase *nurb,
 
 	if (pretessellatePoint) {
 		for (; md; md = md->next) {
-			ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+			const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 			md->scene = scene;
 
@@ -933,7 +942,7 @@ static void curve_calc_modifiers_post(Scene *scene, Object *ob, ListBase *nurb,
 	}
 
 	for (; md; md = md->next) {
-		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 		ModifierApplyFlag appf = app_flag;
 
 		md->scene = scene;
@@ -1164,7 +1173,7 @@ static void curve_calc_orcodm(Scene *scene, Object *ob, DerivedMesh *dm_final,
 	orcodm = create_orco_dm(scene, ob);
 
 	for (; md; md = md->next) {
-		ModifierTypeInfo *mti = modifierType_getInfo(md->type);
+		const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 		md->scene = scene;
 
@@ -1434,9 +1443,8 @@ static void calc_bevfac_mapping(Curve *cu, BevList *bl, Nurb *nu,
 		return;
 	}
 
-	if (ELEM(cu->bevfac1_mapping,
-	         CU_BEVFAC_MAP_SEGMENT,
-	         CU_BEVFAC_MAP_SPLINE))
+	if (ELEM(cu->bevfac1_mapping, CU_BEVFAC_MAP_SEGMENT, CU_BEVFAC_MAP_SPLINE) ||
+	    ELEM(cu->bevfac2_mapping, CU_BEVFAC_MAP_SEGMENT, CU_BEVFAC_MAP_SPLINE))
 	{
 		for (i = 0; i < SEGMENTSU(nu); i++) {
 			total_length += bl->seglen[i];
@@ -1521,7 +1529,7 @@ static void do_makeDispListCurveTypes(Scene *scene, Object *ob, ListBase *dispba
 
 		BKE_curve_bevelList_free(&ob->curve_cache->bev);
 
-		/* We only re-evlauate path if evaluation is not happening for orco.
+		/* We only re-evaluate path if evaluation is not happening for orco.
 		 * If the calculation happens for orco, we should never free data which
 		 * was needed before and only not needed for orco calculation.
 		 */
@@ -1600,7 +1608,7 @@ static void do_makeDispListCurveTypes(Scene *scene, Object *ob, ListBase *dispba
 						float bottom_no[3] = {0.0f};
 						float top_no[3] = {0.0f};
 						float firstblend = 0.0f, lastblend = 0.0f;
-						int i, start, steps;
+						int i, start, steps = 0;
 
 						if (nu->flagu & CU_NURB_CYCLIC) {
 							calc_bevfac_mapping_default(bl,
@@ -1629,7 +1637,7 @@ static void do_makeDispListCurveTypes(Scene *scene, Object *ob, ListBase *dispba
 							if (dlb->type == DL_POLY) {
 								dl->flag |= DL_CYCL_U;
 							}
-							if ((bl->poly >= 0) && (steps != 2)) {
+							if ((bl->poly >= 0) && (steps > 2)) {
 								dl->flag |= DL_CYCL_V;
 							}
 
@@ -1642,8 +1650,7 @@ static void do_makeDispListCurveTypes(Scene *scene, Object *ob, ListBase *dispba
 							/* CU_2D conflicts with R_NOPUNOFLIP */
 							dl->rt = nu->flag & ~CU_2D;
 
-							dl->bevelSplitFlag = MEM_callocN(sizeof(*dl->bevelSplitFlag) * ((steps + 0x1F) >> 5),
-							                                 "bevelSplitFlag");
+							dl->bevel_split = BLI_BITMAP_NEW(steps, "bevel_split");
 
 							/* for each point of poly make a bevel piece */
 							bevp_first =  bl->bevpoints;
@@ -1683,7 +1690,7 @@ static void do_makeDispListCurveTypes(Scene *scene, Object *ob, ListBase *dispba
 								}
 
 								if (bevp->split_tag) {
-									dl->bevelSplitFlag[a >> 5] |= 1 << (a & 0x1F);
+									BLI_BITMAP_ENABLE(dl->bevel_split, a);
 								}
 
 								/* rotate bevel piece and write in data */
@@ -1861,6 +1868,8 @@ static void boundbox_displist_object(Object *ob)
 			INIT_MINMAX(min, max);
 			BKE_displist_minmax(&ob->curve_cache->disp, min, max);
 			BKE_boundbox_init_from_minmax(ob->bb, min, max);
+
+			ob->bb->flag &= ~BOUNDBOX_DIRTY;
 		}
 	}
 }

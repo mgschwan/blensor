@@ -47,7 +47,6 @@
  */
 
 struct Object;
-struct Scene;
 struct DerivedMesh;
 struct MVert;
 struct MDeformVert;
@@ -68,6 +67,7 @@ typedef struct ShrinkwrapCalcData {
 
 	struct MDeformVert *dvert;      //Pointer to mdeform array
 	int vgroup;                     //Vertex group num
+	bool invert_vgroup;             /* invert vertex group influence */
 
 	struct DerivedMesh *target;     //mesh we are shrinking to
 	struct SpaceTransform local2target;    //transform to move between local and target space

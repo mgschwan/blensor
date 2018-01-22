@@ -271,15 +271,15 @@ bool ScaleFixedSizeOperation::determineDependingAreaOfInterest(rcti *input, Read
 {
 	rcti newInput;
 
-	newInput.xmax = (input->xmax - m_offsetX) * this->m_relX;
+	newInput.xmax = (input->xmax - m_offsetX) * this->m_relX + 1;
 	newInput.xmin = (input->xmin - m_offsetX) * this->m_relX;
-	newInput.ymax = (input->ymax - m_offsetY) * this->m_relY;
+	newInput.ymax = (input->ymax - m_offsetY) * this->m_relY + 1;
 	newInput.ymin = (input->ymin - m_offsetY) * this->m_relY;
 
 	return BaseScaleOperation::determineDependingAreaOfInterest(&newInput, readOperation, output);
 }
 
-void ScaleFixedSizeOperation::determineResolution(unsigned int resolution[2], unsigned int preferredResolution[2])
+void ScaleFixedSizeOperation::determineResolution(unsigned int resolution[2], unsigned int /*preferredResolution*/[2])
 {
 	unsigned int nr[2];
 	nr[0] = this->m_newWidth;

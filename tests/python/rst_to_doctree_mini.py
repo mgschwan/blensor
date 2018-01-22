@@ -28,13 +28,14 @@
 
 import collections
 
-Directive = collections.namedtuple('Directive',
-                                   ("type",
-                                    "value",
-                                    "value_strip",
-                                    "line",
-                                    "indent",
-                                    "members"))
+Directive = collections.namedtuple(
+    "Directive",
+    ("type",
+     "value",
+     "value_strip",
+     "line",
+     "indent",
+     "members"))
 
 
 def parse_rst_py(filepath):
@@ -53,7 +54,7 @@ def parse_rst_py(filepath):
     for i, line in enumerate(f):
         line_strip = line.lstrip()
         # ^\.\.\s[a-zA-Z09\-]+::.*$
-        #if line.startswith(".. "):
+        # if line.startswith(".. "):
         march = re_prefix.match(line_strip)
 
         if march:
@@ -80,7 +81,7 @@ def parse_rst_py(filepath):
     return tree[0]
 
 
-if __name__ == "__main__":
+def main():
     # not intended use, but may as well print rst files passed as a test.
     import sys
     for arg in sys.argv:
@@ -88,3 +89,7 @@ if __name__ == "__main__":
             items = parse_rst_py(arg)
             for i in items:
                 print(i)
+
+
+if __name__ == "__main__":
+    main()

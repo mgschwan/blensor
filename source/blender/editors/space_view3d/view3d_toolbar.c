@@ -43,7 +43,7 @@
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_screen.h"
@@ -185,7 +185,7 @@ static uiBlock *tool_search_menu(bContext *C, ARegion *ar, void *arg_listbase)
 	uiDefBut(block, UI_BTYPE_LABEL, 0, "", 10, 15, UI_searchbox_size_x(), UI_searchbox_size_y(), NULL, 0, 0, 0, 0, NULL);
 	
 	but = uiDefSearchBut(block, search, 0, ICON_VIEWZOOM, sizeof(search), 10, 0, 150, 19, 0, 0, "");
-	UI_but_func_search_set(but, operator_search_cb, arg_listbase, operator_call_cb, NULL);
+	UI_but_func_search_set(but, NULL, operator_search_cb, arg_listbase, operator_call_cb, NULL);
 	
 	UI_block_bounds_set_normal(block, 6);
 	UI_block_direction_set(block, UI_DIR_DOWN);
@@ -234,7 +234,7 @@ void view3d_toolshelf_register(ARegionType *art)
 	pt = MEM_callocN(sizeof(PanelType), "spacetype view3d panel tools");
 	strcpy(pt->idname, "VIEW3D_PT_tool_shelf");
 	strcpy(pt->label, N_("Tool Shelf"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = view3d_panel_tool_shelf;
 	BLI_addtail(&art->paneltypes, pt);
 }
@@ -246,7 +246,7 @@ void view3d_tool_props_register(ARegionType *art)
 	pt = MEM_callocN(sizeof(PanelType), "spacetype view3d panel last operator");
 	strcpy(pt->idname, "VIEW3D_PT_last_operator");
 	strcpy(pt->label, N_("Operator"));
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw_header = view3d_panel_operator_redo_header;
 	pt->draw = view3d_panel_operator_redo;
 	BLI_addtail(&art->paneltypes, pt);

@@ -186,8 +186,8 @@ struct BufferLineAccumulator {
 			}
 			
 			/* TODO implement proper filtering here, see
-			 * http://en.wikipedia.org/wiki/Lanczos_resampling
-			 * http://en.wikipedia.org/wiki/Sinc_function
+			 * https://en.wikipedia.org/wiki/Lanczos_resampling
+			 * https://en.wikipedia.org/wiki/Sinc_function
 			 *
 			 * using lanczos with x = distance from the line segment,
 			 * normalized to a == 0.5f, could give a good result
@@ -293,7 +293,7 @@ static void accumulate_line(MemoryBuffer *input, float output[4], const float co
 	}
 }
 
-void *SunBeamsOperation::initializeTileData(rcti *rect)
+void *SunBeamsOperation::initializeTileData(rcti * /*rect*/)
 {
 	void *buffer = getInputOperation(0)->initializeTileData(NULL);
 	return buffer;

@@ -315,7 +315,7 @@ static eOLDrawState tree_element_active_texture(
 	
 	/*tselem = TREESTORE(te);*/ /*UNUSED*/
 	
-	/* find buttons area (note, this is undefined really still, needs recode in blender) */
+	/* find buttons region (note, this is undefined really still, needs recode in blender) */
 	/* XXX removed finding sbuts */
 	
 	/* where is texture linked to? */
@@ -470,10 +470,11 @@ static eOLDrawState tree_element_active_defgroup(
 		WM_event_add_notifier(C, NC_OBJECT | ND_TRANSFORM, ob);
 	}
 	else {
-		if (ob == OBACT)
+		if (ob == OBACT) {
 			if (ob->actdef == te->index + 1) {
 				return OL_DRAWSEL_NORMAL;
 			}
+		}
 	}
 	return OL_DRAWSEL_NONE;
 }
@@ -554,10 +555,11 @@ static eOLDrawState tree_element_active_bone(
 			Object *ob = OBACT;
 			if (ob) {
 				if (set != OL_SETSEL_EXTEND) {
-					bPoseChannel *pchannel;
 					/* single select forces all other bones to get unselected */
-					for (pchannel = ob->pose->chanbase.first; pchannel; pchannel = pchannel->next)
-						pchannel->bone->flag &= ~(BONE_TIPSEL | BONE_SELECTED | BONE_ROOTSEL);
+					for (Bone *bone_iter = arm->bonebase.first; bone_iter != NULL; bone_iter = bone_iter->next) {
+						bone_iter->flag &= ~(BONE_TIPSEL | BONE_SELECTED | BONE_ROOTSEL);
+						do_outliner_bone_select_recursive(arm, bone_iter, false);
+					}
 				}
 			}
 			
@@ -611,6 +613,8 @@ static void tree_element_active_ebone__sel(bContext *C, Scene *scene, bArmature 
 static eOLDrawState tree_element_active_ebone(
         bContext *C, Scene *scene, TreeElement *te, TreeStoreElem *UNUSED(tselem), const eOLSetState set, bool recursive)
 {
+	BLI_assert(scene->obedit != NULL);
+
 	bArmature *arm = scene->obedit->data;
 	EditBone *ebone = te->directdata;
 	eOLDrawState status = OL_DRAWSEL_NONE;
@@ -703,7 +707,12 @@ static eOLDrawState tree_element_active_pose(
 {
 	Object *ob = (Object *)tselem->id;
 	Base *base = BKE_scene_base_find(scene, ob);
-	
+
+	if (base == NULL) {
+		/* Armature not instantiated in current scene (e.g. inside an appended group...). */
+		return OL_DRAWSEL_NONE;
+	}
+
 	if (set != OL_SETSEL_NONE) {
 		if (scene->obedit)
 			ED_object_editmode_exit(C, EM_FREEDATA | EM_FREEUNDO | EM_WAITCURSOR | EM_DO_UNDO);
@@ -901,7 +910,7 @@ static bool do_outliner_item_activate(bContext *C, Scene *scene, ARegion *ar, Sp
 			/* all below close/open? */
 			if (extend) {
 				tselem->flag &= ~TSE_CLOSED;
-				outliner_set_flag(soops, &te->subtree, TSE_CLOSED, !outliner_has_one_flag(soops, &te->subtree, TSE_CLOSED, 1));
+				outliner_set_flag(&te->subtree, TSE_CLOSED, !outliner_has_one_flag(&te->subtree, TSE_CLOSED, 1));
 			}
 			else {
 				if (tselem->flag & TSE_CLOSED) tselem->flag &= ~TSE_CLOSED;
@@ -914,11 +923,14 @@ static bool do_outliner_item_activate(bContext *C, Scene *scene, ARegion *ar, Sp
 		/* name and first icon */
 		else if (mval[0] > te->xs + UI_UNIT_X && mval[0] < te->xend) {
 			
-			/* always makes active object */
-			if (tselem->type != TSE_SEQUENCE && tselem->type != TSE_SEQ_STRIP && tselem->type != TSE_SEQUENCE_DUP)
+			/* always makes active object, except for some specific types.
+			 * Note about TSE_EBONE: In case of a same ID_AR datablock shared among several objects, we do not want
+			 * to switch out of edit mode (see T48328 for details). */
+			if (!ELEM(tselem->type, TSE_SEQUENCE, TSE_SEQ_STRIP, TSE_SEQUENCE_DUP, TSE_EBONE)) {
 				tree_element_set_active_object(C, scene, soops, te,
 				                               (extend && tselem->type == 0) ? OL_SETSEL_EXTEND : OL_SETSEL_NORMAL,
 				                               recursive && tselem->type == 0);
+			}
 			
 			if (tselem->type == 0) { // the lib blocks
 				/* editmode? */
@@ -1056,7 +1068,7 @@ void OUTLINER_OT_item_activate(wmOperatorType *ot)
 /* ****************************************************** */
 
 /* **************** Border Select Tool ****************** */
-static void outliner_item_border_select(Scene *scene, SpaceOops *soops, rctf *rectf, TreeElement *te, int gesture_mode)
+static void outliner_item_border_select(Scene *scene, rctf *rectf, TreeElement *te, int gesture_mode)
 {
 	TreeStoreElem *tselem = TREESTORE(te);
 
@@ -1072,7 +1084,7 @@ static void outliner_item_border_select(Scene *scene, SpaceOops *soops, rctf *re
 	/* Look at its children. */
 	if ((tselem->flag & TSE_CLOSED) == 0) {
 		for (te = te->subtree.first; te; te = te->next) {
-			outliner_item_border_select(scene, soops, rectf, te, gesture_mode);
+			outliner_item_border_select(scene, rectf, te, gesture_mode);
 		}
 	}
 }
@@ -1090,7 +1102,7 @@ static int outliner_border_select_exec(bContext *C, wmOperator *op)
 	UI_view2d_region_to_view_rctf(&ar->v2d, &rectf, &rectf);
 
 	for (te = soops->tree.first; te; te = te->next) {
-		outliner_item_border_select(scene, soops, &rectf, te, gesture_mode);
+		outliner_item_border_select(scene, &rectf, te, gesture_mode);
 	}
 
 	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);

@@ -84,7 +84,8 @@ static void createVertsTrisData(bContext *C, LinkNode *obs,
 	for (oblink = obs; oblink; oblink = oblink->next) {
 		ob = (Object *) oblink->link;
 		dm = mesh_create_derived_no_virtual(scene, ob, NULL, CD_MASK_MESH);
-		BLI_linklist_append(&dms, (void *)dm);
+		DM_ensure_tessface(dm);
+		BLI_linklist_prepend(&dms, dm);
 
 		nverts += dm->getNumVerts(dm);
 		nfaces = dm->getNumTessFaces(dm);
@@ -215,7 +216,7 @@ static bool buildNavMesh(const RecastData *recastParams, int nverts, float *vert
 
 	/* Find triangles which are walkable based on their slope and rasterize them */
 	recast_markWalkableTriangles(RAD2DEGF(recastParams->agentmaxslope), verts, nverts, tris, ntris, triflags);
-	recast_rasterizeTriangles(verts, nverts, tris, triflags, ntris, solid);
+	recast_rasterizeTriangles(verts, nverts, tris, triflags, ntris, solid, 1);
 	MEM_freeN(triflags);
 
 	/* ** Step 3: Filter walkables surfaces ** */
@@ -244,27 +245,48 @@ static bool buildNavMesh(const RecastData *recastParams, int nverts, float *vert
 		return false;
 	}
 
-	/* Prepare for region partitioning, by calculating distance field along the walkable surface */
-	if (!recast_buildDistanceField(chf)) {
-		recast_destroyCompactHeightfield(chf);
+	if (recastParams->partitioning == RC_PARTITION_WATERSHED) {
+		/* Prepare for region partitioning, by calculating distance field along the walkable surface */
+		if (!recast_buildDistanceField(chf)) {
+			recast_destroyCompactHeightfield(chf);
 
-		BKE_report(reports, RPT_ERROR, "Failed to build distance field");
-		return false;
+			BKE_report(reports, RPT_ERROR, "Failed to build distance field");
+			return false;
+		}
+
+		/* Partition the walkable surface into simple regions without holes */
+		if (!recast_buildRegions(chf, 0, minRegionArea, mergeRegionArea)) {
+			recast_destroyCompactHeightfield(chf);
+
+			BKE_report(reports, RPT_ERROR, "Failed to build watershed regions");
+			return false;
+		}
 	}
+	else if (recastParams->partitioning == RC_PARTITION_MONOTONE) {
+		/* Partition the walkable surface into simple regions without holes */
+		/* Monotone partitioning does not need distancefield. */
+		if (!recast_buildRegionsMonotone(chf, 0, minRegionArea, mergeRegionArea)) {
+			recast_destroyCompactHeightfield(chf);
 
-	/* Partition the walkable surface into simple regions without holes */
-	if (!recast_buildRegions(chf, 0, minRegionArea, mergeRegionArea)) {
-		recast_destroyCompactHeightfield(chf);
+			BKE_report(reports, RPT_ERROR, "Failed to build monotone regions");
+			return false;
+		}
+	}
+	else { /* RC_PARTITION_LAYERS */
+		/* Partition the walkable surface into simple regions without holes */
+		if (!recast_buildLayerRegions(chf, 0, minRegionArea)) {
+			recast_destroyCompactHeightfield(chf);
 
-		BKE_report(reports, RPT_ERROR, "Failed to build regions");
-		return false;
+			BKE_report(reports, RPT_ERROR, "Failed to build layer regions");
+			return false;
+		}
 	}
 
 	/* ** Step 5: Trace and simplify region contours ** */
 	/* Create contours */
 	cset = recast_newContourSet();
 
-	if (!recast_buildContours(chf, recastParams->edgemaxerror, maxEdgeLen, cset)) {
+	if (!recast_buildContours(chf, recastParams->edgemaxerror, maxEdgeLen, cset, RECAST_CONTOUR_TESS_WALL_EDGES)) {
 		recast_destroyCompactHeightfield(chf);
 		recast_destroyContourSet(cset);
 
@@ -325,7 +347,7 @@ static Object *createRepresentation(bContext *C, struct recast_polyMesh *pmesh, 
 
 	if (createob) {
 		/* create new object */
-		obedit = ED_object_add_type(C, OB_MESH, co, rot, false, lay);
+		obedit = ED_object_add_type(C, OB_MESH, "Navmesh", co, rot, false, lay);
 	}
 	else {
 		obedit = base->object;
@@ -429,7 +451,6 @@ static Object *createRepresentation(bContext *C, struct recast_polyMesh *pmesh, 
 		obedit->gameflag &= ~OB_COLLISION;
 		obedit->gameflag |= OB_NAVMESH;
 		obedit->body_type = OB_BODY_TYPE_NAVMESH;
-		rename_id((ID *)obedit, "Navmesh");
 	}
 
 	BKE_mesh_ensure_navmesh(obedit->data);
@@ -452,7 +473,7 @@ static int navmesh_create_exec(bContext *C, wmOperator *op)
 				}
 			}
 			else {
-				BLI_linklist_append(&obs, (void *)base->object);
+				BLI_linklist_prepend(&obs, base->object);
 			}
 		}
 	}

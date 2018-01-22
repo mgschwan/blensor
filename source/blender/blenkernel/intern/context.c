@@ -44,11 +44,12 @@
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_main.h"
 #include "BKE_screen.h"
+#include "BKE_sound.h"
 
 #include "RNA_access.h"
 
@@ -882,6 +883,7 @@ Main *CTX_data_main(const bContext *C)
 void CTX_data_main_set(bContext *C, Main *bmain)
 {
 	C->data.main = bmain;
+	BKE_sound_init_main(bmain);
 }
 
 Scene *CTX_data_scene(const bContext *C)
@@ -987,6 +989,16 @@ int CTX_data_selected_editable_bases(const bContext *C, ListBase *list)
 	return ctx_data_collection_get(C, "selected_editable_bases", list);
 }
 
+int CTX_data_editable_objects(const bContext *C, ListBase *list)
+{
+	return ctx_data_collection_get(C, "editable_objects", list);
+}
+
+int CTX_data_editable_bases(const bContext *C, ListBase *list)
+{
+	return ctx_data_collection_get(C, "editable_bases", list);
+}
+
 int CTX_data_selected_objects(const bContext *C, ListBase *list)
 {
 	return ctx_data_collection_get(C, "selected_objects", list);
@@ -1057,6 +1069,11 @@ struct EditBone *CTX_data_active_bone(const bContext *C)
 	return ctx_data_pointer_get(C, "active_bone");
 }
 
+struct CacheFile *CTX_data_edit_cachefile(const bContext *C)
+{
+	return ctx_data_pointer_get(C, "edit_cachefile");
+}
+
 int CTX_data_selected_bones(const bContext *C, ListBase *list)
 {
 	return ctx_data_collection_get(C, "selected_bones", list);
@@ -1100,6 +1117,21 @@ bGPdata *CTX_data_gpencil_data(const bContext *C)
 bGPDlayer *CTX_data_active_gpencil_layer(const bContext *C)
 {
 	return ctx_data_pointer_get(C, "active_gpencil_layer");
+}
+
+bGPDpalette *CTX_data_active_gpencil_palette(const bContext *C)
+{
+	return ctx_data_pointer_get(C, "active_gpencil_palette");
+}
+
+bGPDpalettecolor *CTX_data_active_gpencil_palettecolor(const bContext *C)
+{
+	return ctx_data_pointer_get(C, "active_gpencil_palettecolor");
+}
+
+bGPDbrush *CTX_data_active_gpencil_brush(const bContext *C)
+{
+	return ctx_data_pointer_get(C, "active_gpencil_brush");
 }
 
 bGPDframe *CTX_data_active_gpencil_frame(const bContext *C)

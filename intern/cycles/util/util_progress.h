@@ -23,10 +23,10 @@
  * update notifications from a job running in another thread. All methods
  * except for the constructor/destructor are thread safe. */
 
-#include "util_function.h"
-#include "util_string.h"
-#include "util_time.h"
-#include "util_thread.h"
+#include "util/util_function.h"
+#include "util/util_string.h"
+#include "util/util_time.h"
+#include "util/util_thread.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -34,22 +34,24 @@ class Progress {
 public:
 	Progress()
 	{
-		tile = 0;
-		sample = 0;
+		pixel_samples = 0;
+		total_pixel_samples = 0;
+		current_tile_sample = 0;
+		rendered_tiles = 0;
+		denoised_tiles = 0;
 		start_time = time_dt();
-		total_time = 0.0f;
-		render_time = 0.0f;
-		tile_time = 0.0f;
+		render_start_time = time_dt();
+		end_time = 0.0;
 		status = "Initializing";
 		substatus = "";
 		sync_status = "";
 		sync_substatus = "";
-		update_cb = NULL;
+		update_cb = function_null;
 		cancel = false;
 		cancel_message = "";
 		error = false;
 		error_message = "";
-		cancel_cb = NULL;
+		cancel_cb = function_null;
 	}
 
 	Progress(Progress& progress)
@@ -62,22 +64,24 @@ public:
 		thread_scoped_lock lock(progress.progress_mutex);
 
 		progress.get_status(status, substatus);
-		progress.get_tile(tile, total_time, render_time, tile_time);
 
-		sample = progress.get_sample();
+		pixel_samples = progress.pixel_samples;
+		total_pixel_samples = progress.total_pixel_samples;
+		current_tile_sample = progress.get_current_sample();
 
 		return *this;
 	}
 
 	void reset()
 	{
-		tile = 0;
-		sample = 0;
+		pixel_samples = 0;
+		total_pixel_samples = 0;
+		current_tile_sample = 0;
+		rendered_tiles = 0;
+		denoised_tiles = 0;
 		start_time = time_dt();
 		render_start_time = time_dt();
-		total_time = 0.0f;
-		render_time = 0.0f;
-		tile_time = 0.0f;
+		end_time = 0.0;
 		status = "Initializing";
 		substatus = "";
 		sync_status = "";
@@ -110,7 +114,7 @@ public:
 		return cancel_message;
 	}
 
-	void set_cancel_callback(boost::function<void(void)> function)
+	void set_cancel_callback(function<void(void)> function)
 	{
 		cancel_cb = function;
 	}
@@ -139,63 +143,115 @@ public:
 
 	/* tile and timing information */
 
-	void set_start_time(double start_time_)
+	void set_start_time()
 	{
 		thread_scoped_lock lock(progress_mutex);
 
-		start_time = start_time_;
+		start_time = time_dt();
+		end_time = 0.0;
 	}
 
-	void set_render_start_time(double render_start_time_)
+	void set_render_start_time()
 	{
 		thread_scoped_lock lock(progress_mutex);
 
-		render_start_time = render_start_time_;
+		render_start_time = time_dt();
 	}
 
-	void set_tile(int tile_, double tile_time_)
+	void add_skip_time(const scoped_timer &start_timer, bool only_render)
 	{
-		thread_scoped_lock lock(progress_mutex);
+		double skip_time = time_dt() - start_timer.get_start();
 
-		tile = tile_;
-		total_time = time_dt() - start_time;
-		render_time = time_dt() - render_start_time;
-		tile_time = tile_time_;
+		render_start_time += skip_time;
+		if(!only_render) {
+			start_time += skip_time;
+		}
 	}
 
-	void get_tile(int& tile_, double& total_time_, double& render_time_, double& tile_time_)
+	void get_time(double& total_time_, double& render_time_)
 	{
 		thread_scoped_lock lock(progress_mutex);
 
-		tile_ = tile;
-		total_time_ = (total_time > 0.0)? total_time: 0.0;
-		render_time_ = (render_time > 0.0)? render_time: 0.0;
-		tile_time_ = tile_time;
+		double time = (end_time > 0) ? end_time : time_dt();
+
+		total_time_ = time - start_time;
+		render_time_ = time - render_start_time;
+	}
+
+	void set_end_time()
+	{
+		end_time = time_dt();
 	}
 
 	void reset_sample()
 	{
 		thread_scoped_lock lock(progress_mutex);
 
-		sample = 0;
+		pixel_samples = 0;
+		current_tile_sample = 0;
+		rendered_tiles = 0;
+		denoised_tiles = 0;
 	}
 
-	void increment_sample()
+	void set_total_pixel_samples(uint64_t total_pixel_samples_)
 	{
 		thread_scoped_lock lock(progress_mutex);
 
-		sample++;
+		total_pixel_samples = total_pixel_samples_;
 	}
 
-	void increment_sample_update()
+	float get_progress()
 	{
-		increment_sample();
+		if(total_pixel_samples > 0) {
+			return ((float) pixel_samples) / total_pixel_samples;
+		}
+		return 0.0f;
+	}
+
+	void add_samples(uint64_t pixel_samples_, int tile_sample)
+	{
+		thread_scoped_lock lock(progress_mutex);
+
+		pixel_samples += pixel_samples_;
+		current_tile_sample = tile_sample;
+	}
+
+	void add_samples_update(uint64_t pixel_samples_, int tile_sample)
+	{
+		add_samples(pixel_samples_, tile_sample);
 		set_update();
 	}
 
-	int get_sample()
+	void add_finished_tile(bool denoised)
 	{
-		return sample;
+		thread_scoped_lock lock(progress_mutex);
+
+		if(denoised) {
+			denoised_tiles++;
+		}
+		else {
+			rendered_tiles++;
+		}
+	}
+
+	int get_current_sample()
+	{
+		thread_scoped_lock lock(progress_mutex);
+		/* Note that the value here always belongs to the last tile that updated,
+		 * so it's only useful if there is only one active tile. */
+		return current_tile_sample;
+	}
+
+	int get_rendered_tiles()
+	{
+		thread_scoped_lock lock(progress_mutex);
+		return rendered_tiles;
+	}
+
+	int get_denoised_tiles()
+	{
+		thread_scoped_lock lock(progress_mutex);
+		return denoised_tiles;
 	}
 
 	/* status messages */
@@ -206,8 +262,6 @@ public:
 			thread_scoped_lock lock(progress_mutex);
 			status = status_;
 			substatus = substatus_;
-			total_time = time_dt() - start_time;
-			render_time = time_dt() - render_start_time;
 		}
 
 		set_update();
@@ -218,8 +272,6 @@ public:
 		{
 			thread_scoped_lock lock(progress_mutex);
 			substatus = substatus_;
-			total_time = time_dt() - start_time;
-			render_time = time_dt() - render_start_time;
 		}
 
 		set_update();
@@ -231,8 +283,6 @@ public:
 			thread_scoped_lock lock(progress_mutex);
 			sync_status = status_;
 			sync_substatus = substatus_;
-			total_time = time_dt() - start_time;
-			render_time = time_dt() - render_start_time;
 		}
 
 		set_update();
@@ -244,8 +294,6 @@ public:
 		{
 			thread_scoped_lock lock(progress_mutex);
 			sync_substatus = substatus_;
-			total_time = time_dt() - start_time;
-			render_time = time_dt() - render_start_time;
 		}
 
 		set_update();
@@ -275,7 +323,7 @@ public:
 		}
 	}
 
-	void set_update_callback(boost::function<void(void)> function)
+	void set_update_callback(function<void(void)> function)
 	{
 		update_cb = function;
 	}
@@ -283,15 +331,24 @@ public:
 protected:
 	thread_mutex progress_mutex;
 	thread_mutex update_mutex;
-	boost::function<void(void)> update_cb;
-	boost::function<void(void)> cancel_cb;
+	function<void(void)> update_cb;
+	function<void(void)> cancel_cb;
 
-	int tile;    /* counter for rendered tiles */
-	int sample;  /* counter of rendered samples, global for all tiles */
+	/* pixel_samples counts how many samples have been rendered over all pixel, not just per pixel.
+	 * This makes the progress estimate more accurate when tiles with different sizes are used.
+	 *
+	 * total_pixel_samples is the total amount of pixel samples that will be rendered. */
+	uint64_t pixel_samples, total_pixel_samples;
+	/* Stores the current sample count of the last tile that called the update function.
+	 * It's used to display the sample count if only one tile is active. */
+	int current_tile_sample;
+	/* Stores the number of tiles that's already finished.
+	 * Used to determine whether all but the last tile are finished rendering, in which case the current_tile_sample is displayed. */
+	int rendered_tiles, denoised_tiles;
 
 	double start_time, render_start_time;
-	double total_time, render_time;
-	double tile_time;
+	/* End time written when render is done, so it doesn't keep increasing on redraws. */
+	double end_time;
 
 	string status;
 	string substatus;

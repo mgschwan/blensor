@@ -48,6 +48,7 @@ struct AnimData;
 struct bAction;
 struct BezTriple;
 struct StructRNA;
+struct PathResolvedRNA;
 struct PointerRNA;
 struct PropertyRNA;
 
@@ -91,13 +92,23 @@ void bezt_add_to_cfra_elem(ListBase *lb, struct BezTriple *bezt);
 /* ---------------------- */
 
 void fcurve_free_driver(struct FCurve *fcu);
-struct ChannelDriver *fcurve_copy_driver(struct ChannelDriver *driver);
+struct ChannelDriver *fcurve_copy_driver(const struct ChannelDriver *driver);
 
-void driver_free_variable(struct ChannelDriver *driver, struct DriverVar *dvar);
+void driver_variables_copy(struct ListBase *dst_list, const struct ListBase *src_list);
+
+void driver_free_variable(struct ListBase *variables, struct DriverVar *dvar);
+void driver_free_variable_ex(struct ChannelDriver *driver, struct DriverVar *dvar);
+
 void driver_change_variable_type(struct DriverVar *dvar, int type);
+void driver_variable_name_validate(struct DriverVar *dvar);
 struct DriverVar *driver_add_new_variable(struct ChannelDriver *driver);
 
 float driver_get_variable_value(struct ChannelDriver *driver, struct DriverVar *dvar);
+bool  driver_get_variable_property(
+        struct ChannelDriver *driver, struct DriverTarget *dtar,
+        struct PointerRNA *r_ptr, struct PropertyRNA **r_prop, int *r_index);
+
+float evaluate_driver(struct PathResolvedRNA *anim_rna, struct ChannelDriver *driver, const float evaltime);
 
 /* ************** F-Curve Modifiers *************** */
 
@@ -127,7 +138,7 @@ typedef struct FModifierTypeInfo {
 	/* free any data that is allocated separately (optional) */
 	void (*free_data)(struct FModifier *fcm);
 	/* copy any special data that is allocated separately (optional) */
-	void (*copy_data)(struct FModifier *fcm, struct FModifier *src);
+	void (*copy_data)(struct FModifier *fcm, const struct FModifier *src);
 	/* set settings for data that will be used for FCuModifier.data (memory already allocated using MEM_callocN) */
 	void (*new_data)(void *mdata);
 	/* verifies that the modifier settings are valid */
@@ -172,14 +183,14 @@ typedef enum eFMI_Requirement_Flags {
 } eFMI_Requirement_Flags;
 
 /* Function Prototypes for FModifierTypeInfo's */
-FModifierTypeInfo *fmodifier_get_typeinfo(struct FModifier *fcm);
-FModifierTypeInfo *get_fmodifier_typeinfo(int type);
+const FModifierTypeInfo *fmodifier_get_typeinfo(const struct FModifier *fcm);
+const FModifierTypeInfo *get_fmodifier_typeinfo(const int type);
 
 /* ---------------------- */
 
 struct FModifier *add_fmodifier(ListBase *modifiers, int type);
-struct FModifier *copy_fmodifier(struct FModifier *src);
-void copy_fmodifiers(ListBase *dst, ListBase *src);
+struct FModifier *copy_fmodifier(const struct FModifier *src);
+void copy_fmodifiers(ListBase *dst, const ListBase *src);
 bool remove_fmodifier(ListBase *modifiers, struct FModifier *fcm);
 void free_fmodifiers(ListBase *modifiers);
 
@@ -205,7 +216,7 @@ int BKE_fcm_envelope_find_index(struct FCM_EnvelopeData *array, float frame, int
 /* -------- Data Management  --------  */
 
 void free_fcurve(struct FCurve *fcu);
-struct FCurve *copy_fcurve(struct FCurve *fcu);
+struct FCurve *copy_fcurve(const struct FCurve *fcu);
 
 void free_fcurves(ListBase *list);
 void copy_fcurves(ListBase *dst, ListBase *src);
@@ -223,12 +234,15 @@ struct FCurve *id_data_find_fcurve(ID *id, void *data, struct StructRNA *type, c
  */
 int list_find_data_fcurves(ListBase *dst, ListBase *src, const char *dataPrefix, const char *dataName);
 
-/* find an f-curve based on an rna property. */
-struct FCurve *rna_get_fcurve(struct PointerRNA *ptr, struct PropertyRNA *prop, int rnaindex,
-                              struct AnimData **adt, struct bAction **action, bool *r_driven);
+/* Find an f-curve based on an rna property. */
+struct FCurve *rna_get_fcurve(
+        struct PointerRNA *ptr, struct PropertyRNA *prop, int rnaindex,
+        struct AnimData **r_adt, struct bAction **r_action,
+        bool *r_driven, bool *r_special);
 /* Same as above, but takes a context data, temp hack needed for complex paths like texture ones. */
-struct FCurve *rna_get_fcurve_context_ui(struct bContext *C, struct PointerRNA *ptr, struct PropertyRNA *prop,
-                                         int rnaindex, struct AnimData **adt, struct bAction **action, bool *r_driven);
+struct FCurve *rna_get_fcurve_context_ui(
+        struct bContext *C, struct PointerRNA *ptr, struct PropertyRNA *prop, int rnaindex,
+        struct AnimData **r_adt, struct bAction **r_action, bool *r_driven, bool *r_special);
 
 /* Binary search algorithm for finding where to 'insert' BezTriple with given frame number.
  * Returns the index to insert at (data already at that index will be offset if replace is 0)
@@ -265,8 +279,9 @@ void correct_bezpart(float v1[2], float v2[2], float v3[2], float v4[2]);
 
 /* evaluate fcurve */
 float evaluate_fcurve(struct FCurve *fcu, float evaltime);
+float evaluate_fcurve_driver(struct PathResolvedRNA *anim_rna, struct FCurve *fcu, float evaltime);
 /* evaluate fcurve and store value */
-void calculate_fcurve(struct FCurve *fcu, float ctime);
+float calculate_fcurve(struct PathResolvedRNA *anim_rna, struct FCurve *fcu, float evaltime);
 
 /* ************* F-Curve Samples API ******************** */
 

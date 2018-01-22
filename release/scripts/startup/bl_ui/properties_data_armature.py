@@ -57,7 +57,7 @@ class DATA_PT_skeleton(ArmatureButtonsPanel, Panel):
 
         arm = context.armature
 
-        layout.prop(arm, "pose_position", expand=True)
+        layout.row().prop(arm, "pose_position", expand=True)
 
         col = layout.column()
         col.label(text="Layers:")
@@ -80,7 +80,7 @@ class DATA_PT_display(ArmatureButtonsPanel, Panel):
         ob = context.object
         arm = context.armature
 
-        layout.prop(arm, "draw_type", expand=True)
+        layout.row().prop(arm, "draw_type", expand=True)
 
         split = layout.split()
 
@@ -178,15 +178,18 @@ class DATA_PT_pose_library(ArmatureButtonsPanel, Panel):
         layout.template_ID(ob, "pose_library", new="poselib.new", unlink="poselib.unlink")
 
         if poselib:
+            # warning about poselib being in an invalid state
+            if len(poselib.fcurves) > 0 and len(poselib.pose_markers) == 0:
+                layout.label(icon='ERROR', text="Error: Potentially corrupt library, run 'Sanitize' operator to fix")
+
             # list of poses in pose library
             row = layout.row()
             row.template_list("UI_UL_list", "pose_markers", poselib, "pose_markers",
-                              poselib.pose_markers, "active_index", rows=3)
+                              poselib.pose_markers, "active_index", rows=5)
 
             # column of operators for active pose
             # - goes beside list
             col = row.column(align=True)
-            col.active = (poselib.library is None)
 
             # invoke should still be used for 'add', as it is needed to allow
             # add/replace options to be used properly
@@ -202,6 +205,10 @@ class DATA_PT_pose_library(ArmatureButtonsPanel, Panel):
 
             col.operator("poselib.action_sanitize", icon='HELP', text="")  # XXX: put in menu?
 
+            if pose_marker_active is not None:
+                col.operator("poselib.pose_move", icon='TRIA_UP', text="").direction = 'UP'
+                col.operator("poselib.pose_move", icon='TRIA_DOWN', text="").direction = 'DOWN'
+
 
 # TODO: this panel will soon be deprecated too
 class DATA_PT_ghost(ArmatureButtonsPanel, Panel):
@@ -212,7 +219,7 @@ class DATA_PT_ghost(ArmatureButtonsPanel, Panel):
 
         arm = context.armature
 
-        layout.prop(arm, "ghost_type", expand=True)
+        layout.row().prop(arm, "ghost_type", expand=True)
 
         split = layout.split()
 
@@ -249,11 +256,11 @@ class DATA_PT_iksolver_itasc(ArmatureButtonsPanel, Panel):
         layout.prop(ob.pose, "ik_solver")
 
         if itasc:
-            layout.prop(itasc, "mode", expand=True)
+            layout.row().prop(itasc, "mode", expand=True)
             simulation = (itasc.mode == 'SIMULATION')
             if simulation:
                 layout.label(text="Reiteration:")
-                layout.prop(itasc, "reiteration_method", expand=True)
+                layout.row().prop(itasc, "reiteration_method", expand=True)
 
             row = layout.row()
             row.active = not simulation or itasc.reiteration_method != 'NEVER'
@@ -325,5 +332,21 @@ class DATA_PT_custom_props_arm(ArmatureButtonsPanel, PropertyPanel, Panel):
     _context_path = "object.data"
     _property_type = bpy.types.Armature
 
+
+classes = (
+    DATA_PT_context_arm,
+    DATA_PT_skeleton,
+    DATA_PT_display,
+    DATA_PT_bone_group_specials,
+    DATA_PT_bone_groups,
+    DATA_PT_pose_library,
+    DATA_PT_ghost,
+    DATA_PT_iksolver_itasc,
+    DATA_PT_motion_paths,
+    DATA_PT_custom_props_arm,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

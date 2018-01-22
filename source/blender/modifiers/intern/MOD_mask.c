@@ -46,10 +46,14 @@
 
 #include "BKE_action.h" /* BKE_pose_channel_find_name */
 #include "BKE_cdderivedmesh.h"
+#include "BKE_library_query.h"
 #include "BKE_modifier.h"
 #include "BKE_deform.h"
 
 #include "depsgraph_private.h"
+#include "DEG_depsgraph_build.h"
+
+#include "MOD_modifiertypes.h"
 
 #include "BLI_strict_flags.h"
 
@@ -69,11 +73,10 @@ static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *UNUSED(
 
 static void foreachObjectLink(
         ModifierData *md, Object *ob,
-        void (*walk)(void *userData, Object *ob, Object **obpoin),
-        void *userData)
+        ObjectWalkFunc walk, void *userData)
 {
 	MaskModifierData *mmd = (MaskModifierData *)md;
-	walk(userData, ob, &mmd->ob_arm);
+	walk(userData, ob, &mmd->ob_arm, IDWALK_CB_NOP);
 }
 
 static void updateDepgraph(ModifierData *md, DagForest *forest,
@@ -90,6 +93,22 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 		
 		/* tag relationship in depsgraph, but also on the armature */
 		dag_add_relation(forest, armNode, obNode, DAG_RL_DATA_DATA | DAG_RL_OB_DATA, "Mask Modifier");
+		arm->flag |= ARM_HAS_VIZ_DEPS;
+	}
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *UNUSED(ob),
+                            struct DepsNodeHandle *node)
+{
+	MaskModifierData *mmd = (MaskModifierData *)md;
+	if (mmd->ob_arm) {
+		bArmature *arm = (bArmature *)mmd->ob_arm->data;
+		/* Tag relationship in depsgraph, but also on the armature. */
+		/* TODO(sergey): Is it a proper relation here? */
+		DEG_add_object_relation(node, mmd->ob_arm, DEG_OB_COMP_TRANSFORM, "Mask Modifier");
 		arm->flag |= ARM_HAS_VIZ_DEPS;
 	}
 }
@@ -385,6 +404,7 @@ ModifierTypeInfo modifierType_Mask = {
 	/* freeData */          NULL,
 	/* isDisabled */        NULL,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */	NULL,
 	/* foreachObjectLink */ foreachObjectLink,

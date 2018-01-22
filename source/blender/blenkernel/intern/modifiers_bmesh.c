@@ -37,8 +37,9 @@
 #include "BKE_editmesh.h"
 
 /* Static function for alloc */
-static BMFace *bm_face_create_from_mpoly(MPoly *mp, MLoop *ml,
-                                         BMesh *bm, BMVert **vtable, BMEdge **etable)
+static BMFace *bm_face_create_from_mpoly(
+        MPoly *mp, MLoop *ml,
+        BMesh *bm, BMVert **vtable, BMEdge **etable)
 {
 	BMVert **verts = BLI_array_alloca(verts, mp->totloop);
 	BMEdge **edges = BLI_array_alloca(edges, mp->totloop);
@@ -210,7 +211,9 @@ BMEditMesh *DM_to_editbmesh(DerivedMesh *dm, BMEditMesh *existing, const bool do
 		bm = em->bm;
 	}
 	else {
-		bm = BM_mesh_create(&bm_mesh_allocsize_default);
+		bm = BM_mesh_create(
+		        &bm_mesh_allocsize_default,
+		        &((struct BMeshCreateParams){.use_toolflags = false,}));
 	}
 
 	DM_to_bmesh_ex(dm, bm, do_tessellate);
@@ -232,7 +235,9 @@ BMesh *DM_to_bmesh(DerivedMesh *dm, const bool calc_face_normal)
 	BMesh *bm;
 	const BMAllocTemplate allocsize = BMALLOC_TEMPLATE_FROM_DM(dm);
 
-	bm = BM_mesh_create(&allocsize);
+	bm = BM_mesh_create(
+	        &allocsize,
+	        &((struct BMeshCreateParams){.use_toolflags = false,}));
 
 	DM_to_bmesh_ex(dm, bm, calc_face_normal);
 

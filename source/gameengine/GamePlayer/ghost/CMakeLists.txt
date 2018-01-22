@@ -42,6 +42,7 @@ set(INC
 	../../../blender/blenkernel
 	../../../blender/blenlib
 	../../../blender/blenloader
+	../../../blender/blentranslation
 	../../../blender/gpu
 	../../../blender/imbuf
 	../../../blender/makesdna
@@ -76,6 +77,14 @@ set(SRC
 
 add_definitions(${GL_DEFINITIONS})
 
+if(WIN32)
+	blender_include_dirs(../../../../intern/utfconv)
+endif()
+
+if(WITH_INPUT_NDOF)
+	add_definitions(-DWITH_INPUT_NDOF)
+endif(WITH_INPUT_NDOF)
+
 if(WITH_CODEC_FFMPEG)
 	add_definitions(-DWITH_FFMPEG)
 endif()
@@ -85,10 +94,11 @@ if(WITH_INTERNATIONAL)
 endif()
 
 if(WITH_AUDASPACE)
-	list(APPEND INC
-		../../../../intern/audaspace/intern
+	add_definitions(${AUDASPACE_DEFINITIONS})
+
+	list(APPEND INC_SYS
+		${AUDASPACE_C_INCLUDE_DIRS}
 	)
-	add_definitions(-DWITH_AUDASPACE)
 endif()
 
 if(WITH_SDL AND WITH_SDL_DYNLOAD)

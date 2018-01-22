@@ -20,9 +20,9 @@
 
 set(INC
 	../include
-	../../blenfont
 	../../blenkernel
 	../../blenlib
+	../../blentranslation
 	../../gpu
 	../../makesdna
 	../../makesrna
@@ -57,6 +57,10 @@ set(SRC
 
 if(WITH_INTERNATIONAL)
 	add_definitions(-DWITH_INTERNATIONAL)
+endif()
+
+if(WITH_PYTHON)
+	add_definitions(-DWITH_PYTHON)
 endif()
 
 add_definitions(${GL_DEFINITIONS})

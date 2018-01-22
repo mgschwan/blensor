@@ -26,7 +26,7 @@ CCL_NAMESPACE_BEGIN
 
 ccl_device_inline bool cmj_is_pow2(int i)
 {
-	return (i & (i - 1)) == 0;
+	return (i > 1) && ((i & (i - 1)) == 0);
 }
 
 ccl_device_inline int cmj_fast_mod_pow2(int a, int b)
@@ -34,10 +34,9 @@ ccl_device_inline int cmj_fast_mod_pow2(int a, int b)
 	return (a & (b - 1));
 }
 
-/* a must be > 0 and b must be > 1 */
+/* b must be > 1 */
 ccl_device_inline int cmj_fast_div_pow2(int a, int b)
 {
-	kernel_assert(a > 0);
 	kernel_assert(b > 1);
 #if defined(__KERNEL_SSE2__)
 #  ifdef _MSC_VER
@@ -128,7 +127,7 @@ ccl_device_inline uint cmj_permute(uint i, uint l, uint p)
 			i *= 0xc860a3df;
 			i &= w;
 			i ^= i >> 5;
-		} while (i >= l);
+		} while(i >= l);
 
 		return (i + p) % l;
 	}
@@ -150,6 +149,15 @@ ccl_device_inline uint cmj_hash(uint i, uint p)
 	return i;
 }
 
+ccl_device_inline uint cmj_hash_simple(uint i, uint p)
+{
+	i = (i ^ 61) ^ p;
+	i += i << 3;
+	i ^= i >> 4;
+	i *= 0x27d4eb2d;
+	return i;
+}
+
 ccl_device_inline float cmj_randfloat(uint i, uint p)
 {
 	return cmj_hash(i, p) * (1.0f / 4294967808.0f);
@@ -167,16 +175,27 @@ ccl_device float cmj_sample_1D(int s, int N, int p)
 	return (x + jx)*invN;
 }
 
+/* TODO(sergey): Do some extra tests and consider moving to util_math.h. */
+ccl_device_inline int cmj_isqrt(int value)
+{
+#if defined(__KERNEL_CUDA__)
+	return float_to_int(__fsqrt_ru(value));
+#elif defined(__KERNEL_GPU__)
+	return float_to_int(sqrtf(value));
+#else
+	/* This is a work around for fast-math on CPU which might replace sqrtf()
+	 * with am approximated version.
+	 */
+	return float_to_int(sqrtf(value) + 1e-6f);
+#endif
+}
+
 ccl_device void cmj_sample_2D(int s, int N, int p, float *fx, float *fy)
 {
 	kernel_assert(s < N);
 
-#if defined(__KERNEL_CUDA__)
-	int m = float_to_int(__fsqrt_ru(N));
-#else
-	int m = float_to_int(sqrtf(N));
-#endif
-	int n = (N + m - 1)/m;
+	int m = cmj_isqrt(N);
+	int n = (N - 1)/m + 1;
 	float invN = 1.0f/N;
 	float invm = 1.0f/m;
 	float invn = 1.0f/n;

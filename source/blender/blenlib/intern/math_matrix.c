@@ -504,9 +504,20 @@ void mul_mat3_m4_v3(float mat[4][4], float vec[3])
 	vec[2] = x * mat[0][2] + y * mat[1][2] + mat[2][2] * vec[2];
 }
 
+void mul_v3_mat3_m4v3(float r[3], float mat[4][4], const float vec[3])
+{
+	const float x = vec[0];
+	const float y = vec[1];
+
+	r[0] = x * mat[0][0] + y * mat[1][0] + mat[2][0] * vec[2];
+	r[1] = x * mat[0][1] + y * mat[1][1] + mat[2][1] * vec[2];
+	r[2] = x * mat[0][2] + y * mat[1][2] + mat[2][2] * vec[2];
+}
+
 void mul_project_m4_v3(float mat[4][4], float vec[3])
 {
-	const float w = mul_project_m4_v3_zfac(mat, vec);
+	/* absolute value to not flip the frustum upside down behind the camera */
+	const float w = fabsf(mul_project_m4_v3_zfac(mat, vec));
 	mul_m4_v3(mat, vec);
 
 	vec[0] /= w;
@@ -516,7 +527,7 @@ void mul_project_m4_v3(float mat[4][4], float vec[3])
 
 void mul_v3_project_m4_v3(float r[3], float mat[4][4], const float vec[3])
 {
-	const float w = mul_project_m4_v3_zfac(mat, vec);
+	const float w = fabsf(mul_project_m4_v3_zfac(mat, vec));
 	mul_v3_m4v3(r, mat, vec);
 
 	r[0] /= w;
@@ -526,7 +537,7 @@ void mul_v3_project_m4_v3(float r[3], float mat[4][4], const float vec[3])
 
 void mul_v2_project_m4_v3(float r[2], float mat[4][4], const float vec[3])
 {
-	const float w = mul_project_m4_v3_zfac(mat, vec);
+	const float w = fabsf(mul_project_m4_v3_zfac(mat, vec));
 	mul_v2_m4v3(r, mat, vec);
 
 	r[0] /= w;
@@ -576,6 +587,15 @@ void mul_v3_m3v3(float r[3], float M[3][3], const float a[3])
 	r[2] = M[0][2] * a[0] + M[1][2] * a[1] + M[2][2] * a[2];
 }
 
+void mul_v3_m3v3_db(double r[3], double M[3][3], const double a[3])
+{
+	BLI_assert(r != a);
+
+	r[0] = M[0][0] * a[0] + M[1][0] * a[1] + M[2][0] * a[2];
+	r[1] = M[0][1] * a[0] + M[1][1] * a[1] + M[2][1] * a[2];
+	r[2] = M[0][2] * a[0] + M[1][2] * a[1] + M[2][2] * a[2];
+}
+
 void mul_v2_m3v3(float r[2], float M[3][3], const float a[3])
 {
 	BLI_assert(r != a);
@@ -586,10 +606,12 @@ void mul_v2_m3v3(float r[2], float M[3][3], const float a[3])
 
 void mul_m3_v3(float M[3][3], float r[3])
 {
-	float tmp[3];
+	mul_v3_m3v3(r, M, (const float[3]){UNPACK3(r)});
+}
 
-	mul_v3_m3v3(tmp, M, r);
-	copy_v3_v3(r, tmp);
+void mul_m3_v3_db(double M[3][3], double r[3])
+{
+	mul_v3_m3v3_db(r, M, (const double[3]){UNPACK3(r)});
 }
 
 void mul_transposed_m3_v3(float mat[3][3], float vec[3])
@@ -1149,7 +1171,7 @@ bool is_orthogonal_m3(float m[3][3])
 
 	for (i = 0; i < 3; i++) {
 		for (j = 0; j < i; j++) {
-			if (fabsf(dot_v3v3(m[i], m[j])) > 1.5f * FLT_EPSILON)
+			if (fabsf(dot_v3v3(m[i], m[j])) > 1e-5f)
 				return false;
 		}
 	}
@@ -1163,7 +1185,7 @@ bool is_orthogonal_m4(float m[4][4])
 
 	for (i = 0; i < 4; i++) {
 		for (j = 0; j < i; j++) {
-			if (fabsf(dot_v4v4(m[i], m[j])) > 1.5f * FLT_EPSILON)
+			if (fabsf(dot_v4v4(m[i], m[j])) > 1e-5f)
 				return false;
 		}
 
@@ -1178,7 +1200,7 @@ bool is_orthonormal_m3(float m[3][3])
 		int i;
 
 		for (i = 0; i < 3; i++)
-			if (fabsf(dot_v3v3(m[i], m[i]) - 1) > 1.5f * FLT_EPSILON)
+			if (fabsf(dot_v3v3(m[i], m[i]) - 1) > 1e-5f)
 				return false;
 
 		return true;
@@ -1193,7 +1215,7 @@ bool is_orthonormal_m4(float m[4][4])
 		int i;
 
 		for (i = 0; i < 4; i++)
-			if (fabsf(dot_v4v4(m[i], m[i]) - 1) > 1.5f * FLT_EPSILON)
+			if (fabsf(dot_v4v4(m[i], m[i]) - 1) > 1e-5f)
 				return false;
 
 		return true;
@@ -1237,36 +1259,74 @@ bool is_uniform_scaled_m4(float m[4][4])
 	return is_uniform_scaled_m3(t);
 }
 
+void normalize_m3_ex(float mat[3][3], float r_scale[3])
+{
+	int i;
+	for (i = 0; i < 3; i++) {
+		r_scale[i] = normalize_v3(mat[i]);
+	}
+}
 void normalize_m3(float mat[3][3])
 {
-	normalize_v3(mat[0]);
-	normalize_v3(mat[1]);
-	normalize_v3(mat[2]);
+	int i;
+	for (i = 0; i < 3; i++) {
+		normalize_v3(mat[i]);
+	}
 }
 
+void normalize_m3_m3_ex(float rmat[3][3], float mat[3][3], float r_scale[3])
+{
+	int i;
+	for (i = 0; i < 3; i++) {
+		r_scale[i] = normalize_v3_v3(rmat[i], mat[i]);
+	}
+}
 void normalize_m3_m3(float rmat[3][3], float mat[3][3])
 {
-	normalize_v3_v3(rmat[0], mat[0]);
-	normalize_v3_v3(rmat[1], mat[1]);
-	normalize_v3_v3(rmat[2], mat[2]);
+	int i;
+	for (i = 0; i < 3; i++) {
+		normalize_v3_v3(rmat[i], mat[i]);
+	}
 }
 
+void normalize_m4_ex(float mat[4][4], float r_scale[3])
+{
+	int i;
+	for (i = 0; i < 3; i++) {
+		r_scale[i] = normalize_v3(mat[i]);
+		if (r_scale[i] != 0.0f) {
+			mat[i][3] /= r_scale[i];
+		}
+	}
+}
 void normalize_m4(float mat[4][4])
 {
-	float len;
-
-	len = normalize_v3(mat[0]);
-	if (len != 0.0f) mat[0][3] /= len;
-	len = normalize_v3(mat[1]);
-	if (len != 0.0f) mat[1][3] /= len;
-	len = normalize_v3(mat[2]);
-	if (len != 0.0f) mat[2][3] /= len;
+	int i;
+	for (i = 0; i < 3; i++) {
+		float len = normalize_v3(mat[i]);
+		if (len != 0.0f) {
+			mat[i][3] /= len;
+		}
+	}
 }
 
+void normalize_m4_m4_ex(float rmat[4][4], float mat[4][4], float r_scale[3])
+{
+	int i;
+	for (i = 0; i < 3; i++) {
+		r_scale[i] = normalize_v3_v3(rmat[i], mat[i]);
+		rmat[i][3] = (r_scale[i] != 0.0f) ? (mat[i][3] / r_scale[i]) : mat[i][3];
+	}
+	copy_v4_v4(rmat[3], mat[3]);
+}
 void normalize_m4_m4(float rmat[4][4], float mat[4][4])
 {
-	copy_m4_m4(rmat, mat);
-	normalize_m4(rmat);
+	int i;
+	for (i = 0; i < 3; i++) {
+		float len = normalize_v3_v3(rmat[i], mat[i]);
+		rmat[i][3] = (len != 0.0f) ? (mat[i][3] / len) : mat[i][3];
+	}
+	copy_v4_v4(rmat[3], mat[3]);
 }
 
 void adjoint_m2_m2(float m1[2][2], float m[2][2])
@@ -1465,39 +1525,14 @@ float mat4_to_scale(float mat[4][4])
 
 void mat3_to_rot_size(float rot[3][3], float size[3], float mat3[3][3])
 {
-	float mat3_n[3][3]; /* mat3 -> normalized, 3x3 */
-	float imat3_n[3][3]; /* mat3 -> normalized & inverted, 3x3 */
-
-	/* rotation & scale are linked, we need to create the mat's
-	 * for these together since they are related. */
-
-	/* so scale doesn't interfere with rotation [#24291] */
-	/* note: this is a workaround for negative matrix not working for rotation conversion, FIXME */
-	normalize_m3_m3(mat3_n, mat3);
-	if (is_negative_m3(mat3)) {
-		negate_m3(mat3_n);
-	}
-
-	/* rotation */
 	/* keep rot as a 3x3 matrix, the caller can convert into a quat or euler */
-	copy_m3_m3(rot, mat3_n);
-
-	/* scale */
-	/* note: mat4_to_size(ob->size, mat) fails for negative scale */
-	invert_m3_m3(imat3_n, mat3_n);
-
-	/* better not edit mat3 */
-#if 0
-	mul_m3_m3m3(mat3, imat3_n, mat3);
-
-	size[0] = mat3[0][0];
-	size[1] = mat3[1][1];
-	size[2] = mat3[2][2];
-#else
-	size[0] = dot_m3_v3_row_x(imat3_n, mat3[0]);
-	size[1] = dot_m3_v3_row_y(imat3_n, mat3[1]);
-	size[2] = dot_m3_v3_row_z(imat3_n, mat3[2]);
-#endif
+	size[0] = normalize_v3_v3(rot[0], mat3[0]);
+	size[1] = normalize_v3_v3(rot[1], mat3[1]);
+	size[2] = normalize_v3_v3(rot[2], mat3[2]);
+	if (UNLIKELY(is_negative_m3(rot))) {
+		negate_m3(rot);
+		negate_v3(size);
+	}
 }
 
 void mat4_to_loc_rot_size(float loc[3], float rot[3][3], float size[3], float wmat[4][4])
@@ -1525,7 +1560,7 @@ void mat4_to_loc_quat(float loc[3], float quat[4], float wmat[4][4])
 		negate_m3(mat3_n);
 	}
 
-	mat3_to_quat(quat, mat3_n);
+	mat3_normalized_to_quat(quat, mat3_n);
 	copy_v3_v3(loc, wmat[3]);
 }
 
@@ -1533,8 +1568,37 @@ void mat4_decompose(float loc[3], float quat[4], float size[3], float wmat[4][4]
 {
 	float rot[3][3];
 	mat4_to_loc_rot_size(loc, rot, size, wmat);
-	mat3_to_quat(quat, rot);
+	mat3_normalized_to_quat(quat, rot);
 }
+
+/**
+ * Right polar decomposition:
+ *     M = UP
+ *
+ * U is the 'rotation'-like component, the closest orthogonal matrix to M.
+ * P is the 'scaling'-like component, defined in U space.
+ *
+ * See https://en.wikipedia.org/wiki/Polar_decomposition for more.
+ */
+#ifndef MATH_STANDALONE
+void mat3_polar_decompose(float mat3[3][3], float r_U[3][3], float r_P[3][3])
+{
+	/* From svd decomposition (M = WSV*), we have:
+	 *     U = WV*
+	 *     P = VSV*
+	 */
+	float W[3][3], S[3][3], V[3][3], Vt[3][3];
+	float sval[3];
+
+	BLI_svd_m3(mat3, W, sval, V);
+
+	size_to_mat3(S, sval);
+
+	transpose_m3_m3(Vt, V);
+	mul_m3_m3m3(r_U, W, Vt);
+	mul_m3_series(r_P, V, S, Vt);
+}
+#endif
 
 void scale_m3_fl(float m[3][3], float scale)
 {
@@ -1561,51 +1625,45 @@ void translate_m4(float mat[4][4], float Tx, float Ty, float Tz)
 	mat[3][2] += (Tx * mat[0][2] + Ty * mat[1][2] + Tz * mat[2][2]);
 }
 
+/**
+ * Rotate a matrix in-place.
+ *
+ * \note To create a new rotation matrix see:
+ * #axis_angle_to_mat4_single, #axis_angle_to_mat3_single, #angle_to_mat2
+ * (axis & angle args are compatible).
+ */
 void rotate_m4(float mat[4][4], const char axis, const float angle)
 {
-	int col;
-	float temp[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-	float cosine, sine;
+	const float angle_cos = cosf(angle);
+	const float angle_sin = sinf(angle);
 
 	assert(axis >= 'X' && axis <= 'Z');
 
-	cosine = cosf(angle);
-	sine   = sinf(angle);
 	switch (axis) {
 		case 'X':
-			for (col = 0; col < 4; col++)
-				temp[col] = cosine * mat[1][col] + sine * mat[2][col];
-			for (col = 0; col < 4; col++) {
-				mat[2][col] = -sine * mat[1][col] + cosine * mat[2][col];
-				mat[1][col] = temp[col];
+			for (int col = 0; col < 4; col++) {
+				float temp  =  angle_cos * mat[1][col] + angle_sin * mat[2][col];
+				mat[2][col] = -angle_sin * mat[1][col] + angle_cos * mat[2][col];
+				mat[1][col] =  temp;
 			}
 			break;
 
 		case 'Y':
-			for (col = 0; col < 4; col++)
-				temp[col] = cosine * mat[0][col] - sine * mat[2][col];
-			for (col = 0; col < 4; col++) {
-				mat[2][col] = sine * mat[0][col] + cosine * mat[2][col];
-				mat[0][col] = temp[col];
+			for (int col = 0; col < 4; col++) {
+				float temp  =  angle_cos * mat[0][col] - angle_sin * mat[2][col];
+				mat[2][col] =  angle_sin * mat[0][col] + angle_cos * mat[2][col];
+				mat[0][col] =  temp;
 			}
 			break;
 
 		case 'Z':
-			for (col = 0; col < 4; col++)
-				temp[col] = cosine * mat[0][col] + sine * mat[1][col];
-			for (col = 0; col < 4; col++) {
-				mat[1][col] = -sine * mat[0][col] + cosine * mat[1][col];
-				mat[0][col] = temp[col];
+			for (int col = 0; col < 4; col++) {
+				float temp  =  angle_cos * mat[0][col] + angle_sin * mat[1][col];
+				mat[1][col] = -angle_sin * mat[0][col] + angle_cos * mat[1][col];
+				mat[0][col] =  temp;
 			}
 			break;
 	}
-}
-
-void rotate_m2(float mat[2][2], const float angle)
-{
-	mat[0][0] = mat[1][1] = cosf(angle);
-	mat[0][1] = sinf(angle);
-	mat[1][0] = -mat[0][1];
 }
 
 /**
@@ -1640,8 +1698,8 @@ void blend_m3_m3m3(float out[3][3], float dst[3][3], float src[3][3], const floa
 	mat3_to_rot_size(drot, dscale, dst);
 	mat3_to_rot_size(srot, sscale, src);
 
-	mat3_to_quat(dquat, drot);
-	mat3_to_quat(squat, srot);
+	mat3_normalized_to_quat(dquat, drot);
+	mat3_normalized_to_quat(squat, srot);
 
 	/* do blending */
 	interp_qt_qtqt(fquat, dquat, squat, srcweight);
@@ -1663,8 +1721,8 @@ void blend_m4_m4m4(float out[4][4], float dst[4][4], float src[4][4], const floa
 	mat4_to_loc_rot_size(dloc, drot, dscale, dst);
 	mat4_to_loc_rot_size(sloc, srot, sscale, src);
 
-	mat3_to_quat(dquat, drot);
-	mat3_to_quat(squat, srot);
+	mat3_normalized_to_quat(dquat, drot);
+	mat3_normalized_to_quat(squat, srot);
 
 	/* do blending */
 	interp_v3_v3v3(floc, dloc, sloc, srcweight);
@@ -1674,6 +1732,78 @@ void blend_m4_m4m4(float out[4][4], float dst[4][4], float src[4][4], const floa
 	/* compose new matrix */
 	loc_quat_size_to_mat4(out, floc, fquat, fsize);
 }
+
+/* for builds without Eigen */
+#ifndef MATH_STANDALONE
+/**
+ * A polar-decomposition-based interpolation between matrix A and matrix B.
+ *
+ * \note This code is about five times slower as the 'naive' interpolation done by #blend_m3_m3m3
+ *       (it typically remains below 2 usec on an average i74700, while #blend_m3_m3m3 remains below 0.4 usec).
+ *       However, it gives expected results even with non-uniformaly scaled matrices, see T46418 for an example.
+ *
+ * Based on "Matrix Animation and Polar Decomposition", by Ken Shoemake & Tom Duff
+ *
+ * \param R: Resulting interpolated matrix.
+ * \param A: Input matrix which is totally effective with `t = 0.0`.
+ * \param B: Input matrix which is totally effective with `t = 1.0`.
+ * \param t: Interpolation factor.
+ */
+void interp_m3_m3m3(float R[3][3], float A[3][3], float B[3][3], const float t)
+{
+	/* 'Rotation' component ('U' part of polar decomposition, the closest orthogonal matrix to M3 rot/scale
+	 * transformation matrix), spherically interpolated. */
+	float U_A[3][3], U_B[3][3], U[3][3];
+	float quat_A[4], quat_B[4], quat[4];
+	/* 'Scaling' component ('P' part of polar decomposition, i.e. scaling in U-defined space), linearly interpolated. */
+	float P_A[3][3], P_B[3][3], P[3][3];
+
+	int i;
+
+	mat3_polar_decompose(A, U_A, P_A);
+	mat3_polar_decompose(B, U_B, P_B);
+
+	mat3_to_quat(quat_A, U_A);
+	mat3_to_quat(quat_B, U_B);
+	interp_qt_qtqt(quat, quat_A, quat_B, t);
+	quat_to_mat3(U, quat);
+
+	for (i = 0; i < 3; i++) {
+		interp_v3_v3v3(P[i], P_A[i], P_B[i], t);
+	}
+
+	/* And we reconstruct rot/scale matrix from interpolated polar components */
+	mul_m3_m3m3(R, U, P);
+}
+
+/**
+ * Complete transform matrix interpolation, based on polar-decomposition-based interpolation from #interp_m3_m3m3.
+ *
+ * \param R: Resulting interpolated matrix.
+ * \param A: Input matrix which is totally effective with `t = 0.0`.
+ * \param B: Input matrix which is totally effective with `t = 1.0`.
+ * \param t: Interpolation factor.
+ */
+void interp_m4_m4m4(float R[4][4], float A[4][4], float B[4][4], const float t)
+{
+	float A3[3][3], B3[3][3], R3[3][3];
+
+	/* Location component, linearly interpolated. */
+	float loc_A[3], loc_B[3], loc[3];
+
+	copy_v3_v3(loc_A, A[3]);
+	copy_v3_v3(loc_B, B[3]);
+	interp_v3_v3v3(loc, loc_A, loc_B, t);
+
+	copy_m3_m4(A3, A);
+	copy_m3_m4(B3, B);
+
+	interp_m3_m3m3(R3, A3, B3, t);
+
+	copy_m4_m3(R, R3);
+	copy_v3_v3(R[3], loc);
+}
+#endif  /* MATH_STANDALONE */
 
 bool is_negative_m3(float mat[3][3])
 {
@@ -1701,6 +1831,21 @@ bool is_zero_m4(float mat[4][4])
 	        is_zero_v4(mat[1]) &&
 	        is_zero_v4(mat[2]) &&
 	        is_zero_v4(mat[3]));
+}
+
+bool equals_m3m3(float mat1[3][3], float mat2[3][3])
+{
+	return (equals_v3v3(mat1[0], mat2[0]) &&
+	        equals_v3v3(mat1[1], mat2[1]) &&
+	        equals_v3v3(mat1[2], mat2[2]));
+}
+
+bool equals_m4m4(float mat1[4][4], float mat2[4][4])
+{
+	return (equals_v4v4(mat1[0], mat2[0]) &&
+	        equals_v4v4(mat1[1], mat2[1]) &&
+	        equals_v4v4(mat1[2], mat2[2]) &&
+	        equals_v4v4(mat1[3], mat2[3]));
 }
 
 /* make a 4x4 matrix out of 3 transform components */
@@ -2251,7 +2396,7 @@ void svd_m4(float U[4][4], float s[4], float V[4][4], float A_[4][4])
 
 void pseudoinverse_m4_m4(float Ainv[4][4], float A_[4][4], float epsilon)
 {
-	/* compute moon-penrose pseudo inverse of matrix, singular values
+	/* compute Moore-Penrose pseudo inverse of matrix, singular values
 	 * below epsilon are ignored for stability (truncated SVD) */
 	float A[4][4], V[4][4], W[4], Wm[4][4], U[4][4];
 	int i;
@@ -2327,11 +2472,39 @@ void invert_m4_m4_safe(float Ainv[4][4], float A[4][4])
  *
  */
 
+/**
+ * Global-invariant transform.
+ *
+ * This defines a matrix transforming a point in local space to a point in target space such that its global
+ * coordinates remain unchanged.
+ *
+ * In other words, if we have a global point P with local coordinates (x, y, z) and global coordinates (X, Y, Z),
+ * this defines a transform matrix TM such that (x', y', z') = TM * (x, y, z)
+ * where (x', y', z') are the coordinates of P' in target space such that it keeps (X, Y, Z) coordinates in global space.
+ */
 void BLI_space_transform_from_matrices(SpaceTransform *data, float local[4][4], float target[4][4])
 {
 	float itarget[4][4];
 	invert_m4_m4(itarget, target);
 	mul_m4_m4m4(data->local2target, itarget, local);
+	invert_m4_m4(data->target2local, data->local2target);
+}
+
+/**
+ * Local-invariant transform.
+ *
+ * This defines a matrix transforming a point in global space such that its local coordinates
+ * (from local space to target space) remain unchanged.
+ *
+ * In other words, if we have a local point p with local coordinates (x, y, z) and global coordinates (X, Y, Z),
+ * this defines a transform matrix TM such that (X', Y', Z') = TM * (X, Y, Z)
+ * where (X', Y', Z') are the coordinates of p' in global space such that it keeps (x, y, z) coordinates in target space.
+ */
+void BLI_space_transform_global_from_matrices(SpaceTransform *data, float local[4][4], float target[4][4])
+{
+	float ilocal[4][4];
+	invert_m4_m4(ilocal, local);
+	mul_m4_m4m4(data->local2target, target, ilocal);
 	invert_m4_m4(data->target2local, data->local2target);
 }
 

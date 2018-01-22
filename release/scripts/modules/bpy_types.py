@@ -21,11 +21,13 @@
 from _bpy import types as bpy_types
 import _bpy
 
-StructRNA = bpy_types.Struct.__bases__[0]
-StructMetaPropGroup = _bpy.StructMetaPropGroup
+StructRNA = bpy_types.bpy_struct
+StructMetaPropGroup = bpy_types.bpy_struct_meta_idprop
 # StructRNA = bpy_types.Struct
 
 bpy_types.BlendDataLibraries.load = _bpy._library_load
+bpy_types.BlendDataLibraries.write = _bpy._library_write
+bpy_types.BlendData.user_map = _bpy._rna_id_collection_user_map
 
 
 class Context(StructRNA):
@@ -34,8 +36,10 @@ class Context(StructRNA):
     def copy(self):
         from types import BuiltinMethodType
         new_context = {}
-        generic_attrs = (list(StructRNA.__dict__.keys()) +
-                         ["bl_rna", "rna_type", "copy"])
+        generic_attrs = (
+            *StructRNA.__dict__.keys(),
+            "bl_rna", "rna_type", "copy",
+        )
         for attr in dir(self):
             if not (attr.startswith("_") or attr in generic_attrs):
                 value = getattr(self, attr)
@@ -205,7 +209,7 @@ class _GenericBone:
     @property
     def basename(self):
         """The name of this bone before any '.' character"""
-        #return self.name.rsplit(".", 1)[0]
+        # return self.name.rsplit(".", 1)[0]
         return self.name.split(".")[0]
 
     @property
@@ -404,29 +408,33 @@ class Mesh(bpy_types.ID):
            the *vertices* argument. eg: [(5, 6, 8, 9), (1, 2, 3), ...]
 
         :type faces: iterable object
+
+        .. warning::
+
+           Invalid mesh data
+           *(out of range indices, edges with matching indices,
+           2 sided faces... etc)* are **not** prevented.
+           If the data used for mesh creation isn't known to be valid,
+           run :class:`Mesh.validate` after this function.
         """
+        from itertools import chain, islice, accumulate
+
+        face_lengths = tuple(map(len, faces))
+
         self.vertices.add(len(vertices))
         self.edges.add(len(edges))
-        self.loops.add(sum((len(f) for f in faces)))
+        self.loops.add(sum(face_lengths))
         self.polygons.add(len(faces))
 
-        vertices_flat = [f for v in vertices for f in v]
-        self.vertices.foreach_set("co", vertices_flat)
-        del vertices_flat
+        self.vertices.foreach_set("co", tuple(chain.from_iterable(vertices)))
+        self.edges.foreach_set("vertices", tuple(chain.from_iterable(edges)))
 
-        edges_flat = [i for e in edges for i in e]
-        self.edges.foreach_set("vertices", edges_flat)
-        del edges_flat
+        vertex_indices = tuple(chain.from_iterable(faces))
+        loop_starts = tuple(islice(chain([0], accumulate(face_lengths)), len(faces)))
 
-        # this is different in bmesh
-        loop_index = 0
-        for i, p in enumerate(self.polygons):
-            f = faces[i]
-            loop_len = len(f)
-            p.loop_start = loop_index
-            p.loop_total = loop_len
-            p.vertices = f
-            loop_index += loop_len
+        self.polygons.foreach_set("loop_total", face_lengths)
+        self.polygons.foreach_set("loop_start", loop_starts)
+        self.polygons.foreach_set("vertices", vertex_indices)
 
         # if no edges - calculate them
         if faces and (not edges):
@@ -534,6 +542,7 @@ class Sound(bpy_types.ID):
 
 
 class RNAMeta(type):
+
     def __new__(cls, name, bases, classdict, **args):
         result = type.__new__(cls, name, bases, classdict)
         if bases and bases[0] is not StructRNA:
@@ -554,6 +563,7 @@ class RNAMeta(type):
 
 
 class OrderedDictMini(dict):
+
     def __init__(self, *args):
         self.order = []
         dict.__init__(self, args)
@@ -573,6 +583,7 @@ class RNAMetaPropGroup(StructMetaPropGroup, RNAMeta):
 
 
 class OrderedMeta(RNAMeta):
+
     def __init__(cls, name, bases, attributes):
         if attributes.__class__ is OrderedDictMini:
             cls.order = attributes.order
@@ -627,7 +638,7 @@ class Macro(StructRNA, metaclass=OrderedMeta):
 
 
 class PropertyGroup(StructRNA, metaclass=RNAMetaPropGroup):
-        __slots__ = ()
+    __slots__ = ()
 
 
 class RenderEngine(StructRNA, metaclass=RNAMeta):
@@ -672,6 +683,10 @@ class _GenericUI:
         return draw_funcs
 
     @classmethod
+    def is_extended(cls):
+        return bool(getattr(cls.draw, "_draw_funcs", None))
+
+    @classmethod
     def append(cls, draw_func):
         """
         Append a draw function to this menu,
@@ -714,11 +729,30 @@ class Header(StructRNA, _GenericUI, metaclass=RNAMeta):
 class Menu(StructRNA, _GenericUI, metaclass=RNAMeta):
     __slots__ = ()
 
-    def path_menu(self, searchpaths, operator,
-                  props_default={}, filter_ext=None):
+    def path_menu(self, searchpaths, operator, *,
+                  props_default=None, prop_filepath="filepath",
+                  filter_ext=None, filter_path=None, display_name=None):
+        """
+        Populate a menu from a list of paths.
+
+        :arg searchpaths: Paths to scan.
+        :type searchpaths: sequence of strings.
+        :arg operator: The operator id to use with each file.
+        :type operator: string
+        :arg prop_filepath: Optional operator filepath property (defaults to "filepath").
+        :type prop_filepath: string
+        :arg props_default: Properties to assign to each operator.
+        :type props_default: dict
+        :arg filter_ext: Optional callback that takes the file extensions.
+
+           Returning false excludes the file from the list.
+
+        :type filter_ext: Callable that takes a string and returns a bool.
+        :arg display_name: Optional callback that takes the full path, returns the name to display.
+        :type display_name: Callable that takes a string and returns a string.
+        """
 
         layout = self.layout
-        # hard coded to set the operators 'filepath' to the filename.
 
         import os
         import bpy.utils
@@ -731,37 +765,52 @@ class Menu(StructRNA, _GenericUI, metaclass=RNAMeta):
         # collect paths
         files = []
         for directory in searchpaths:
-            files.extend([(f, os.path.join(directory, f))
-                          for f in os.listdir(directory)
-                          if (not f.startswith("."))
-                          if ((filter_ext is None) or
-                              (filter_ext(os.path.splitext(f)[1])))
-                          ])
+            files.extend(
+                [(f, os.path.join(directory, f))
+                 for f in os.listdir(directory)
+                 if (not f.startswith("."))
+                 if ((filter_ext is None) or
+                     (filter_ext(os.path.splitext(f)[1])))
+                 if ((filter_path is None) or
+                     (filter_path(f)))
+                 ])
 
         files.sort()
 
         for f, filepath in files:
-            props = layout.operator(operator,
-                                    text=bpy.path.display_name(f),
-                                    translate=False)
+            # Intentionally pass the full path to 'display_name' callback,
+            # since the callback may want to use part a directory in the name.
+            props = layout.operator(
+                operator,
+                text=display_name(filepath) if display_name else bpy.path.display_name(f),
+                translate=False,
+            )
 
-            for attr, value in props_default.items():
-                setattr(props, attr, value)
+            if props_default is not None:
+                for attr, value in props_default.items():
+                    setattr(props, attr, value)
 
-            props.filepath = filepath
+            setattr(props, prop_filepath, filepath)
             if operator == "script.execute_preset":
                 props.menu_idname = self.bl_idname
 
     def draw_preset(self, context):
         """
-        Define these on the subclass
-        - preset_operator
-        - preset_subdir
+        Define these on the subclass:
+        - preset_operator (string)
+        - preset_subdir (string)
+
+        Optionally:
+        - preset_extensions (set of strings)
+        - preset_operator_defaults (dict of keyword args)
         """
         import bpy
+        ext_valid = getattr(self, "preset_extensions", {".py", ".xml"})
+        props_default = getattr(self, "preset_operator_defaults", None)
         self.path_menu(bpy.utils.preset_paths(self.preset_subdir),
                        self.preset_operator,
-                       filter_ext=lambda ext: ext.lower() in {".py", ".xml"})
+                       props_default=props_default,
+                       filter_ext=lambda ext: ext.lower() in ext_valid)
 
     @classmethod
     def draw_collapsible(cls, context, layout):
@@ -771,24 +820,6 @@ class Menu(StructRNA, _GenericUI, metaclass=RNAMeta):
             cls.draw_menus(layout, context)
         else:
             layout.menu(cls.__name__, icon='COLLAPSEMENU')
-
-
-class Region(StructRNA):
-    __slots__ = ()
-
-    def callback_add(self, cb, args, draw_mode):
-        """
-        Append a draw function to this region,
-        deprecated, instead use bpy.types.SpaceView3D.draw_handler_add
-        """
-        for area in self.id_data.areas:
-            for region in area.regions:
-                if region == self:
-                    spacetype = type(area.spaces[0])
-                    return spacetype.draw_handler_add(cb, args, self.type,
-                                                      draw_mode)
-
-        return None
 
 
 class NodeTree(bpy_types.ID, metaclass=RNAMetaPropGroup):

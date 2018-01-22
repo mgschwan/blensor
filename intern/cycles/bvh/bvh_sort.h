@@ -18,11 +18,21 @@
 #ifndef __BVH_SORT_H__
 #define __BVH_SORT_H__
 
+#include <cstddef>
+
 CCL_NAMESPACE_BEGIN
 
-void bvh_reference_sort(int start, int end, BVHReference *data, int dim);
+class BVHReference;
+class BVHUnaligned;
+struct Transform;
+
+void bvh_reference_sort(int start,
+                        int end,
+                        BVHReference *data,
+                        int dim,
+                        const BVHUnaligned *unaligned_heuristic = NULL,
+                        const Transform *aligned_space = NULL);
 
 CCL_NAMESPACE_END
 
 #endif /* __BVH_SORT_H__ */
-

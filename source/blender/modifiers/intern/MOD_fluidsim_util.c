@@ -78,8 +78,8 @@ void fluidsim_init(FluidsimModifierData *fluidmd)
 		fss->resolutionxyz = 65;
 		fss->previewresxyz = 45;
 		fss->realsize = 0.5;
-		fss->guiDisplayMode = 2; // preview
-		fss->renderDisplayMode = 3; // render
+		fss->guiDisplayMode = OB_FSDOM_PREVIEW;
+		fss->renderDisplayMode = OB_FSDOM_FINAL;
 
 		fss->viscosityValue = 1.0;
 		fss->viscosityExponent = 6;
@@ -98,7 +98,7 @@ void fluidsim_init(FluidsimModifierData *fluidmd)
 		/* fluid/inflow settings
 		 * fss->iniVel --> automatically set to 0 */
 
-		modifier_path_init(fss->surfdataPath, sizeof(fss->surfdataPath), "cache_fluid");
+		modifier_path_init(fss->surfdataPath, sizeof(fss->surfdataPath), OB_FLUIDSIM_SURF_DIR_DEFAULT);
 
 		/* first init of bounding box */
 		/* no bounding box needed */
@@ -150,9 +150,8 @@ void fluidsim_free(FluidsimModifierData *fluidmd)
 	if (fluidmd && fluidmd->fss) {
 		if (fluidmd->fss->meshVelocities) {
 			MEM_freeN(fluidmd->fss->meshVelocities);
-			fluidmd->fss->meshVelocities = NULL;
 		}
-		MEM_freeN(fluidmd->fss);
+		MEM_SAFE_FREE(fluidmd->fss);
 	}
 	
 	return;
@@ -423,8 +422,6 @@ static void fluidsim_read_vel_cache(FluidsimModifierData *fluidmd, DerivedMesh *
 static DerivedMesh *fluidsim_read_cache(Object *ob, DerivedMesh *orgdm,
                                         FluidsimModifierData *fluidmd, int framenr, int useRenderParams)
 {
-	int displaymode = 0;
-	
 	int curFrame = framenr /* - 1 */ /*scene->r.sfra*/; /* start with 0 at start frame */ 
 	/*  why start with 0 as start frame?? Animations + time are frozen for frame 0 anyway. (See physics_fluid.c for that. - DG */
 	/* If we start with frame 0, we need to remap all animation channels, too, because they will all be 1 frame late if using frame-1! - DG */
@@ -435,25 +432,23 @@ static DerivedMesh *fluidsim_read_cache(Object *ob, DerivedMesh *orgdm,
 	MPoly *mpoly;
 	MPoly mp_example = {0};
 
-	if (!useRenderParams) {
-		displaymode = fss->guiDisplayMode;
-	}
-	else {
-		displaymode = fss->renderDisplayMode;
-	}
+	const int displaymode = useRenderParams ? fss->renderDisplayMode : fss->guiDisplayMode;
 
 	switch (displaymode) {
-		case 1:
+		case OB_FSDOM_GEOM:
 			/* just display original object */
 			return NULL;
-		case 2:
+		case OB_FSDOM_PREVIEW:
 			/* use preview mesh */
 			BLI_join_dirfile(targetFile, sizeof(targetFile), fss->surfdataPath, OB_FLUIDSIM_SURF_PREVIEW_OBJ_FNAME);
 			break;
-		default: /* 3 */
-			/* 3. use final mesh */
+		case OB_FSDOM_FINAL:
+			/* use final mesh */
 			BLI_join_dirfile(targetFile, sizeof(targetFile), fss->surfdataPath, OB_FLUIDSIM_SURF_FINAL_OBJ_FNAME);
 			break;
+		default:
+			BLI_assert(!"Wrong fluidsim display type");
+			return NULL;
 	}
 
 	/* offset baked frame */
@@ -494,7 +489,7 @@ static DerivedMesh *fluidsim_read_cache(Object *ob, DerivedMesh *orgdm,
 	/* load vertex velocities, if they exist...
 	 * TODO? use generate flag as loading flag as well?
 	 * warning, needs original .bobj.gz mesh loading filename */
-	if (displaymode == 3) {
+	if (displaymode == OB_FSDOM_FINAL) {
 		fluidsim_read_vel_cache(fluidmd, dm, targetFile);
 	}
 	else {
@@ -525,7 +520,7 @@ DerivedMesh *fluidsimModifier_do(FluidsimModifierData *fluidmd, Scene *scene,
 		return dm;
 
 	/* sanity check */
-	if (!fluidmd || (fluidmd && !fluidmd->fss))
+	if (!fluidmd || !fluidmd->fss)
 		return dm;
 
 	fss = fluidmd->fss;

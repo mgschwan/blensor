@@ -35,14 +35,15 @@ struct EvaluationContext;
 struct StripColorBalance;
 struct Editing;
 struct GSet;
+struct GPUOffScreen;
+struct GPUFX;
 struct ImBuf;
 struct Main;
 struct Mask;
-struct MovieClip;
 struct Scene;
 struct Sequence;
 struct SequenceModifierData;
-struct Strip;
+struct Stereo3dFormat;
 struct StripElem;
 struct bSound;
 
@@ -101,12 +102,21 @@ typedef struct SeqRenderData {
 	float motion_blur_shutter;
 	bool skip_cache;
 	bool is_proxy_render;
+	int view_id;
+
+	/* special case for OpenGL render */
+	struct GPUOffScreen *gpu_offscreen;
+	struct GPUFX *gpu_fx;
+	int gpu_samples;
+	bool gpu_full_samples;
 } SeqRenderData;
 
 void BKE_sequencer_new_render_data(
         struct EvaluationContext *eval_ctx, struct Main *bmain, struct Scene *scene,
         int rectx, int recty, int preview_render_size,
         SeqRenderData *r_context);
+
+int BKE_sequencer_cmp_time_startdisp(const void *a, const void *b);
 
 /* Wipe effect */
 enum {
@@ -225,7 +235,9 @@ void BKE_sequencer_base_clipboard_pointers_store(struct ListBase *seqbase);
 void BKE_sequencer_base_clipboard_pointers_restore(struct ListBase *seqbase, struct Main *bmain);
 
 void BKE_sequence_free(struct Scene *scene, struct Sequence *seq);
+void BKE_sequence_free_anim(struct Sequence *seq);
 const char *BKE_sequence_give_name(struct Sequence *seq);
+ListBase *BKE_sequence_seqbase_get(struct Sequence *seq, int *r_offset);
 void BKE_sequence_calc(struct Scene *scene, struct Sequence *seq);
 void BKE_sequence_calc_disp(struct Scene *scene, struct Sequence *seq);
 void BKE_sequence_reload_new_file(struct Scene *scene, struct Sequence *seq, const bool lock_range);
@@ -237,7 +249,7 @@ struct StripElem *BKE_sequencer_give_stripelem(struct Sequence *seq, int cfra);
 void BKE_sequencer_update_changed_seq_and_deps(struct Scene *scene, struct Sequence *changed_seq, int len_change, int ibuf_change);
 bool BKE_sequencer_input_have_to_preprocess(const SeqRenderData *context, struct Sequence *seq, float cfra);
 
-struct SeqIndexBuildContext *BKE_sequencer_proxy_rebuild_context(struct Main *bmain, struct Scene *scene, struct Sequence *seq, struct GSet *file_list);
+void BKE_sequencer_proxy_rebuild_context(struct Main *bmain, struct Scene *scene, struct Sequence *seq, struct GSet *file_list, ListBase *queue);
 void BKE_sequencer_proxy_rebuild(struct SeqIndexBuildContext *context, short *stop, short *do_update, float *progress);
 void BKE_sequencer_proxy_rebuild_finish(struct SeqIndexBuildContext *context, bool stop);
 
@@ -295,7 +307,7 @@ int BKE_sequence_effect_get_supports_mask(int seq_type);
  * Sequencer editing functions
  * **********************************************************************
  */
-   
+
 /* for transform but also could use elsewhere */
 int BKE_sequence_tx_get_final_left(struct Sequence *seq, bool metaclip);
 int BKE_sequence_tx_get_final_right(struct Sequence *seq, bool metaclip);
@@ -303,6 +315,7 @@ void BKE_sequence_tx_set_final_left(struct Sequence *seq, int val);
 void BKE_sequence_tx_set_final_right(struct Sequence *seq, int val);
 void BKE_sequence_tx_handle_xlimits(struct Sequence *seq, int leftflag, int rightflag);
 bool BKE_sequence_tx_test(struct Sequence *seq);
+bool BKE_sequence_tx_fullupdate_test(struct Sequence *seq);
 bool BKE_sequence_single_check(struct Sequence *seq);
 void BKE_sequence_single_fix(struct Sequence *seq);
 bool BKE_sequence_test_overlap(struct ListBase *seqbasep, struct Sequence *test);
@@ -357,6 +370,10 @@ typedef struct SeqLoadInfo {
 	int len;        /* only for image strips */
 	char path[1024]; /* 1024 = FILE_MAX */
 
+	/* multiview */
+	char views_format;
+	struct Stereo3dFormat *stereo3d_format;
+
 	/* return values */
 	char name[64];
 	struct Sequence *seq_sound;  /* for movie's */
@@ -369,6 +386,8 @@ typedef struct SeqLoadInfo {
 #define SEQ_LOAD_FRAME_ADVANCE  (1 << 1)
 #define SEQ_LOAD_MOVIE_SOUND    (1 << 2)
 #define SEQ_LOAD_SOUND_CACHE    (1 << 3)
+#define SEQ_LOAD_SYNC_FPS       (1 << 4)
+#define SEQ_LOAD_SOUND_MONO     (1 << 5)
 
 
 /* seq_dupli' flags */
@@ -401,7 +420,11 @@ struct Sequence *BKE_sequencer_add_sound_strip(struct bContext *C, ListBase *seq
 struct Sequence *BKE_sequencer_add_movie_strip(struct bContext *C, ListBase *seqbasep, struct SeqLoadInfo *seq_load);
 
 /* view3d draw callback, run when not in background view */
-typedef struct ImBuf *(*SequencerDrawView)(struct Scene *, struct Object *, int, int, unsigned int, int, bool, bool, bool, int, char[256]);
+typedef struct ImBuf *(*SequencerDrawView)(
+        struct Scene *, struct Object *, int, int,
+        unsigned int, int, bool, bool, bool,
+        int, int, bool, const char *,
+        struct GPUFX *, struct GPUOffScreen *, char[256]);
 extern SequencerDrawView sequencer_view3d_cb;
 
 /* copy/paste */
@@ -435,7 +458,7 @@ typedef struct SequenceModifierTypeInfo {
 	void (*apply) (struct SequenceModifierData *smd, struct ImBuf *ibuf, struct ImBuf *mask);
 } SequenceModifierTypeInfo;
 
-struct SequenceModifierTypeInfo *BKE_sequence_modifier_type_info_get(int type);
+const struct SequenceModifierTypeInfo *BKE_sequence_modifier_type_info_get(int type);
 
 struct SequenceModifierData *BKE_sequence_modifier_new(struct Sequence *seq, const char *name, int type);
 bool BKE_sequence_modifier_remove(struct Sequence *seq, struct SequenceModifierData *smd);
@@ -453,5 +476,7 @@ struct ImBuf *BKE_sequencer_render_mask_input(
         const SeqRenderData *context, int mask_input_type, struct Sequence *mask_sequence, struct Mask *mask_id,
         int cfra, int fra_offset, bool make_float);
 void BKE_sequencer_color_balance_apply(struct StripColorBalance *cb, struct ImBuf *ibuf, float mul, bool make_float, struct ImBuf *mask_input);
+
+void BKE_sequencer_all_free_anim_ibufs(int cfra);
 
 #endif  /* __BKE_SEQUENCER_H__ */

@@ -21,12 +21,12 @@
 import bpy
 from bpy.types import Operator
 from bpy.props import (
-        StringProperty,
-        BoolProperty,
-        EnumProperty,
-        IntProperty,
-        FloatProperty,
-        )
+    BoolProperty,
+    EnumProperty,
+    FloatProperty,
+    IntProperty,
+    StringProperty,
+)
 
 
 class SelectPattern(Operator):
@@ -579,7 +579,8 @@ class MakeDupliFace(Operator):
     bl_label = "Make Dupli-Face"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def _main(self, context):
+    @staticmethod
+    def _main(context):
         from mathutils import Vector
 
         SCALE_FAC = 0.01
@@ -643,6 +644,9 @@ class MakeDupliFace(Operator):
             ob_new.use_dupli_faces_scale = True
             ob_new.dupli_faces_scale = 1.0 / SCALE_FAC
 
+            ob_inst.select = True
+            ob_new.select = True
+
     def execute(self, context):
         self._main(context)
         return {'FINISHED'}
@@ -679,6 +683,91 @@ class ClearAllRestrictRender(Operator):
         for obj in context.scene.objects:
             obj.hide_render = False
         return {'FINISHED'}
+
+
+class TransformsToDeltas(Operator):
+    """Convert normal object transforms to delta transforms, """ \
+    """any existing delta transforms will be included as well"""
+    bl_idname = "object.transforms_to_deltas"
+    bl_label = "Transforms to Deltas"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    mode = EnumProperty(
+            items=(('ALL',
+                    "All Transforms",
+                    "Transfer location, rotation, and scale transforms",
+                    ),
+                   ('LOC',
+                    "Location",
+                    "Transfer location transforms only",
+                    ),
+                   ('ROT',
+                    "Rotation",
+                    "Transfer rotation transforms only",
+                    ),
+                   ('SCALE',
+                    "Scale",
+                    "Transfer scale transforms only",
+                    ),
+                   ),
+            name="Mode",
+            description="Which transforms to transfer",
+            default='ALL',
+            )
+    reset_values = BoolProperty(
+            name="Reset Values",
+            description=("Clear transform values after transferring to deltas"),
+            default=True,
+            )
+
+    @classmethod
+    def poll(cls, context):
+        obs = context.selected_editable_objects
+        return (obs is not None)
+
+    def execute(self, context):
+        for obj in context.selected_editable_objects:
+            if self.mode in {'ALL', 'LOC'}:
+                self.transfer_location(obj)
+
+            if self.mode in {'ALL', 'ROT'}:
+                self.transfer_rotation(obj)
+
+            if self.mode in {'ALL', 'SCALE'}:
+                self.transfer_scale(obj)
+
+        return {'FINISHED'}
+
+    def transfer_location(self, obj):
+        obj.delta_location += obj.location
+
+        if self.reset_values:
+            obj.location.zero()
+
+    def transfer_rotation(self, obj):
+        # TODO: add transforms together...
+        if obj.rotation_mode == 'QUATERNION':
+            obj.delta_rotation_quaternion += obj.rotation_quaternion
+
+            if self.reset_values:
+                obj.rotation_quaternion.identity()
+        elif obj.rotation_mode == 'AXIS_ANGLE':
+            pass  # Unsupported
+        else:
+            delta = obj.delta_rotation_euler.copy()
+            obj.delta_rotation_euler = obj.rotation_euler
+            obj.delta_rotation_euler.rotate(delta)
+
+            if self.reset_values:
+                obj.rotation_euler.zero()
+
+    def transfer_scale(self, obj):
+        obj.delta_scale[0] *= obj.scale[0]
+        obj.delta_scale[1] *= obj.scale[1]
+        obj.delta_scale[2] *= obj.scale[2]
+
+        if self.reset_values:
+            obj.scale[:] = (1, 1, 1)
 
 
 class TransformsToDeltasAnim(Operator):
@@ -775,7 +864,7 @@ class DupliOffsetFromCursor(Operator):
     """Set offset used for DupliGroup based on cursor position"""
     bl_idname = "object.dupli_offset_from_cursor"
     bl_label = "Set Offset From Cursor"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'INTERNAL', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
@@ -924,7 +1013,7 @@ class LodGenerate(Operator):
             lod.location.y = ob.location.y + 3.0 * i
 
             if i == 1:
-                modifier = lod.modifiers.new("lod_decimate", "DECIMATE")
+                modifier = lod.modifiers.new("lod_decimate", 'DECIMATE')
             else:
                 modifier = lod.modifiers[-1]
 
@@ -945,3 +1034,22 @@ class LodGenerate(Operator):
         scene.objects.active = ob
 
         return {'FINISHED'}
+
+
+classes = (
+    ClearAllRestrictRender,
+    DupliOffsetFromCursor,
+    IsolateTypeRender,
+    JoinUVs,
+    LodByName,
+    LodClearAll,
+    LodGenerate,
+    MakeDupliFace,
+    SelectCamera,
+    SelectHierarchy,
+    SelectPattern,
+    ShapeTransfer,
+    SubdivisionSet,
+    TransformsToDeltas,
+    TransformsToDeltasAnim,
+)

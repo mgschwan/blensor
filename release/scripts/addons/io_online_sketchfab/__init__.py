@@ -19,9 +19,9 @@
 bl_info = {
     "name": "Sketchfab Exporter",
     "author": "Bart Crouch",
-    "version": (1, 2, 2),
+    "version": (1, 2, 3),
     "blender": (2, 7, 0),
-    "location": "Tools > Upload tab",
+    "location": "Tools > File I/O tab",
     "description": "Upload your model to Sketchfab",
     "warning": "",
     "wiki_url": "",
@@ -35,11 +35,19 @@ import threading
 import subprocess
 
 from bpy.app.handlers import persistent
-from bpy.props import (StringProperty,
-                       EnumProperty,
-                       BoolProperty,
-                       PointerProperty,
-                       )
+from bpy.props import (
+        StringProperty,
+        EnumProperty,
+        BoolProperty,
+        PointerProperty,
+        )
+from bpy.types import (
+        Operator,
+        Panel,
+        AddonPreferences,
+        PropertyGroup,
+        )
+
 
 SKETCHFAB_API_URL = "https://api.sketchfab.com"
 SKETCHFAB_API_MODELS_URL = SKETCHFAB_API_URL + "/v1/models"
@@ -74,6 +82,7 @@ class _SketchfabState:
 
         self.report_message = ""
         self.report_type = ''
+
 
 sf_state = _SketchfabState()
 del _SketchfabState
@@ -177,7 +186,7 @@ def upload(filepath, filename):
 
 
 # operator to export model to sketchfab
-class ExportSketchfab(bpy.types.Operator):
+class ExportSketchfab(Operator):
     """Upload your model to Sketchfab"""
     bl_idname = "export.sketchfab"
     bl_label = "Upload"
@@ -283,10 +292,10 @@ class ExportSketchfab(bpy.types.Operator):
 
 
 # user interface
-class VIEW3D_PT_sketchfab(bpy.types.Panel):
+class VIEW3D_PT_sketchfab(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
-    bl_category = "Upload"
+    bl_category = "File I/O"
     bl_context = "objectmode"
     bl_label = "Sketchfab"
 
@@ -330,7 +339,7 @@ class VIEW3D_PT_sketchfab(bpy.types.Panel):
 
 
 # property group containing all properties for the user interface
-class SketchfabProps(bpy.types.PropertyGroup):
+class SketchfabProps(PropertyGroup):
     description = StringProperty(
             name="Description",
             description="Description of the model (optional)",
@@ -385,7 +394,7 @@ class SketchfabProps(bpy.types.PropertyGroup):
             )
 
 
-class SketchfabEmailToken(bpy.types.Operator):
+class SketchfabEmailToken(Operator):
     bl_idname = "wm.sketchfab_email_token"
     bl_label = "Enter your email to get a sketchfab token"
 
@@ -424,12 +433,59 @@ def terminate(filepath):
     os.remove(filepath)
     os.rmdir(os.path.dirname(filepath))
 
+
+# Add-ons Preferences Update Panel
+
+# Define Panel classes for updating
+panels = (
+        VIEW3D_PT_sketchfab,
+        )
+
+
+def update_panel(self, context):
+    message = "Sketchfab Exporter: Updating Panel locations has failed"
+    try:
+        for panel in panels:
+            if "bl_rna" in panel.__dict__:
+                bpy.utils.unregister_class(panel)
+
+        for panel in panels:
+            panel.bl_category = context.user_preferences.addons[__name__].preferences.category
+            bpy.utils.register_class(panel)
+
+    except Exception as e:
+        print("\n[{}]\n{}\n\nError:\n{}".format(__name__, message, e))
+        pass
+
+
+class SfabAddonPreferences(AddonPreferences):
+    # this must match the addon name, use '__package__'
+    # when defining this in a submodule of a python package.
+    bl_idname = __name__
+
+    category = StringProperty(
+            name="Tab Category",
+            description="Choose a name for the category of the panel",
+            default="File I/O",
+            update=update_panel
+            )
+
+    def draw(self, context):
+        layout = self.layout
+
+        row = layout.row()
+        col = row.column()
+        col.label(text="Tab Category:")
+        col.prop(self, "category", text="")
+
+
 # registration
 classes = (
     ExportSketchfab,
     SketchfabProps,
     SketchfabEmailToken,
     VIEW3D_PT_sketchfab,
+    SfabAddonPreferences,
     )
 
 
@@ -442,6 +498,7 @@ def register():
 
     load_token()
     bpy.app.handlers.load_post.append(load_token)
+    update_panel(None, bpy.context)
 
 
 def unregister():

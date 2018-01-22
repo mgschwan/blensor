@@ -45,7 +45,7 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BLI_blenlib.h"
 #include "BLI_utildefines.h"
@@ -78,7 +78,7 @@
 static void validate_fmodifier_cb(bContext *UNUSED(C), void *fcm_v, void *UNUSED(arg))
 {
 	FModifier *fcm = (FModifier *)fcm_v;
-	FModifierTypeInfo *fmi = fmodifier_get_typeinfo(fcm);
+	const FModifierTypeInfo *fmi = fmodifier_get_typeinfo(fcm);
 	
 	/* call the verify callback on the modifier if applicable */
 	if (fmi && fmi->verify_data)
@@ -555,7 +555,7 @@ static void draw_modifier__stepped(uiLayout *layout, ID *id, FModifier *fcm, sho
 
 void ANIM_uiTemplate_fmodifier_draw(uiLayout *layout, ID *id, ListBase *modifiers, FModifier *fcm)
 {
-	FModifierTypeInfo *fmi = fmodifier_get_typeinfo(fcm);
+	const FModifierTypeInfo *fmi = fmodifier_get_typeinfo(fcm);
 	uiLayout *box, *row, *sub, *col;
 	uiBlock *block;
 	uiBut *but;
@@ -697,14 +697,14 @@ static ListBase fmodifier_copypaste_buf = {NULL, NULL};
 /* ---------- */
 
 /* free the copy/paste buffer */
-void free_fmodifiers_copybuf(void)
+void ANIM_fmodifiers_copybuf_free(void)
 {
 	/* just free the whole buffer */
 	free_fmodifiers(&fmodifier_copypaste_buf);
 }
 
 /* copy the given F-Modifiers to the buffer, returning whether anything was copied or not
- * assuming that the buffer has been cleared already with free_fmodifiers_copybuf()
+ * assuming that the buffer has been cleared already with ANIM_fmodifiers_copybuf_free()
  *	- active: only copy the active modifier
  */
 bool ANIM_fmodifiers_copy_to_buf(ListBase *modifiers, bool active)

@@ -21,14 +21,12 @@
 bl_info = {
     "name": "Wavefront OBJ format",
     "author": "Campbell Barton, Bastien Montagne",
-    "version": (2, 1, 0),
-    "blender": (2, 73, 0),
+    "version": (2, 3, 6),
+    "blender": (2, 78, 0),
     "location": "File > Import-Export",
-    "description": "Import-Export OBJ, Import OBJ mesh, UV's, "
-                   "materials and textures",
+    "description": "Import-Export OBJ, Import OBJ mesh, UV's, materials and textures",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
-                "Scripts/Import-Export/Wavefront_OBJ",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Import-Export/Wavefront_OBJ",
     "support": 'OFFICIAL',
     "category": "Import-Export"}
 
@@ -41,20 +39,25 @@ if "bpy" in locals():
 
 
 import bpy
-from bpy.props import (BoolProperty,
-                       FloatProperty,
-                       StringProperty,
-                       EnumProperty,
-                       )
-from bpy_extras.io_utils import (ImportHelper,
-                                 ExportHelper,
-                                 OrientationHelper,
-                                 path_reference_mode,
-                                 axis_conversion,
-                                 )
+from bpy.props import (
+        BoolProperty,
+        FloatProperty,
+        StringProperty,
+        EnumProperty,
+        )
+from bpy_extras.io_utils import (
+        ImportHelper,
+        ExportHelper,
+        orientation_helper_factory,
+        path_reference_mode,
+        axis_conversion,
+        )
 
 
-class ImportOBJ(bpy.types.Operator, ImportHelper, OrientationHelper):
+IOOBJOrientationHelper = orientation_helper_factory("IOOBJOrientationHelper", axis_forward='-Z', axis_up='Y')
+
+
+class ImportOBJ(bpy.types.Operator, ImportHelper, IOOBJOrientationHelper):
     """Load a Wavefront OBJ File"""
     bl_idname = "import_scene.obj"
     bl_label = "Import OBJ"
@@ -136,12 +139,13 @@ class ImportOBJ(bpy.types.Operator, ImportHelper, OrientationHelper):
                                         from_up=self.axis_up,
                                         ).to_4x4()
         keywords["global_matrix"] = global_matrix
+        keywords["use_cycles"] = (context.scene.render.engine == 'CYCLES')
 
         if bpy.data.is_saved and context.user_preferences.filepaths.use_relative_paths:
             import os
-            keywords["relpath"] = os.path.dirname((bpy.data.path_resolve("filepath", False).as_bytes()))
+            keywords["relpath"] = os.path.dirname(bpy.data.filepath)
 
-        return import_obj.load(self, context, **keywords)
+        return import_obj.load(context, **keywords)
 
     def draw(self, context):
         layout = self.layout
@@ -170,7 +174,7 @@ class ImportOBJ(bpy.types.Operator, ImportHelper, OrientationHelper):
         layout.prop(self, "use_image_search")
 
 
-class ExportOBJ(bpy.types.Operator, ExportHelper, OrientationHelper):
+class ExportOBJ(bpy.types.Operator, ExportHelper, IOOBJOrientationHelper):
     """Save a Wavefront OBJ File"""
 
     bl_idname = "export_scene.obj"
@@ -198,8 +202,13 @@ class ExportOBJ(bpy.types.Operator, ExportHelper, OrientationHelper):
     # object group
     use_mesh_modifiers = BoolProperty(
             name="Apply Modifiers",
-            description="Apply modifiers (preview resolution)",
+            description="Apply modifiers",
             default=True,
+            )
+    use_mesh_modifiers_render = BoolProperty(
+            name="Use Modifiers Render Settings",
+            description="Use render settings when applying modifiers to mesh objects",
+            default=False,
             )
 
     # extra data group
@@ -300,7 +309,7 @@ class ExportOBJ(bpy.types.Operator, ExportHelper, OrientationHelper):
                                          ).to_4x4())
 
         keywords["global_matrix"] = global_matrix
-        return export_obj.save(self, context, **keywords)
+        return export_obj.save(context, **keywords)
 
 
 def menu_func_import(self, context):
@@ -311,18 +320,27 @@ def menu_func_export(self, context):
     self.layout.operator(ExportOBJ.bl_idname, text="Wavefront (.obj)")
 
 
+classes = (
+    ImportOBJ,
+    ExportOBJ,
+)
+
+
 def register():
-    bpy.utils.register_module(__name__)
+    for cls in classes:
+        bpy.utils.register_class(cls)
 
     bpy.types.INFO_MT_file_import.append(menu_func_import)
     bpy.types.INFO_MT_file_export.append(menu_func_export)
 
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
-
     bpy.types.INFO_MT_file_import.remove(menu_func_import)
     bpy.types.INFO_MT_file_export.remove(menu_func_export)
+
+    for cls in classes:
+        bpy.utils.unregister_class(cls)
+
 
 if __name__ == "__main__":
     register()

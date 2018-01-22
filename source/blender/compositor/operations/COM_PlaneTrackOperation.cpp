@@ -29,8 +29,6 @@
 #include "BLI_math_color.h"
 
 extern "C" {
-#  include "BLI_jitter.h"
-
 #  include "BKE_movieclip.h"
 #  include "BKE_node.h"
 #  include "BKE_tracking.h"
@@ -71,7 +69,7 @@ void PlaneTrackCommon::readCornersFromTrack(float corners[4][2], float frame)
 	}
 }
 
-void PlaneTrackCommon::determineResolution(unsigned int resolution[2], unsigned int preferredResolution[2])
+void PlaneTrackCommon::determineResolution(unsigned int resolution[2], unsigned int /*preferredResolution*/[2])
 {
 	resolution[0] = 0;
 	resolution[1] = 0;

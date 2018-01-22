@@ -29,9 +29,9 @@
 #include "MEM_guardedalloc.h"
 
 #include "BLI_math.h"
-#include "BLI_array.h"
 #include "BLI_alloca.h"
 #include "BLI_stackdefines.h"
+#include "BLI_stack.h"
 
 #include "BKE_customdata.h"
 
@@ -73,86 +73,113 @@ static void remdoubles_splitface(BMFace *f, BMesh *bm, BMOperator *op, BMOpSlot 
 
 #define ELE_DEL		1
 #define EDGE_COL	2
-#define FACE_MARK	2
+#define VERT_IN_FACE	4
 
 /**
  * helper function for bmo_weld_verts_exec so we can use stack memory
  */
-static void remdoubles_createface(BMesh *bm, BMFace *f, BMOpSlot *slot_targetmap)
+static BMFace *remdoubles_createface(BMesh *bm, BMFace *f, BMOpSlot *slot_targetmap)
 {
-	BMIter liter;
-	BMFace *f_new;
 	BMEdge *e_new;
 
-	BMLoop *l;
-
-	BMEdge **edges = BLI_array_alloca(edges, f->len);
-	BMLoop **loops = BLI_array_alloca(loops, f->len);
+	BMEdge **edges = BLI_array_alloca(edges, f->len);  /* new ordered edges */
+	BMVert **verts = BLI_array_alloca(verts, f->len);  /* new ordered verts */
+	BMLoop **loops = BLI_array_alloca(loops, f->len);  /* original ordered loops to copy attrs into the new face */
 
 	STACK_DECLARE(edges);
 	STACK_DECLARE(loops);
+	STACK_DECLARE(verts);
 
 	STACK_INIT(edges, f->len);
 	STACK_INIT(loops, f->len);
+	STACK_INIT(verts, f->len);
 
-	BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
-		BMVert *v1 = l->v;
-		BMVert *v2 = l->next->v;
 
-		const bool is_del_v1 = BMO_elem_flag_test_bool(bm, v1, ELE_DEL);
-		const bool is_del_v2 = BMO_elem_flag_test_bool(bm, v2, ELE_DEL);
+	{
+#define LOOP_MAP_VERT_INIT(l_init, v_map, is_del) \
+		v_map = l_init->v; \
+		is_del = BMO_vert_flag_test_bool(bm, v_map, ELE_DEL); \
+		if (is_del) { \
+			v_map = BMO_slot_map_elem_get(slot_targetmap, v_map); \
+		} ((void)0)
 
-		/* only search for a new edge if one of the verts is mapped */
-		if (is_del_v1 || is_del_v2) {
-			if (is_del_v1)
-				v1 = BMO_slot_map_elem_get(slot_targetmap, v1);
-			if (is_del_v2)
-				v2 = BMO_slot_map_elem_get(slot_targetmap, v2);
 
-			e_new = (v1 != v2) ? BM_edge_exists(v1, v2) : NULL;
-		}
-		else {
-			e_new = l->e;
-		}
+		BMLoop *l_first, *l_curr, *l_next;
+		BMVert *v_curr;
+		bool is_del_v_curr;
 
-		if (e_new) {
-			unsigned int i;
-			for (i = 0; i < STACK_SIZE(edges); i++) {
-				if (edges[i] == e_new) {
-					break;
+		l_curr = l_first = BM_FACE_FIRST_LOOP(f);
+		LOOP_MAP_VERT_INIT(l_curr, v_curr, is_del_v_curr);
+
+		do {
+			BMVert *v_next;
+			bool is_del_v_next;
+
+			l_next = l_curr->next;
+			LOOP_MAP_VERT_INIT(l_next, v_next, is_del_v_next);
+
+			/* only search for a new edge if one of the verts is mapped */
+			if ((is_del_v_curr || is_del_v_next) == 0) {
+				e_new = l_curr->e;
+			}
+			else if (v_curr == v_next) {
+				e_new = NULL;  /* skip */
+			}
+			else {
+				e_new = BM_edge_exists(v_curr, v_next);
+				BLI_assert(e_new);  /* never fails */
+			}
+
+			if (e_new) {
+				if (UNLIKELY(BMO_vert_flag_test(bm, v_curr, VERT_IN_FACE))) {
+					/* we can't make the face, bail out */
+					STACK_CLEAR(edges);
+					goto finally;
 				}
-			}
-			if (UNLIKELY(i != STACK_SIZE(edges))) {
-				continue;
+				BMO_vert_flag_enable(bm, v_curr, VERT_IN_FACE);
+
+				STACK_PUSH(edges, e_new);
+				STACK_PUSH(loops, l_curr);
+				STACK_PUSH(verts, v_curr);
 			}
 
-			STACK_PUSH(edges, e_new);
-			STACK_PUSH(loops, l);
+			v_curr = v_next;
+			is_del_v_curr = is_del_v_next;
+		} while ((l_curr = l_next) != l_first);
+
+#undef LOOP_MAP_VERT_INIT
+
+	}
+
+finally:
+	{
+		uint i;
+		for (i = 0; i < STACK_SIZE(verts); i++) {
+			BMO_vert_flag_disable(bm, verts[i], VERT_IN_FACE);
 		}
 	}
 
 	if (STACK_SIZE(edges) >= 3) {
-		BMVert *v1 = loops[0]->v;
-		BMVert *v2 = loops[1]->v;
+		if (!BM_face_exists(verts, STACK_SIZE(edges))) {
+			BMFace *f_new = BM_face_create(bm, verts, edges, STACK_SIZE(edges), f, BM_CREATE_NOP);
+			BLI_assert(f_new != f);
 
-		if (BMO_elem_flag_test(bm, v1, ELE_DEL)) {
-			v1 = BMO_slot_map_elem_get(slot_targetmap, v1);
-		}
-		if (BMO_elem_flag_test(bm, v2, ELE_DEL)) {
-			v2 = BMO_slot_map_elem_get(slot_targetmap, v2);
-		}
+			if (f_new) {
+				uint i = 0;
+				BMLoop *l_iter, *l_first;
+				l_iter = l_first = BM_FACE_FIRST_LOOP(f_new);
+				do {
+					BM_elem_attrs_copy(bm, bm, loops[i], l_iter);
+				} while ((void)i++, (l_iter = l_iter->next) != l_first);
 
-		f_new = BM_face_create_ngon(bm, v1, v2, edges, STACK_SIZE(edges), f, BM_CREATE_NO_DOUBLE);
-		BLI_assert(f_new != f);
-
-		if (f_new) {
-			unsigned int i;
-			BM_ITER_ELEM_INDEX (l, &liter, f_new, BM_LOOPS_OF_FACE, i) {
-				BM_elem_attrs_copy(bm, bm, loops[i], l);
+				return f_new;
 			}
 		}
 	}
+
+	return NULL;
 }
+
 
 /**
  * \note with 'targetmap', multiple 'keys' are currently supported, though no callers should be using.
@@ -171,7 +198,7 @@ void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 	/* mark merge verts for deletion */
 	BM_ITER_MESH (v1, &iter, bm, BM_VERTS_OF_MESH) {
 		if ((v2 = BMO_slot_map_elem_get(slot_targetmap, v1))) {
-			BMO_elem_flag_enable(bm, v1, ELE_DEL);
+			BMO_vert_flag_enable(bm, v1, ELE_DEL);
 
 			/* merge the vertex flags, else we get randomly selected/unselected verts */
 			BM_elem_flag_merge(v1, v2);
@@ -185,8 +212,8 @@ void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 	}
 
 	BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
-		const bool is_del_v1 = BMO_elem_flag_test_bool(bm, (v1 = e->v1), ELE_DEL);
-		const bool is_del_v2 = BMO_elem_flag_test_bool(bm, (v2 = e->v2), ELE_DEL);
+		const bool is_del_v1 = BMO_vert_flag_test_bool(bm, (v1 = e->v1), ELE_DEL);
+		const bool is_del_v2 = BMO_vert_flag_test_bool(bm, (v2 = e->v2), ELE_DEL);
 
 		if (is_del_v1 || is_del_v2) {
 			if (is_del_v1)
@@ -195,42 +222,56 @@ void bmo_weld_verts_exec(BMesh *bm, BMOperator *op)
 				v2 = BMO_slot_map_elem_get(slot_targetmap, v2);
 
 			if (v1 == v2) {
-				BMO_elem_flag_enable(bm, e, EDGE_COL);
+				BMO_edge_flag_enable(bm, e, EDGE_COL);
 			}
-			else if (!BM_edge_exists(v1, v2)) {
-				BM_edge_create(bm, v1, v2, e, BM_CREATE_NO_DOUBLE);
+			else {
+				/* always merge flags, even for edges we already created */
+				BMEdge *e_new = BM_edge_exists(v1, v2);
+				if (e_new == NULL) {
+					e_new = BM_edge_create(bm, v1, v2, e, BM_CREATE_NOP);
+				}
+				BM_elem_flag_merge(e_new, e);
 			}
 
-			BMO_elem_flag_enable(bm, e, ELE_DEL);
+			BMO_edge_flag_enable(bm, e, ELE_DEL);
 		}
 	}
-
-	/* BMESH_TODO, stop abusing face index here */
-	BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
-		BM_elem_index_set(f, 0); /* set_dirty! */
-		BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
-			if (BMO_elem_flag_test(bm, l->v, ELE_DEL)) {
-				BMO_elem_flag_enable(bm, f, FACE_MARK | ELE_DEL);
-			}
-			if (BMO_elem_flag_test(bm, l->e, EDGE_COL)) {
-				BM_elem_index_set(f, BM_elem_index_get(f) + 1); /* set_dirty! */
-			}
-		}
-	}
-	bm->elem_index_dirty |= BM_FACE | BM_LOOP;
 
 	/* faces get "modified" by creating new faces here, then at the
 	 * end the old faces are deleted */
 	BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
-		if (!BMO_elem_flag_test(bm, f, FACE_MARK))
-			continue;
+		bool vert_delete = false;
+		int  edge_collapse = 0;
 
-		if (f->len - BM_elem_index_get(f) < 3) {
-			BMO_elem_flag_enable(bm, f, ELE_DEL);
-			continue;
+		BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
+			if (BMO_vert_flag_test(bm, l->v, ELE_DEL)) {
+				vert_delete = true;
+			}
+			if (BMO_edge_flag_test(bm, l->e, EDGE_COL)) {
+				edge_collapse++;
+			}
 		}
 
-		remdoubles_createface(bm, f, slot_targetmap);
+		if (vert_delete) {
+			BMO_face_flag_enable(bm, f, ELE_DEL);
+
+			if (f->len - edge_collapse >= 3) {
+				BMFace *f_new = remdoubles_createface(bm, f, slot_targetmap);
+
+				/* do this so we don't need to return a list of created faces */
+				if (f_new) {
+					bmesh_face_swap_data(f_new, f);
+
+					if (bm->use_toolflags) {
+						SWAP(BMFlagLayer *, ((BMFace_OFlag *)f)->oflags, ((BMFace_OFlag *)f_new)->oflags);
+					}
+
+					BMO_face_flag_disable(bm, f, ELE_DEL);
+
+					BM_face_kill(bm, f_new);
+				}
+			}
+		}
 	}
 
 	BMO_mesh_delete_oflag_context(bm, ELE_DEL, DEL_ONLYTAGGED);
@@ -244,6 +285,13 @@ static int vergaverco(const void *e1, const void *e2)
 
 	if      (x1 > x2) return  1;
 	else if (x1 < x2) return -1;
+
+	const int i1 = BM_elem_index_get(v1);
+	const int i2 = BM_elem_index_get(v2);
+
+	if      (i1 > i2) return  1;
+	else if (i1 < i2) return -1;
+
 	else return 0;
 }
 
@@ -261,7 +309,7 @@ void bmo_pointmerge_facedata_exec(BMesh *bm, BMOperator *op)
 	BMOIter siter;
 	BMIter iter;
 	BMVert *v, *vert_snap;
-	BMLoop *l, *firstl = NULL;
+	BMLoop *l, *l_first = NULL;
 	float fac;
 	int i, tot;
 
@@ -273,33 +321,35 @@ void bmo_pointmerge_facedata_exec(BMesh *bm, BMOperator *op)
 
 	fac = 1.0f / tot;
 	BM_ITER_ELEM (l, &iter, vert_snap, BM_LOOPS_OF_VERT) {
-		if (!firstl) {
-			firstl = l;
+		if (l_first == NULL) {
+			l_first = l;
 		}
 		
 		for (i = 0; i < bm->ldata.totlayer; i++) {
 			if (CustomData_layer_has_math(&bm->ldata, i)) {
-				int type = bm->ldata.layers[i].type;
+				const int type = bm->ldata.layers[i].type;
+				const int offset = bm->ldata.layers[i].offset;
 				void *e1, *e2;
 
-				e1 = CustomData_bmesh_get_layer_n(&bm->ldata, firstl->head.data, i);
-				e2 = CustomData_bmesh_get_layer_n(&bm->ldata, l->head.data, i);
+				e1 = BM_ELEM_CD_GET_VOID_P(l_first, offset);
+				e2 = BM_ELEM_CD_GET_VOID_P(l,       offset);
 				
 				CustomData_data_multiply(type, e2, fac);
 
-				if (l != firstl)
+				if (l != l_first) {
 					CustomData_data_add(type, e1, e2);
+				}
 			}
 		}
 	}
 
 	BMO_ITER (v, &siter, op->slots_in, "verts", BM_VERT) {
 		BM_ITER_ELEM (l, &iter, v, BM_LOOPS_OF_VERT) {
-			if (l == firstl) {
+			if (l == l_first) {
 				continue;
 			}
 
-			CustomData_bmesh_copy_data(&bm->ldata, &bm->ldata, firstl->head.data, &l->head.data);
+			CustomData_bmesh_copy_data(&bm->ldata, &bm->ldata, l_first->head.data, &l->head.data);
 		}
 	}
 }
@@ -311,19 +361,20 @@ void bmo_average_vert_facedata_exec(BMesh *bm, BMOperator *op)
 	BMVert *v;
 	BMLoop *l /* , *firstl = NULL */;
 	CDBlockBytes min, max;
-	void *block;
-	int i, type;
+	int i;
 
 	for (i = 0; i < bm->ldata.totlayer; i++) {
+		const int type = bm->ldata.layers[i].type;
+		const int offset = bm->ldata.layers[i].offset;
+
 		if (!CustomData_layer_has_math(&bm->ldata, i))
 			continue;
 		
-		type = bm->ldata.layers[i].type;
 		CustomData_data_initminmax(type, &min, &max);
 
 		BMO_ITER (v, &siter, op->slots_in, "verts", BM_VERT) {
 			BM_ITER_ELEM (l, &iter, v, BM_LOOPS_OF_VERT) {
-				block = CustomData_bmesh_get_layer_n(&bm->ldata, l->head.data, i);
+				void *block = BM_ELEM_CD_GET_VOID_P(l, offset);
 				CustomData_data_dominmax(type, block, &min, &max);
 			}
 		}
@@ -334,7 +385,7 @@ void bmo_average_vert_facedata_exec(BMesh *bm, BMOperator *op)
 
 		BMO_ITER (v, &siter, op->slots_in, "verts", BM_VERT) {
 			BM_ITER_ELEM (l, &iter, v, BM_LOOPS_OF_VERT) {
-				block = CustomData_bmesh_get_layer_n(&bm->ldata, l->head.data, i);
+				void *block = BM_ELEM_CD_GET_VOID_P(l, offset);
 				CustomData_data_copy_value(type, &min, block);
 			}
 		}
@@ -375,13 +426,14 @@ void bmo_collapse_exec(BMesh *bm, BMOperator *op)
 	BMOperator weldop;
 	BMWalker walker;
 	BMIter iter;
-	BMEdge *e, **edges = NULL;
-	BLI_array_declare(edges);
-	float min[3], max[3], center[3];
-	unsigned int i, tot;
+	BMEdge *e;
+	BLI_Stack *edge_stack;
 	BMOpSlot *slot_targetmap;
-	
-	BMO_op_callf(bm, op->flag, "collapse_uvs edges=%s", op, "edges");
+
+	if (BMO_slot_bool_get(op->slots_in, "uvs")) {
+		BMO_op_callf(bm, op->flag, "collapse_uvs edges=%s", op, "edges");
+	}
+
 	BMO_op_init(bm, &weldop, op->flag, "weld_verts");
 	slot_targetmap = BMO_slot_get(weldop.slots_in, "targetmap");
 
@@ -392,100 +444,116 @@ void bmo_collapse_exec(BMesh *bm, BMOperator *op)
 	         BMW_FLAG_NOP, /* no need to use BMW_FLAG_TEST_HIDDEN, already marked data */
 	         BMW_NIL_LAY);
 
+	edge_stack = BLI_stack_new(sizeof(BMEdge *), __func__);
+
 	BM_ITER_MESH (e, &iter, bm, BM_EDGES_OF_MESH) {
+		float center[3];
+		int count = 0;
 		BMVert *v_tar;
 
-		if (!BMO_elem_flag_test(bm, e, EDGE_MARK))
+		zero_v3(center);
+
+		if (!BMO_edge_flag_test(bm, e, EDGE_MARK))
 			continue;
 
-		BLI_array_empty(edges);
+		BLI_assert(BLI_stack_is_empty(edge_stack));
 
-		INIT_MINMAX(min, max);
-		for (e = BMW_begin(&walker, e->v1), tot = 0; e; e = BMW_step(&walker), tot++) {
-			BLI_array_grow_one(edges);
-			edges[tot] = e;
+		for (e = BMW_begin(&walker, e->v1); e; e = BMW_step(&walker)) {
+			BLI_stack_push(edge_stack, &e);
 
-			minmax_v3v3_v3(min, max, e->v1->co);
-			minmax_v3v3_v3(min, max, e->v2->co);
+			add_v3_v3(center, e->v1->co);
+			add_v3_v3(center, e->v2->co);
+
+			count += 2;
 
 			/* prevent adding to slot_targetmap multiple times */
 			BM_elem_flag_disable(e->v1, BM_ELEM_TAG);
 			BM_elem_flag_disable(e->v2, BM_ELEM_TAG);
 		}
 
-		mid_v3_v3v3(center, min, max);
+		if (!BLI_stack_is_empty(edge_stack)) {
+			mul_v3_fl(center, 1.0f / count);
 
-		/* snap edges to a point.  for initial testing purposes anyway */
-		v_tar = edges[0]->v1;
+			/* snap edges to a point.  for initial testing purposes anyway */
+			e = *(BMEdge **)BLI_stack_peek(edge_stack);
+			v_tar = e->v1;
 
-		for (i = 0; i < tot; i++) {
-			unsigned int j;
+			while (!BLI_stack_is_empty(edge_stack)) {
+				uint j;
+				BLI_stack_pop(edge_stack, &e);
 
-			for (j = 0; j < 2; j++) {
-				BMVert *v_src = *((&edges[i]->v1) + j);
+				for (j = 0; j < 2; j++) {
+					BMVert *v_src = *((&e->v1) + j);
 
-				copy_v3_v3(v_src->co, center);
-				if ((v_src != v_tar) && !BM_elem_flag_test(v_src, BM_ELEM_TAG)) {
-					BM_elem_flag_enable(v_src, BM_ELEM_TAG);
-					BMO_slot_map_elem_insert(&weldop, slot_targetmap, v_src, v_tar);
-				}
-			}
-		}
-	}
-	
-	BMO_op_exec(bm, &weldop);
-	BMO_op_finish(bm, &weldop);
-
-	BMW_end(&walker);
-	BLI_array_free(edges);
-}
-
-/* uv collapse function */
-static void bmo_collapsecon_do_layer(BMesh *bm, const int layer, const short oflag)
-{
-	BMIter iter, liter;
-	BMFace *f;
-	BMLoop *l, *l2;
-	BMWalker walker;
-	void **blocks = NULL;
-	BLI_array_declare(blocks);
-	CDBlockBytes min, max;
-	int i, tot, type = bm->ldata.layers[layer].type;
-
-	BMW_init(&walker, bm, BMW_LOOPDATA_ISLAND,
-	         BMW_MASK_NOP, oflag, BMW_MASK_NOP,
-	         BMW_FLAG_NOP, /* no need to use BMW_FLAG_TEST_HIDDEN, already marked data */
-	         layer);
-
-	BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
-		BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
-			if (BMO_elem_flag_test(bm, l->e, oflag)) {
-				/* walk */
-				BLI_array_empty(blocks);
-
-				CustomData_data_initminmax(type, &min, &max);
-				for (l2 = BMW_begin(&walker, l), tot = 0; l2; l2 = BMW_step(&walker), tot++) {
-					BLI_array_grow_one(blocks);
-					blocks[tot] = CustomData_bmesh_get_layer_n(&bm->ldata, l2->head.data, layer);
-					CustomData_data_dominmax(type, blocks[tot], &min, &max);
-				}
-
-				if (tot) {
-					CustomData_data_multiply(type, &min, 0.5f);
-					CustomData_data_multiply(type, &max, 0.5f);
-					CustomData_data_add(type, &min, &max);
-
-					/* snap CD (uv, vcol) points to their centroid */
-					for (i = 0; i < tot; i++) {
-						CustomData_data_copy_value(type, &min, blocks[i]);
+					copy_v3_v3(v_src->co, center);
+					if ((v_src != v_tar) && !BM_elem_flag_test(v_src, BM_ELEM_TAG)) {
+						BM_elem_flag_enable(v_src, BM_ELEM_TAG);
+						BMO_slot_map_elem_insert(&weldop, slot_targetmap, v_src, v_tar);
 					}
 				}
 			}
 		}
 	}
 
+	BLI_stack_free(edge_stack);
+
+	BMO_op_exec(bm, &weldop);
+	BMO_op_finish(bm, &weldop);
+
 	BMW_end(&walker);
-	BLI_array_free(blocks);
+}
+
+/* uv collapse function */
+static void bmo_collapsecon_do_layer(BMesh *bm, const int layer, const short oflag)
+{
+	const int type = bm->ldata.layers[layer].type;
+	const int offset = bm->ldata.layers[layer].offset;
+	BMIter iter, liter;
+	BMFace *f;
+	BMLoop *l, *l2;
+	BMWalker walker;
+	BLI_Stack *block_stack;
+	CDBlockBytes min, max;
+
+	BMW_init(&walker, bm, BMW_LOOPDATA_ISLAND,
+	         BMW_MASK_NOP, oflag, BMW_MASK_NOP,
+	         BMW_FLAG_NOP, /* no need to use BMW_FLAG_TEST_HIDDEN, already marked data */
+	         layer);
+
+	block_stack = BLI_stack_new(sizeof(void *), __func__);
+
+	BM_ITER_MESH (f, &iter, bm, BM_FACES_OF_MESH) {
+		BM_ITER_ELEM (l, &liter, f, BM_LOOPS_OF_FACE) {
+			if (BMO_edge_flag_test(bm, l->e, oflag)) {
+				/* walk */
+				BLI_assert(BLI_stack_is_empty(block_stack));
+
+				CustomData_data_initminmax(type, &min, &max);
+				for (l2 = BMW_begin(&walker, l); l2; l2 = BMW_step(&walker)) {
+					void *block = BM_ELEM_CD_GET_VOID_P(l2, offset);
+					CustomData_data_dominmax(type, block, &min, &max);
+					BLI_stack_push(block_stack, &block);
+				}
+
+				if (!BLI_stack_is_empty(block_stack)) {
+					CustomData_data_multiply(type, &min, 0.5f);
+					CustomData_data_multiply(type, &max, 0.5f);
+					CustomData_data_add(type, &min, &max);
+
+					/* snap CD (uv, vcol) points to their centroid */
+					while (!BLI_stack_is_empty(block_stack)) {
+						void *block;
+						BLI_stack_pop(block_stack, &block);
+						CustomData_data_copy_value(type, &min, block);
+					}
+				}
+			}
+		}
+	}
+
+	BLI_stack_free(block_stack);
+
+	BMW_end(&walker);
 }
 
 void bmo_collapse_uvs_exec(BMesh *bm, BMOperator *op)
@@ -519,8 +587,9 @@ void bmo_collapse_uvs_exec(BMesh *bm, BMOperator *op)
 
 }
 
-static void bmesh_find_doubles_common(BMesh *bm, BMOperator *op,
-                                      BMOperator *optarget, BMOpSlot *optarget_slot)
+static void bmesh_find_doubles_common(
+        BMesh *bm, BMOperator *op,
+        BMOperator *optarget, BMOpSlot *optarget_slot)
 {
 	BMVert  **verts;
 	int       verts_len;
@@ -540,6 +609,12 @@ static void bmesh_find_doubles_common(BMesh *bm, BMOperator *op,
 	/* get the verts as an array we can sort */
 	verts = BMO_slot_as_arrayN(op->slots_in, "verts", &verts_len);
 
+	/* Ensure indices are different so we have a predictable order when values match. */
+	for (i = 0; i < verts_len; i++) {
+		BM_elem_index_set(verts[i], i);  /* set_dirty! */
+	}
+	bm->elem_index_dirty |= BM_VERT;
+
 	/* sort by vertex coordinates added together */
 	qsort(verts, verts_len, sizeof(BMVert *), vergaverco);
 
@@ -551,7 +626,7 @@ static void bmesh_find_doubles_common(BMesh *bm, BMOperator *op,
 	for (i = 0; i < verts_len; i++) {
 		BMVert *v_check = verts[i];
 
-		if (BMO_elem_flag_test(bm, v_check, VERT_DOUBLE | VERT_TARGET)) {
+		if (BMO_vert_flag_test(bm, v_check, VERT_DOUBLE | VERT_TARGET)) {
 			continue;
 		}
 
@@ -559,7 +634,7 @@ static void bmesh_find_doubles_common(BMesh *bm, BMOperator *op,
 			BMVert *v_other = verts[j];
 
 			/* a match has already been found, (we could check which is best, for now don't) */
-			if (BMO_elem_flag_test(bm, v_other, VERT_DOUBLE | VERT_TARGET)) {
+			if (BMO_vert_flag_test(bm, v_other, VERT_DOUBLE | VERT_TARGET)) {
 				continue;
 			}
 
@@ -573,19 +648,19 @@ static void bmesh_find_doubles_common(BMesh *bm, BMOperator *op,
 			}
 
 			if (keepvert) {
-				if (BMO_elem_flag_test(bm, v_other, VERT_KEEP) == BMO_elem_flag_test(bm, v_check, VERT_KEEP))
+				if (BMO_vert_flag_test(bm, v_other, VERT_KEEP) == BMO_vert_flag_test(bm, v_check, VERT_KEEP))
 					continue;
 			}
 
 			if (compare_len_squared_v3v3(v_check->co, v_other->co, dist_sq)) {
 
 				/* If one vert is marked as keep, make sure it will be the target */
-				if (BMO_elem_flag_test(bm, v_other, VERT_KEEP)) {
+				if (BMO_vert_flag_test(bm, v_other, VERT_KEEP)) {
 					SWAP(BMVert *, v_check, v_other);
 				}
 
-				BMO_elem_flag_enable(bm, v_other, VERT_DOUBLE);
-				BMO_elem_flag_enable(bm, v_check, VERT_TARGET);
+				BMO_vert_flag_enable(bm, v_other, VERT_DOUBLE);
+				BMO_vert_flag_enable(bm, v_check, VERT_TARGET);
 
 				BMO_slot_map_elem_insert(optarget, optarget_slot, v_other, v_check);
 			}
@@ -628,8 +703,8 @@ void bmo_automerge_exec(BMesh *bm, BMOperator *op)
 	 * as VERT_KEEP. */
 	BMO_slot_buffer_flag_enable(bm, op->slots_in, "verts", BM_VERT, VERT_IN);
 	BM_ITER_MESH (v, &viter, bm, BM_VERTS_OF_MESH) {
-		if (!BMO_elem_flag_test(bm, v, VERT_IN)) {
-			BMO_elem_flag_enable(bm, v, VERT_KEEP);
+		if (!BMO_vert_flag_test(bm, v, VERT_IN)) {
+			BMO_vert_flag_enable(bm, v, VERT_KEEP);
 		}
 	}
 

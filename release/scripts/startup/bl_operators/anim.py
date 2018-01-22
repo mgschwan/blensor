@@ -28,15 +28,15 @@ if "bpy" in locals():
 import bpy
 from bpy.types import Operator
 from bpy.props import (
-        IntProperty,
-        BoolProperty,
-        EnumProperty,
-        StringProperty,
-        )
+    IntProperty,
+    BoolProperty,
+    EnumProperty,
+    StringProperty,
+)
 
 
 class ANIM_OT_keying_set_export(Operator):
-    "Export Keying Set to a python script"
+    """Export Keying Set to a python script"""
     bl_idname = "anim.keying_set_export"
     bl_label = "Export Keying Set..."
 
@@ -102,16 +102,47 @@ class ANIM_OT_keying_set_export(Operator):
             if ksp.id in id_to_paths_cache:
                 continue
 
-            """
-            - idtype_list is used to get the list of id-datablocks from
-              bpy.data.* since this info isn't available elsewhere
-            - id.bl_rna.name gives a name suitable for UI,
-              with a capitalised first letter, but we need
-              the plural form that's all lower case
-            """
+            # - idtype_list is used to get the list of id-datablocks from
+            #   bpy.data.* since this info isn't available elsewhere
+            # - id.bl_rna.name gives a name suitable for UI,
+            #   with a capitalised first letter, but we need
+            #   the plural form that's all lower case
+            # - special handling is needed for "nested" ID-blocks
+            #   (e.g. nodetree in Material)
+            if ksp.id.bl_rna.identifier.startswith("ShaderNodeTree"):
+                # Find material or lamp using this node tree...
+                id_bpy_path = "bpy.data.nodes[\"%s\"]"
+                found = False
 
-            idtype_list = ksp.id.bl_rna.name.lower() + "s"
-            id_bpy_path = "bpy.data.%s[\"%s\"]" % (idtype_list, ksp.id.name)
+                for mat in bpy.data.materials:
+                    if mat.node_tree == ksp.id:
+                        id_bpy_path = "bpy.data.materials[\"%s\"].node_tree" % (mat.name)
+                        found = True
+                        break
+
+                if not found:
+                    for lamp in bpy.data.lamps:
+                        if lamp.node_tree == ksp.id:
+                            id_bpy_path = "bpy.data.lamps[\"%s\"].node_tree" % (lamp.name)
+                            found = True
+                            break
+
+                if not found:
+                    self.report({'WARN'}, "Could not find material or lamp using Shader Node Tree - %s" % (ksp.id))
+            elif ksp.id.bl_rna.identifier.startswith("CompositorNodeTree"):
+                # Find compositor nodetree using this node tree...
+                for scene in bpy.data.scenes:
+                    if scene.node_tree == ksp.id:
+                        id_bpy_path = "bpy.data.scenes[\"%s\"].node_tree" % (scene.name)
+                        break
+                else:
+                    self.report({'WARN'}, "Could not find scene using Compositor Node Tree - %s" % (ksp.id))
+            elif ksp.id.bl_rna.name == "Key":
+                # "keys" conflicts with a Python keyword, hence the simple solution won't work
+                id_bpy_path = "bpy.data.shape_keys[\"%s\"]" % (ksp.id.name)
+            else:
+                idtype_list = ksp.id.bl_rna.name.lower() + "s"
+                id_bpy_path = "bpy.data.%s[\"%s\"]" % (idtype_list, ksp.id.name)
 
             # shorthand ID for the ID-block (as used in the script)
             short_id = "id_%d" % len(id_to_paths_cache)
@@ -192,7 +223,7 @@ class BakeAction(Operator):
             )
     only_selected = BoolProperty(
             name="Only Selected",
-            description="Only key selected object/bones",
+            description="Only key selected bones (Pose baking only)",
             default=True,
             )
     visual_keying = BoolProperty(
@@ -210,6 +241,12 @@ class BakeAction(Operator):
             description="Bake animation onto the object then clear parents (objects only)",
             default=False,
             )
+    use_current_action = BoolProperty(
+            name="Overwrite Current Action",
+            description="Bake animation into current action, instead of creating a new one "
+                        "(useful for baking only part of bones in an armature)",
+            default=False,
+            )
     bake_types = EnumProperty(
             name="Bake Data",
             description="Which data's transformations to bake",
@@ -224,6 +261,12 @@ class BakeAction(Operator):
 
         from bpy_extras import anim_utils
 
+        action = None
+        if self.use_current_action:
+            obj = context.object
+            if obj.animation_data:
+                action = obj.animation_data.action
+
         action = anim_utils.bake_action(self.frame_start,
                                         self.frame_end,
                                         frame_step=self.step,
@@ -234,6 +277,7 @@ class BakeAction(Operator):
                                         do_constraint_clear=self.clear_constraints,
                                         do_parents_clear=self.clear_parents,
                                         do_clean=True,
+                                        action=action,
                                         )
 
         if action is None:
@@ -259,9 +303,11 @@ class ClearUselessActions(Operator):
     bl_label = "Clear Useless Actions"
     bl_options = {'REGISTER', 'UNDO'}
 
-    only_unused = BoolProperty(name="Only Unused",
+    only_unused = BoolProperty(
+            name="Only Unused",
             description="Only unused (Fake User only) actions get considered",
-            default=True)
+            default=True,
+            )
 
     @classmethod
     def poll(cls, context):
@@ -350,7 +396,7 @@ class UpdateAnimatedTransformConstraint(Operator):
                     except:
                         pass
                     ret = (data, new_path)
-                    #print(ret)
+                    # print(ret)
 
             return ret
 
@@ -369,3 +415,11 @@ class UpdateAnimatedTransformConstraint(Operator):
             text.from_string(log)
             self.report({'INFO'}, "Complete report available on '%s' text datablock" % text.name)
         return {'FINISHED'}
+
+
+classes = (
+    ANIM_OT_keying_set_export,
+    BakeAction,
+    ClearUselessActions,
+    UpdateAnimatedTransformConstraint,
+)

@@ -30,6 +30,7 @@ class TIME_HT_header(Header):
         scene = context.scene
         toolsettings = context.tool_settings
         screen = context.screen
+        userprefs = context.user_preferences
 
         row = layout.row(align=True)
         row.template_header()
@@ -48,7 +49,10 @@ class TIME_HT_header(Header):
             row.prop(scene, "frame_preview_start", text="Start")
             row.prop(scene, "frame_preview_end", text="End")
 
-        layout.prop(scene, "frame_current", text="")
+        if scene.show_subframe:
+            layout.prop(scene, "frame_float", text="")
+        else:
+            layout.prop(scene, "frame_current", text="")
 
         layout.separator()
 
@@ -82,9 +86,11 @@ class TIME_HT_header(Header):
         if toolsettings.use_keyframe_insert_auto:
             row.prop(toolsettings, "use_keyframe_insert_keyingset", text="", toggle=True)
 
-            if screen.is_animation_playing:
+            if screen.is_animation_playing and not userprefs.edit.use_keyframe_insert_available:
                 subsub = row.row(align=True)
                 subsub.prop(toolsettings, "use_record_with_nla", toggle=True)
+
+        layout.prop(toolsettings, "keyframe_type", text="", icon_only=True)
 
         row = layout.row(align=True)
         row.prop_search(scene.keying_sets_all, "active", scene, "keying_sets_all", text="")
@@ -127,16 +133,21 @@ class TIME_MT_view(Menu):
 
         layout.prop(st, "show_seconds")
         layout.prop(st, "show_locked_time")
-        layout.operator("time.view_all")
 
         layout.separator()
 
         layout.prop(st, "show_frame_indicator")
         layout.prop(scene, "show_keys_from_selected_only")
+        layout.prop(scene, "show_subframe")
 
         layout.separator()
 
         layout.menu("TIME_MT_cache")
+
+        layout.separator()
+
+        layout.operator("time.view_all")
+        layout.operator("time.view_frame")
 
         layout.separator()
 
@@ -145,8 +156,8 @@ class TIME_MT_view(Menu):
         layout.separator()
 
         layout.operator("screen.area_dupli")
-        layout.operator("screen.screen_full_area", text="Toggle Maximize Area")
-        layout.operator("screen.screen_full_area").use_hide_panels = True
+        layout.operator("screen.screen_full_area")
+        layout.operator("screen.screen_full_area", text="Toggle Fullscreen Area").use_hide_panels = True
 
 
 class TIME_MT_cache(Menu):
@@ -229,7 +240,7 @@ class TIME_MT_autokey(Menu):
 
 def marker_menu_generic(layout):
 
-    #layout.operator_context = 'EXEC_REGION_WIN'
+    # layout.operator_context = 'EXEC_REGION_WIN'
 
     layout.column()
     layout.operator("marker.add", "Add Marker")
@@ -239,7 +250,7 @@ def marker_menu_generic(layout):
         layout.operator_context = 'INVOKE_DEFAULT'
         layout.operator("marker.make_links_scene", text="Duplicate Marker to Scene...", icon='OUTLINER_OB_EMPTY')
     else:
-        layout.operator_menu_enum("marker.make_links_scene", "scene", text="Duplicate Marker to Scene...")
+        layout.operator_menu_enum("marker.make_links_scene", "scene", text="Duplicate Marker to Scene")
 
     layout.operator("marker.delete", text="Delete Marker")
 
@@ -253,6 +264,23 @@ def marker_menu_generic(layout):
     layout.operator("screen.marker_jump", text="Jump to Next Marker").next = True
     layout.operator("screen.marker_jump", text="Jump to Previous Marker").next = False
 
+    layout.separator()
+    ts = bpy.context.tool_settings
+    layout.prop(ts, "lock_markers")
+
+
+classes = (
+    TIME_HT_header,
+    TIME_MT_editor_menus,
+    TIME_MT_marker,
+    TIME_MT_view,
+    TIME_MT_cache,
+    TIME_MT_frame,
+    TIME_MT_playback,
+    TIME_MT_autokey,
+)
 
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

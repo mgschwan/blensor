@@ -18,16 +18,18 @@
 
 # <pep8 compliant>
 
+# support reloading sub-modules
 if "bpy" in locals():
     from importlib import reload
-    for val in _modules_loaded.values():
-        reload(val)
+    _modules_loaded[:] = [reload(val) for val in _modules_loaded]
     del reload
+
 _modules = [
     "add_mesh_torus",
     "anim",
     "clip",
     "console",
+    "file",
     "image",
     "mask",
     "mesh",
@@ -46,21 +48,29 @@ _modules = [
     "vertexpaint_dirt",
     "view3d",
     "wm",
-]
+    ]
 
 import bpy
 
 if bpy.app.build_options.freestyle:
     _modules.append("freestyle")
+
 __import__(name=__name__, fromlist=_modules)
 _namespace = globals()
-_modules_loaded = {name: _namespace[name] for name in _modules if name != 'bpy'}
+_modules_loaded = [_namespace[name] for name in _modules]
 del _namespace
 
 
 def register():
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for mod in _modules_loaded:
+        for cls in mod.classes:
+            register_class(cls)
 
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
+    from bpy.utils import unregister_class
+    for mod in reversed(_modules_loaded):
+        for cls in reversed(mod.classes):
+            if cls.is_registered:
+                unregister_class(cls)

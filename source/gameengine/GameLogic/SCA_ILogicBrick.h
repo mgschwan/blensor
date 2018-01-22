@@ -32,20 +32,22 @@
 #ifndef __SCA_ILOGICBRICK_H__
 #define __SCA_ILOGICBRICK_H__
 
-#include "Value.h"
+#include "EXP_Value.h"
 #include "SCA_IObject.h"
-#include "BoolValue.h"
+#include "EXP_BoolValue.h"
 #include "CTR_Map.h"
 #include "CTR_HashedPtr.h"
 
 class NG_NetworkScene;
 class SCA_IScene;
+class SCA_LogicManager;
 
 class SCA_ILogicBrick : public CValue
 {
 	Py_Header
 protected:
 	SCA_IObject*		m_gameobj;
+	SCA_LogicManager *m_logicManager;
 	int					m_Execute_Priority;
 	int					m_Execute_Ueber_Priority;
 
@@ -127,9 +129,8 @@ public:
 
 	virtual	bool		LessComparedTo(SCA_ILogicBrick* other);
 
-	/* runtime variable, set when Triggering the python controller */
-	static class SCA_LogicManager*	m_sCurrentLogicManager;
-
+	virtual void SetLogicManager(SCA_LogicManager *logicmgr);
+	SCA_LogicManager *GetLogicManager();
 
 	/* for moving logic bricks between scenes */
 	virtual void		Replace_IScene(SCA_IScene *val) {}

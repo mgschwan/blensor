@@ -21,9 +21,9 @@
 set(INC
 	../include
 	../uvedit
-	../../blenfont
 	../../blenkernel
 	../../blenlib
+	../../blentranslation
 	../../bmesh
 	../../gpu
 	../../imbuf
@@ -55,6 +55,7 @@ set(SRC
 	editmesh_rip_edge.c
 	editmesh_select.c
 	editmesh_tools.c
+	editmesh_undo.c
 	editmesh_utils.c
 	mesh_data.c
 	mesh_ops.c

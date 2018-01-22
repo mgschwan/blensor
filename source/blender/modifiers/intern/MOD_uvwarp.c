@@ -31,11 +31,13 @@
 #include "DNA_object_types.h"
 
 #include "BLI_math.h"
+#include "BLI_task.h"
 #include "BLI_utildefines.h"
 
 #include "BKE_action.h"  /* BKE_pose_channel_find_name */
 #include "BKE_cdderivedmesh.h"
 #include "BKE_deform.h"
+#include "BKE_library_query.h"
 #include "BKE_modifier.h"
 
 #include "depsgraph_private.h"
@@ -97,16 +99,58 @@ static void matrix_from_obj_pchan(float mat[4][4], Object *ob, const char *bonen
 	}
 }
 
-#ifdef _OPENMP
-#  define OMP_LIMIT 1000
-#endif
+typedef struct UVWarpData {
+	MPoly *mpoly;
+	MLoop *mloop;
+	MLoopUV *mloopuv;
+
+	MDeformVert *dvert;
+	int defgrp_index;
+
+	float (*warp_mat)[4];
+	int axis_u;
+	int axis_v;
+} UVWarpData;
+
+static void uv_warp_compute(void *userdata, const int i)
+{
+	const UVWarpData *data = userdata;
+
+	const MPoly *mp = &data->mpoly[i];
+	const MLoop *ml = &data->mloop[mp->loopstart];
+	MLoopUV *mluv = &data->mloopuv[mp->loopstart];
+
+	const MDeformVert *dvert = data->dvert;
+	const int defgrp_index = data->defgrp_index;
+
+	float (*warp_mat)[4] = data->warp_mat;
+	const int axis_u = data->axis_u;
+	const int axis_v = data->axis_v;
+
+	int l;
+
+	if (dvert) {
+		for (l = 0; l < mp->totloop; l++, ml++, mluv++) {
+			float uv[2];
+			const float weight = defvert_find_weight(&dvert[ml->v], defgrp_index);
+
+			uv_warp_from_mat4_pair(uv, mluv->uv, warp_mat, axis_u, axis_v);
+			interp_v2_v2v2(mluv->uv, mluv->uv, uv, weight);
+		}
+	}
+	else {
+		for (l = 0; l < mp->totloop; l++, ml++, mluv++) {
+			uv_warp_from_mat4_pair(mluv->uv, mluv->uv, warp_mat, axis_u, axis_v);
+		}
+	}
+}
 
 static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
                                   DerivedMesh *dm,
                                   ModifierApplyFlag UNUSED(flag))
 {
 	UVWarpModifierData *umd = (UVWarpModifierData *) md;
-	int i, numPolys, numLoops;
+	int numPolys, numLoops;
 	MPoly *mpoly;
 	MLoop *mloop;
 	MLoopUV *mloopuv;
@@ -163,33 +207,10 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	mloopuv = CustomData_duplicate_referenced_layer_named(&dm->loopData, CD_MLOOPUV, uvname, numLoops);
 	modifier_get_vgroup(ob, dm, umd->vgroup_name, &dvert, &defgrp_index);
 
-	if (dvert) {
-#pragma omp parallel for if (numPolys > OMP_LIMIT)
-		for (i = 0; i < numPolys; i++) {
-			float uv[2];
-			MPoly *mp     = &mpoly[i];
-			MLoop *ml     = &mloop[mp->loopstart];
-			MLoopUV *mluv = &mloopuv[mp->loopstart];
-			int l;
-			for (l = 0; l < mp->totloop; l++, ml++, mluv++) {
-				const float weight = defvert_find_weight(&dvert[ml->v], defgrp_index);
-				uv_warp_from_mat4_pair(uv, mluv->uv, warp_mat, axis_u, axis_v);
-				interp_v2_v2v2(mluv->uv, mluv->uv, uv, weight);
-			}
-		}
-	}
-	else {
-#pragma omp parallel for if (numPolys > OMP_LIMIT)
-		for (i = 0; i < numPolys; i++) {
-			MPoly *mp     = &mpoly[i];
-			// MLoop *ml     = &mloop[mp->loopstart];
-			MLoopUV *mluv = &mloopuv[mp->loopstart];
-			int l;
-			for (l = 0; l < mp->totloop; l++, /* ml++, */ mluv++) {
-				uv_warp_from_mat4_pair(mluv->uv, mluv->uv, warp_mat, axis_u, axis_v);
-			}
-		}
-	}
+	UVWarpData data = {.mpoly = mpoly, .mloop = mloop, .mloopuv = mloopuv,
+	                   .dvert = dvert, .defgrp_index = defgrp_index,
+	                   .warp_mat = warp_mat, .axis_u = axis_u, .axis_v = axis_v};
+	BLI_task_parallel_range(0, numPolys, &data, uv_warp_compute, numPolys > 1000);
 
 	dm->dirty |= DM_DIRTY_TESS_CDLAYERS;
 
@@ -200,8 +221,8 @@ static void foreachObjectLink(ModifierData *md, Object *ob, ObjectWalkFunc walk,
 {
 	UVWarpModifierData *umd = (UVWarpModifierData *) md;
 
-	walk(userData, ob, &umd->object_dst);
-	walk(userData, ob, &umd->object_src);
+	walk(userData, ob, &umd->object_dst, IDWALK_CB_NOP);
+	walk(userData, ob, &umd->object_src, IDWALK_CB_NOP);
 }
 
 static void uv_warp_deps_object_bone(DagForest *forest, DagNode *obNode,
@@ -229,6 +250,30 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 	uv_warp_deps_object_bone(forest, obNode, umd->object_dst, umd->bone_dst);
 }
 
+static void uv_warp_deps_object_bone_new(struct DepsNodeHandle *node,
+                                         Object *object,
+                                         const char *bonename)
+{
+	if (object != NULL) {
+		if (bonename[0])
+			DEG_add_object_relation(node, object, DEG_OB_COMP_EVAL_POSE, "UVWarp Modifier");
+		else
+			DEG_add_object_relation(node, object, DEG_OB_COMP_TRANSFORM, "UVWarp Modifier");
+	}
+}
+
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *UNUSED(ob),
+                            struct DepsNodeHandle *node)
+{
+	UVWarpModifierData *umd = (UVWarpModifierData *) md;
+
+	uv_warp_deps_object_bone_new(node, umd->object_src, umd->bone_src);
+	uv_warp_deps_object_bone_new(node, umd->object_dst, umd->bone_dst);
+}
+
 ModifierTypeInfo modifierType_UVWarp = {
 	/* name */              "UVWarp",
 	/* structName */        "UVWarpModifierData",
@@ -249,6 +294,7 @@ ModifierTypeInfo modifierType_UVWarp = {
 	/* freeData */          NULL,
 	/* isDisabled */        NULL,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */  NULL,
 	/* foreachObjectLink */ foreachObjectLink,

@@ -21,8 +21,8 @@
 #include <string.h>
 #endif
 
-#include "util_math.h"
-#include "util_types.h"
+#include "util/util_math.h"
+#include "util/util_types.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -55,6 +55,11 @@ typedef struct DecompMotionTransform {
 	float4 post_x, post_y;
 } DecompMotionTransform;
 
+typedef struct PerspectiveMotionTransform {
+	Transform pre;
+	Transform post;
+} PerspectiveMotionTransform;
+
 /* Functions */
 
 ccl_device_inline float3 transform_perspective(const Transform *t, const float3 a)
@@ -68,22 +73,59 @@ ccl_device_inline float3 transform_perspective(const Transform *t, const float3 
 
 ccl_device_inline float3 transform_point(const Transform *t, const float3 a)
 {
+	/* TODO(sergey): Disabled for now, causes crashes in certain cases. */
+#if defined(__KERNEL_SSE__) && defined(__KERNEL_SSE2__)
+	ssef x, y, z, w, aa;
+	aa = a.m128;
+
+	x = _mm_loadu_ps(&t->x.x);
+	y = _mm_loadu_ps(&t->y.x);
+	z = _mm_loadu_ps(&t->z.x);
+	w = _mm_loadu_ps(&t->w.x);
+
+	_MM_TRANSPOSE4_PS(x, y, z, w);
+
+	ssef tmp = shuffle<0>(aa) * x;
+	tmp = madd(shuffle<1>(aa), y, tmp);
+	tmp = madd(shuffle<2>(aa), z, tmp);
+	tmp += w;
+
+	return float3(tmp.m128);
+#else
 	float3 c = make_float3(
 		a.x*t->x.x + a.y*t->x.y + a.z*t->x.z + t->x.w,
 		a.x*t->y.x + a.y*t->y.y + a.z*t->y.z + t->y.w,
 		a.x*t->z.x + a.y*t->z.y + a.z*t->z.z + t->z.w);
 
 	return c;
+#endif
 }
 
 ccl_device_inline float3 transform_direction(const Transform *t, const float3 a)
 {
+#if defined(__KERNEL_SSE__) && defined(__KERNEL_SSE2__)
+	ssef x, y, z, w, aa;
+	aa = a.m128;
+	x = _mm_loadu_ps(&t->x.x);
+	y = _mm_loadu_ps(&t->y.x);
+	z = _mm_loadu_ps(&t->z.x);
+	w = _mm_setzero_ps();
+
+	_MM_TRANSPOSE4_PS(x, y, z, w);
+
+	ssef tmp = shuffle<0>(aa) * x;
+	tmp = madd(shuffle<1>(aa), y, tmp);
+	tmp = madd(shuffle<2>(aa), z, tmp);
+
+	return float3(tmp.m128);
+#else
 	float3 c = make_float3(
 		a.x*t->x.x + a.y*t->x.y + a.z*t->x.z,
 		a.x*t->y.x + a.y*t->y.y + a.z*t->y.z,
 		a.x*t->z.x + a.y*t->z.y + a.z*t->z.z);
 
 	return c;
+#endif
 }
 
 ccl_device_inline float3 transform_direction_transposed(const Transform *t, const float3 a)
@@ -120,6 +162,19 @@ ccl_device_inline Transform make_transform(float a, float b, float c, float d,
 	t.w.x = m; t.w.y = n; t.w.z = o; t.w.w = p;
 
 	return t;
+}
+
+/* Constructs a coordinate frame from a normalized normal. */
+ccl_device_inline Transform make_transform_frame(float3 N)
+{
+	const float3 dx0 = cross(make_float3(1.0f, 0.0f, 0.0f), N);
+	const float3 dx1 = cross(make_float3(0.0f, 1.0f, 0.0f), N);
+	const float3 dx = normalize((dot(dx0,dx0) > dot(dx1,dx1))?  dx0: dx1);
+	const float3 dy = normalize(cross(N, dx));
+	return make_transform(dx.x, dx.y, dx.z, 0.0f,
+	                      dy.x, dy.y, dy.z, 0.0f,
+	                      N.x , N.y,  N.z,  0.0f,
+	                      0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 #ifndef __KERNEL_GPU__
@@ -305,6 +360,15 @@ ccl_device_inline Transform transform_clear_scale(const Transform& tfm)
 	return ntfm;
 }
 
+ccl_device_inline Transform transform_empty()
+{
+	return make_transform(
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0);
+}
+
 #endif
 
 /* Motion Transform */
@@ -342,7 +406,12 @@ ccl_device_inline Transform transform_quick_inverse(Transform M)
 	 * scale can be inverted but what about shearing? */
 	Transform R;
 	float det = M.x.x*(M.z.z*M.y.y - M.z.y*M.y.z) - M.y.x*(M.z.z*M.x.y - M.z.y*M.x.z) + M.z.x*(M.y.z*M.x.y - M.y.y*M.x.z);
-
+	if(det == 0.0f) {
+		M.x.x += 1e-8f;
+		M.y.y += 1e-8f;
+		M.z.z += 1e-8f;
+		det = M.x.x*(M.z.z*M.y.y - M.z.y*M.y.z) - M.y.x*(M.z.z*M.x.y - M.z.y*M.x.z) + M.z.x*(M.y.z*M.x.y - M.y.y*M.x.z);
+	}
 	det = (det != 0.0f)? 1.0f/det: 0.0f;
 
 	float3 Rx = det*make_float3(M.z.z*M.y.y - M.z.y*M.y.z, M.z.y*M.x.z - M.z.z*M.x.y, M.y.z*M.x.y - M.y.y*M.x.z);
@@ -449,6 +518,8 @@ ccl_device void transform_motion_interpolate(Transform *tfm, const DecompMotionT
 
 #ifndef __KERNEL_GPU__
 
+class BoundBox2D;
+
 ccl_device_inline bool operator==(const MotionTransform& A, const MotionTransform& B)
 {
 	return (A.pre == B.pre && A.post == B.post);
@@ -456,7 +527,39 @@ ccl_device_inline bool operator==(const MotionTransform& A, const MotionTransfor
 
 float4 transform_to_quat(const Transform& tfm);
 void transform_motion_decompose(DecompMotionTransform *decomp, const MotionTransform *motion, const Transform *mid);
+Transform transform_from_viewplane(BoundBox2D& viewplane);
 
+#endif
+
+/* TODO(sergey): This is only for until we've got OpenCL 2.0
+ * on all devices we consider supported. It'll be replaced with
+ * generic address space.
+ */
+
+#ifdef __KERNEL_OPENCL__
+
+#define OPENCL_TRANSFORM_ADDRSPACE_GLUE(a, b) a ## b
+#define OPENCL_TRANSFORM_ADDRSPACE_DECLARE(function) \
+ccl_device_inline float3 OPENCL_TRANSFORM_ADDRSPACE_GLUE(function, _addrspace)( \
+    ccl_addr_space const Transform *t, const float3 a) \
+{ \
+  Transform private_tfm = *t; \
+  return function(&private_tfm, a); \
+}
+
+OPENCL_TRANSFORM_ADDRSPACE_DECLARE(transform_point)
+OPENCL_TRANSFORM_ADDRSPACE_DECLARE(transform_direction)
+OPENCL_TRANSFORM_ADDRSPACE_DECLARE(transform_direction_transposed)
+
+#  undef OPENCL_TRANSFORM_ADDRSPACE_DECLARE
+#  undef OPENCL_TRANSFORM_ADDRSPACE_GLUE
+#  define transform_point_auto transform_point_addrspace
+#  define transform_direction_auto transform_direction_addrspace
+#  define transform_direction_transposed_auto transform_direction_transposed_addrspace
+#else
+#  define transform_point_auto transform_point
+#  define transform_direction_auto transform_direction
+#  define transform_direction_transposed_auto transform_direction_transposed
 #endif
 
 CCL_NAMESPACE_END

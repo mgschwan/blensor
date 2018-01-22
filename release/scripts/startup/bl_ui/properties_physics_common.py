@@ -31,7 +31,7 @@ class PhysicButtonsPanel:
     @classmethod
     def poll(cls, context):
         rd = context.scene.render
-        return (context.object) and (not rd.use_game_engine)
+        return (context.object) and rd.engine in cls.COMPAT_ENGINES
 
 
 def physics_add(self, layout, md, name, type, typeicon, toggles):
@@ -57,6 +57,7 @@ def physics_add_special(self, layout, data, name, addop, removeop, typeicon):
 class PHYSICS_PT_add(PhysicButtonsPanel, Panel):
     bl_label = ""
     bl_options = {'HIDE_HEADER'}
+    COMPAT_ENGINES = {'BLENDER_RENDER'}
 
     def draw(self, context):
         obj = context.object
@@ -78,7 +79,7 @@ class PHYSICS_PT_add(PhysicButtonsPanel, Panel):
 
         col = split.column()
 
-        if obj.type in {'MESH', 'LATTICE', 'CURVE'}:
+        if obj.type in {'MESH', 'LATTICE', 'CURVE', 'SURFACE', 'FONT'}:
             physics_add(self, col, context.soft_body, "Soft Body", 'SOFT_BODY', 'MOD_SOFT', True)
 
         if obj.type == 'MESH':
@@ -191,7 +192,7 @@ def point_cache_ui(self, context, cache, enabled, cachetype):
             col.operator("ptcache.bake", text="Bake").bake = True
 
         sub = col.row()
-        sub.enabled = (cache.frames_skipped or cache.is_outdated) and enabled
+        sub.enabled = (cache.is_frame_skip or cache.is_outdated) and enabled
         sub.operator("ptcache.bake", text="Calculate To Frame").bake = False
 
         sub = col.column()
@@ -273,6 +274,8 @@ def basic_force_field_settings_ui(self, context, field):
         col.prop(field, "use_global_coords", text="Global")
     elif field.type == 'HARMONIC':
         col.prop(field, "use_multiple_springs")
+    if field.type == 'FORCE':
+        col.prop(field, "use_gravity_falloff",  text="Gravitation")
 
     split = layout.split()
 
@@ -315,5 +318,12 @@ def basic_force_field_falloff_ui(self, context, field):
     sub.active = field.use_max_distance
     sub.prop(field, "distance_max", text="Maximum")
 
+
+classes = (
+    PHYSICS_PT_add,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

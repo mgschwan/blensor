@@ -17,7 +17,7 @@
 #ifndef __TABLES_H__
 #define __TABLES_H__
 
-#include <util_list.h>
+#include "util/util_list.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -45,7 +45,7 @@ public:
 	void device_free(Device *device, DeviceScene *dscene);
 
 	size_t add_table(DeviceScene *dscene, vector<float>& data);
-	void remove_table(size_t offset);
+	void remove_table(size_t *offset);
 };
 
 CCL_NAMESPACE_END

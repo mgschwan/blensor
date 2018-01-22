@@ -38,11 +38,13 @@
 #include "BKE_image.h"
 #include "BKE_global.h"
 #include "BKE_screen.h"
+#include "BKE_report.h"
 
 #include "WM_api.h"
 #include "WM_types.h"
 
 #include "ED_screen.h"
+#include "UI_interface.h"
 
 #include "wm_window.h"
 
@@ -63,7 +65,7 @@ static ScrArea *biggest_non_image_area(bContext *C)
 	for (sa = sc->areabase.first; sa; sa = sa->next) {
 		if (sa->winx > 30 && sa->winy > 30) {
 			size = sa->winx * sa->winy;
-			if (sa->spacetype == SPACE_BUTS) {
+			if (!sa->full && sa->spacetype == SPACE_BUTS) {
 				if (foundwin == 0 && size > bwmaxsize) {
 					bwmaxsize = size;
 					big = sa;
@@ -125,10 +127,10 @@ static ScrArea *find_area_image_empty(bContext *C)
 /********************** open image editor for render *************************/
 
 /* new window uses x,y to set position */
-ScrArea *render_view_open(bContext *C, int mx, int my)
+ScrArea *render_view_open(bContext *C, int mx, int my, ReportList *reports)
 {
-	wmWindow *win = CTX_wm_window(C);
 	Scene *scene = CTX_data_scene(C);
+	wmWindow *win = NULL;
 	ScrArea *sa = NULL;
 	SpaceImage *sima;
 	bool area_was_image = false;
@@ -137,25 +139,18 @@ ScrArea *render_view_open(bContext *C, int mx, int my)
 		return NULL;
 	
 	if (scene->r.displaymode == R_OUTPUT_WINDOW) {
-		rcti rect;
-		int sizex, sizey;
-
-		sizex = 10 + (scene->r.xsch * scene->r.size) / 100;
-		sizey = 40 + (scene->r.ysch * scene->r.size) / 100;
+		int sizex = 30 * UI_DPI_FAC + (scene->r.xsch * scene->r.size) / 100;
+		int sizey = 60 * UI_DPI_FAC + (scene->r.ysch * scene->r.size) / 100;
 
 		/* arbitrary... miniature image window views don't make much sense */
 		if (sizex < 320) sizex = 320;
 		if (sizey < 256) sizey = 256;
 
-		/* some magic to calculate postition */
-		/* pixelsize: mouse coords are in U.pixelsize units :/ */
-		rect.xmin = (mx / U.pixelsize) + win->posx - sizex / 2;
-		rect.ymin = (my / U.pixelsize) + win->posy - sizey / 2;
-		rect.xmax = rect.xmin + sizex;
-		rect.ymax = rect.ymin + sizey;
-
 		/* changes context! */
-		WM_window_open_temp(C, &rect, WM_WINDOW_RENDER);
+		if (WM_window_open_temp(C, mx, my, sizex, sizey, WM_WINDOW_RENDER) == NULL) {
+			BKE_report(reports, RPT_ERROR, "Failed to open window!");
+			return NULL;
+		}
 
 		sa = CTX_wm_area(C);
 	}
@@ -189,7 +184,7 @@ ScrArea *render_view_open(bContext *C, int mx, int my)
 			/* find largest open non-image area */
 			sa = biggest_non_image_area(C);
 			if (sa) {
-				ED_area_newspace(C, sa, SPACE_IMAGE);
+				ED_area_newspace(C, sa, SPACE_IMAGE, true);
 				sima = sa->spacedata.first;
 
 				/* makes ESC go back to prev space */
@@ -197,7 +192,7 @@ ScrArea *render_view_open(bContext *C, int mx, int my)
 
 				/* we already had a fullscreen here -> mark new space as a stacked fullscreen */
 				if (sa->full) {
-					sa->flag |= AREA_FLAG_STACKED_FULLSCREEN;
+					sa->flag |= (AREA_FLAG_STACKED_FULLSCREEN | AREA_FLAG_TEMP_TYPE);
 				}
 			}
 			else {
@@ -245,6 +240,11 @@ static int render_view_cancel_exec(bContext *C, wmOperator *UNUSED(op))
 	ScrArea *sa = CTX_wm_area(C);
 	SpaceImage *sima = sa->spacedata.first;
 
+	/* ensure image editor fullscreen and area fullscreen states are in sync */
+	if ((sima->flag & SI_FULLWINDOW) && !sa->full) {
+		sima->flag &= ~SI_FULLWINDOW;
+	}
+
 	/* test if we have a temp screen in front */
 	if (win->screen->temp) {
 		wm_window_lower(win);
@@ -258,8 +258,9 @@ static int render_view_cancel_exec(bContext *C, wmOperator *UNUSED(op))
 			sima->flag &= ~SI_FULLWINDOW;
 			ED_screen_full_prevspace(C, sa);
 		}
-		else
+		else {
 			ED_area_prevspace(C, sa);
+		}
 
 		return OPERATOR_FINISHED;
 	}
@@ -286,7 +287,7 @@ void RENDER_OT_view_cancel(struct wmOperatorType *ot)
 
 /************************* show render viewer *****************/
 
-static int render_view_show_invoke(bContext *C, wmOperator *UNUSED(op), const wmEvent *event)
+static int render_view_show_invoke(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	wmWindow *wincur = CTX_wm_window(C);
 	
@@ -322,20 +323,14 @@ static int render_view_show_invoke(bContext *C, wmOperator *UNUSED(op), const wm
 						sima->flag &= ~SI_FULLWINDOW;
 						ED_screen_full_prevspace(C, sa);
 					}
-					else if (sima->next) {
-						/* workaround for case of double prevspace, render window
-						 * with a file browser on top of it (same as in ED_area_prevspace) */
-						if (sima->next->spacetype == SPACE_FILE && sima->next->next)
-							ED_area_newspace(C, sa, sima->next->next->spacetype);
-						else
-							ED_area_newspace(C, sa, sima->next->spacetype);
-						ED_area_tag_redraw(sa);
+					else {
+						ED_area_prevspace(C, sa);
 					}
 				}
 			}
 		}
 		else {
-			render_view_open(C, event->x, event->y);
+			render_view_open(C, event->x, event->y, op->reports);
 		}
 	}
 

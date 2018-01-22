@@ -28,12 +28,16 @@ if not sys.version.startswith("3"):
           sys.version.partition(" ")[0])
     sys.exit(1)
 
-from cmake_consistency_check_config import IGNORE, UTF8_CHECK, SOURCE_DIR
+from cmake_consistency_check_config import (
+    IGNORE,
+    UTF8_CHECK,
+    SOURCE_DIR,
+    BUILD_DIR,
+)
+
 
 import os
 from os.path import join, dirname, normpath, splitext
-
-print("Scanning:", SOURCE_DIR)
 
 global_h = set()
 global_c = set()
@@ -57,10 +61,8 @@ def replace_line(f, i, text, keep_indent=True):
 
 def source_list(path, filename_check=None):
     for dirpath, dirnames, filenames in os.walk(path):
-
         # skip '.git'
-        if dirpath.startswith("."):
-            continue
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
 
         for filename in filenames:
             if filename_check is None or filename_check(filename):
@@ -134,6 +136,7 @@ def cmake_get_src(f):
 
         if found:
             cmake_base = dirname(f)
+            cmake_base_bin = os.path.join(BUILD_DIR, os.path.relpath(cmake_base, SOURCE_DIR))
 
             while it is not None:
                 i += 1
@@ -154,6 +157,8 @@ def cmake_get_src(f):
 
                     # replace dirs
                     l = l.replace("${CMAKE_CURRENT_SOURCE_DIR}", cmake_base)
+                    l = l.replace("${CMAKE_CURRENT_BINARY_DIR}", cmake_base_bin)
+                    l = l.strip('"')
 
                     if not l:
                         pass
@@ -193,13 +198,16 @@ def cmake_get_src(f):
                                 raise Exception("unknown file type - not c or h %s -> %s" % (f, new_file))
 
                         elif context_name == "INC":
-                            if os.path.isdir(new_file):
+                            if new_file.startswith(BUILD_DIR):
+                                # assume generated path
+                                pass
+                            elif os.path.isdir(new_file):
                                 new_path_rel = os.path.relpath(new_file, cmake_base)
 
                                 if new_path_rel != l:
                                     print("overly relative path:\n  %s:%d\n  %s\n  %s" % (f, i, l, new_path_rel))
 
-                                    ## Save time. just replace the line
+                                    # # Save time. just replace the line
                                     # replace_line(f, i - 1, new_path_rel)
 
                             else:
@@ -230,84 +238,99 @@ def cmake_get_src(f):
     filen.close()
 
 
-for cmake in source_list(SOURCE_DIR, is_cmake):
-    cmake_get_src(cmake)
-
-
-def is_ignore(f):
-    for ig in IGNORE:
+def is_ignore(f, ignore_used):
+    for index, ig in enumerate(IGNORE):
         if ig in f:
+            ignore_used[index] = True
             return True
     return False
 
 
-# First do stupid check, do these files exist?
-print("\nChecking for missing references:")
-is_err = False
-errs = []
-for f in (global_h | global_c):
-    if f.endswith("dna.c"):
-        continue
+def main():
 
-    if not os.path.exists(f):
-        refs = global_refs[f]
-        if refs:
-            for cf, i in refs:
-                errs.append((cf, i))
-        else:
-            raise Exception("CMake referenecs missing, internal error, aborting!")
-        is_err = True
+    print("Scanning:", SOURCE_DIR)
 
-errs.sort()
-errs.reverse()
-for cf, i in errs:
-    print("%s:%d" % (cf, i))
-    # Write a 'sed' script, useful if we get a lot of these
-    # print("sed '%dd' '%s' > '%s.tmp' ; mv '%s.tmp' '%s'" % (i, cf, cf, cf, cf))
+    for cmake in source_list(SOURCE_DIR, is_cmake):
+        cmake_get_src(cmake)
+
+    # First do stupid check, do these files exist?
+    print("\nChecking for missing references:")
+    is_err = False
+    errs = []
+    for f in (global_h | global_c):
+        if f.startswith(BUILD_DIR):
+            continue
+
+        if not os.path.exists(f):
+            refs = global_refs[f]
+            if refs:
+                for cf, i in refs:
+                    errs.append((cf, i))
+            else:
+                raise Exception("CMake referenecs missing, internal error, aborting!")
+            is_err = True
+
+    errs.sort()
+    errs.reverse()
+    for cf, i in errs:
+        print("%s:%d" % (cf, i))
+        # Write a 'sed' script, useful if we get a lot of these
+        # print("sed '%dd' '%s' > '%s.tmp' ; mv '%s.tmp' '%s'" % (i, cf, cf, cf, cf))
+
+    if is_err:
+        raise Exception("CMake referenecs missing files, aborting!")
+    del is_err
+    del errs
+
+    ignore_used = [False] * len(IGNORE)
+
+    # now check on files not accounted for.
+    print("\nC/C++ Files CMake doesnt know about...")
+    for cf in sorted(source_list(SOURCE_DIR, is_c)):
+        if not is_ignore(cf, ignore_used):
+            if cf not in global_c:
+                print("missing_c: ", cf)
+
+            # check if automake builds a corrasponding .o file.
+            '''
+            if cf in global_c:
+                out1 = os.path.splitext(cf)[0] + ".o"
+                out2 = os.path.splitext(cf)[0] + ".Po"
+                out2_dir, out2_file = out2 = os.path.split(out2)
+                out2 = os.path.join(out2_dir, ".deps", out2_file)
+                if not os.path.exists(out1) and not os.path.exists(out2):
+                    print("bad_c: ", cf)
+            '''
+
+    print("\nC/C++ Headers CMake doesnt know about...")
+    for hf in sorted(source_list(SOURCE_DIR, is_c_header)):
+        if not is_ignore(hf, ignore_used):
+            if hf not in global_h:
+                print("missing_h: ", hf)
+
+    if UTF8_CHECK:
+        # test encoding
+        import traceback
+        for files in (global_c, global_h):
+            for f in sorted(files):
+                if os.path.exists(f):
+                    # ignore outside of our source tree
+                    if "extern" not in f:
+                        i = 1
+                        try:
+                            for l in open(f, "r", encoding="utf8"):
+                                i += 1
+                        except UnicodeDecodeError:
+                            print("Non utf8: %s:%d" % (f, i))
+                            if i > 1:
+                                traceback.print_exc()
+
+    # Check ignores aren't stale
+    print("\nCheck for unused 'IGNORE' paths...")
+    for index, ig in enumerate(IGNORE):
+        if not ignore_used[index]:
+            print("unused ignore: %r" % ig)
 
 
-if is_err:
-    raise Exception("CMake referenecs missing files, aborting!")
-del is_err
-del errs
-
-# now check on files not accounted for.
-print("\nC/C++ Files CMake doesnt know about...")
-for cf in sorted(source_list(SOURCE_DIR, is_c)):
-    if not is_ignore(cf):
-        if cf not in global_c:
-            print("missing_c: ", cf)
-
-        # check if automake builds a corrasponding .o file.
-        '''
-        if cf in global_c:
-            out1 = os.path.splitext(cf)[0] + ".o"
-            out2 = os.path.splitext(cf)[0] + ".Po"
-            out2_dir, out2_file = out2 = os.path.split(out2)
-            out2 = os.path.join(out2_dir, ".deps", out2_file)
-            if not os.path.exists(out1) and not os.path.exists(out2):
-                print("bad_c: ", cf)
-        '''
-
-print("\nC/C++ Headers CMake doesnt know about...")
-for hf in sorted(source_list(SOURCE_DIR, is_c_header)):
-    if not is_ignore(hf):
-        if hf not in global_h:
-            print("missing_h: ", hf)
-
-if UTF8_CHECK:
-    # test encoding
-    import traceback
-    for files in (global_c, global_h):
-        for f in sorted(files):
-            if os.path.exists(f):
-                # ignore outside of our source tree
-                if "extern" not in f:
-                    i = 1
-                    try:
-                        for l in open(f, "r", encoding="utf8"):
-                            i += 1
-                    except UnicodeDecodeError:
-                        print("Non utf8: %s:%d" % (f, i))
-                        if i > 1:
-                            traceback.print_exc()
+if __name__ == "__main__":
+    main()

@@ -48,6 +48,7 @@
 #include "DNA_scene_types.h"
 #include "DNA_vfont_types.h"
 #include "DNA_actuator_types.h"
+#include "DNA_gpencil_types.h"
 
 #include "BLI_utildefines.h"
 #include "BLI_ghash.h"
@@ -55,13 +56,15 @@
 #include "BLI_math.h"
 #include "BLI_string.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
+#include "BKE_action.h"
 #include "BKE_anim.h"
 #include "BKE_animsys.h"
 #include "BKE_armature.h"
 #include "BKE_camera.h"
 #include "BKE_context.h"
+#include "BKE_constraint.h"
 #include "BKE_curve.h"
 #include "BKE_depsgraph.h"
 #include "BKE_DerivedMesh.h"
@@ -72,6 +75,8 @@
 #include "BKE_lamp.h"
 #include "BKE_lattice.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
+#include "BKE_library_remap.h"
 #include "BKE_key.h"
 #include "BKE_main.h"
 #include "BKE_material.h"
@@ -115,7 +120,7 @@
 /* this is an exact copy of the define in rna_lamp.c
  * kept here because of linking order.
  * Icons are only defined here */
-EnumPropertyItem lamp_type_items[] = {
+EnumPropertyItem rna_enum_lamp_type_items[] = {
 	{LA_LOCAL, "POINT", ICON_LAMP_POINT, "Point", "Omnidirectional point light source"},
 	{LA_SUN, "SUN", ICON_LAMP_SUN, "Sun", "Constant direction parallel ray light source"},
 	{LA_SPOT, "SPOT", ICON_LAMP_SPOT, "Spot", "Directional cone light source"},
@@ -260,10 +265,7 @@ static void view_align_update(struct Main *UNUSED(main), struct Scene *UNUSED(sc
 
 void ED_object_add_unit_props(wmOperatorType *ot)
 {
-	PropertyRNA *prop;
-
-	prop = RNA_def_float(ot->srna, "radius", 1.0f, 0.0, FLT_MAX, "Radius", "", 0.001, 100.00);
-	RNA_def_property_subtype(prop, PROP_DISTANCE);
+	RNA_def_float_distance(ot->srna, "radius", 1.0f, 0.0, OBJECT_ADD_SIZE_MAXF, "Radius", "", 0.001, 100.00);
 }
 
 void ED_object_add_generic_props(wmOperatorType *ot, bool do_editmode)
@@ -280,15 +282,21 @@ void ED_object_add_generic_props(wmOperatorType *ot, bool do_editmode)
 		RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
 	}
 
-	prop = RNA_def_float_vector_xyz(ot->srna, "location", 3, NULL, -FLT_MAX, FLT_MAX, "Location",
-	                                "Location for the newly added object", -FLT_MAX, FLT_MAX);
+	prop = RNA_def_float_vector_xyz(ot->srna, "location", 3, NULL, -OBJECT_ADD_SIZE_MAXF, OBJECT_ADD_SIZE_MAXF,
+	                                "Location", "Location for the newly added object", -1000.0f, 1000.0f);
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
-	prop = RNA_def_float_rotation(ot->srna, "rotation", 3, NULL, -FLT_MAX, FLT_MAX, "Rotation",
-	                              "Rotation for the newly added object", (float)-M_PI * 2.0f, (float)M_PI * 2.0f);
+	prop = RNA_def_float_rotation(ot->srna, "rotation", 3, NULL, -OBJECT_ADD_SIZE_MAXF, OBJECT_ADD_SIZE_MAXF,
+	                              "Rotation", "Rotation for the newly added object",
+	                              DEG2RADF(-360.0f), DEG2RADF(360.0f));
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
 	prop = RNA_def_boolean_layer_member(ot->srna, "layers", 20, NULL, "Layer", "");
 	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
+}
+
+void ED_object_add_mesh_props(wmOperatorType *ot)
+{
+	RNA_def_boolean(ot->srna, "calc_uvs", false, "Generate UVs", "Generate a default UV map");
 }
 
 bool ED_object_add_generic_get_opts(bContext *C, wmOperator *op, const char view_align_axis,
@@ -394,8 +402,11 @@ bool ED_object_add_generic_get_opts(bContext *C, wmOperator *op, const char view
 
 /* For object add primitive operators.
  * Do not call undo push in this function (users of this function have to). */
-Object *ED_object_add_type(bContext *C, int type, const float loc[3], const float rot[3],
-                           bool enter_editmode, unsigned int layer)
+Object *ED_object_add_type(
+        bContext *C,
+        int type, const char *name,
+        const float loc[3], const float rot[3],
+        bool enter_editmode, unsigned int layer)
 {
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
@@ -406,7 +417,7 @@ Object *ED_object_add_type(bContext *C, int type, const float loc[3], const floa
 		ED_object_editmode_exit(C, EM_FREEDATA | EM_FREEUNDO | EM_WAITCURSOR | EM_DO_UNDO);  /* freedata, and undo */
 
 	/* deselects all, sets scene->basact */
-	ob = BKE_object_add(bmain, scene, type);
+	ob = BKE_object_add(bmain, scene, type, name);
 	BASACT->lay = ob->lay = layer;
 	/* editor level activate, notifiers */
 	ED_base_object_activate(C, BASACT);
@@ -447,7 +458,7 @@ static int object_add_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	radius = RNA_float_get(op->ptr, "radius");
-	ob = ED_object_add_type(C, RNA_enum_get(op->ptr, "type"), loc, rot, enter_editmode, layer);
+	ob = ED_object_add_type(C, RNA_enum_get(op->ptr, "type"), NULL, loc, rot, enter_editmode, layer);
 
 	if (ob->type == OB_LATTICE) {
 		/* lattice is a special case!
@@ -477,7 +488,7 @@ void OBJECT_OT_add(wmOperatorType *ot)
 
 	/* properties */
 	ED_object_add_unit_props(ot);
-	RNA_def_enum(ot->srna, "type", object_type_items, 0, "Type", "");
+	RNA_def_enum(ot->srna, "type", rna_enum_object_type_items, 0, "Type", "");
 
 	ED_object_add_generic_props(ot, true);
 }
@@ -504,21 +515,21 @@ static int effector_add_exec(bContext *C, wmOperator *op)
 
 	if (type == PFIELD_GUIDE) {
 		Curve *cu;
-		ob = ED_object_add_type(C, OB_CURVE, loc, rot, false, layer);
+		const char *name = CTX_DATA_(BLT_I18NCONTEXT_ID_OBJECT, "CurveGuide");
+		ob = ED_object_add_type(C, OB_CURVE, name, loc, rot, false, layer);
 
-		rename_id(&ob->id, CTX_DATA_(BLF_I18NCONTEXT_ID_OBJECT, "CurveGuide"));
 		cu = ob->data;
 		cu->flag |= CU_PATH | CU_3D;
 		ED_object_editmode_enter(C, 0);
 		ED_object_new_primitive_matrix(C, ob, loc, rot, mat);
-		BLI_addtail(&cu->editnurb->nurbs, add_nurbs_primitive(C, ob, mat, CU_NURBS | CU_PRIM_PATH, dia));
+		BLI_addtail(&cu->editnurb->nurbs, ED_curve_add_nurbs_primitive(C, ob, mat, CU_NURBS | CU_PRIM_PATH, dia));
 		if (!enter_editmode)
 			ED_object_editmode_exit(C, EM_FREEDATA);
 	}
 	else {
-		ob = ED_object_add_type(C, OB_EMPTY, loc, rot, false, layer);
+		const char *name = CTX_DATA_(BLT_I18NCONTEXT_ID_OBJECT, "Field");
+		ob = ED_object_add_type(C, OB_EMPTY, name, loc, rot, false, layer);
 		BKE_object_obdata_size_init(ob, dia);
-		rename_id(&ob->id, CTX_DATA_(BLF_I18NCONTEXT_ID_OBJECT, "Field"));
 		if (ELEM(type, PFIELD_WIND, PFIELD_VORTEX))
 			ob->empty_drawtype = OB_SINGLE_ARROW;
 	}
@@ -569,7 +580,7 @@ static int object_camera_add_exec(bContext *C, wmOperator *op)
 	if (!ED_object_add_generic_get_opts(C, op, 'Z', loc, rot, &enter_editmode, &layer, NULL))
 		return OPERATOR_CANCELLED;
 
-	ob = ED_object_add_type(C, OB_CAMERA, loc, rot, false, layer);
+	ob = ED_object_add_type(C, OB_CAMERA, NULL, loc, rot, false, layer);
 
 	if (v3d) {
 		if (v3d->camera == NULL)
@@ -626,7 +637,7 @@ static int object_metaball_add_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	if (obedit == NULL || obedit->type != OB_MBALL) {
-		obedit = ED_object_add_type(C, OB_MBALL, loc, rot, true, layer);
+		obedit = ED_object_add_type(C, OB_MBALL, NULL, loc, rot, true, layer);
 		newob = true;
 	}
 	else {
@@ -636,7 +647,7 @@ static int object_metaball_add_exec(bContext *C, wmOperator *op)
 	ED_object_new_primitive_matrix(C, obedit, loc, rot, mat);
 	dia = RNA_float_get(op->ptr, "radius");
 
-	add_metaball_primitive(C, obedit, mat, dia, RNA_enum_get(op->ptr, "type"));
+	ED_mball_add_primitive(C, obedit, mat, dia, RNA_enum_get(op->ptr, "type"));
 
 	/* userdef */
 	if (newob && !enter_editmode) {
@@ -663,7 +674,7 @@ void OBJECT_OT_metaball_add(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-	ot->prop = RNA_def_enum(ot->srna, "type", metaelem_type_items, 0, "Primitive", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_metaelem_type_items, 0, "Primitive", "");
 
 	ED_object_add_unit_props(ot);
 	ED_object_add_generic_props(ot, true);
@@ -685,7 +696,7 @@ static int object_add_text_exec(bContext *C, wmOperator *op)
 	if (obedit && obedit->type == OB_FONT)
 		return OPERATOR_CANCELLED;
 
-	obedit = ED_object_add_type(C, OB_FONT, loc, rot, enter_editmode, layer);
+	obedit = ED_object_add_type(C, OB_FONT, NULL, loc, rot, enter_editmode, layer);
 	BKE_object_obdata_size_init(obedit, RNA_float_get(op->ptr, "radius"));
 
 	WM_event_add_notifier(C, NC_OBJECT | ND_DRAW, obedit);
@@ -729,7 +740,7 @@ static int object_armature_add_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	if ((obedit == NULL) || (obedit->type != OB_ARMATURE)) {
-		obedit = ED_object_add_type(C, OB_ARMATURE, loc, rot, true, layer);
+		obedit = ED_object_add_type(C, OB_ARMATURE, NULL, loc, rot, true, layer);
 		ED_object_editmode_enter(C, 0);
 		newob = true;
 	}
@@ -786,7 +797,7 @@ static int object_empty_add_exec(bContext *C, wmOperator *op)
 	if (!ED_object_add_generic_get_opts(C, op, 'Z', loc, rot, NULL, &layer, NULL))
 		return OPERATOR_CANCELLED;
 
-	ob = ED_object_add_type(C, OB_EMPTY, loc, rot, false, layer);
+	ob = ED_object_add_type(C, OB_EMPTY, NULL, loc, rot, false, layer);
 
 	BKE_object_empty_draw_type_set(ob, type);
 	BKE_object_obdata_size_init(ob, RNA_float_get(op->ptr, "radius"));
@@ -810,7 +821,7 @@ void OBJECT_OT_empty_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", object_empty_drawtype_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_object_empty_drawtype_items, 0, "Type", "");
 
 	ED_object_add_unit_props(ot);
 	ED_object_add_generic_props(ot, false);
@@ -846,7 +857,7 @@ static int empty_drop_named_image_invoke(bContext *C, wmOperator *op, const wmEv
 		if (!ED_object_add_generic_get_opts(C, op, 'Z', NULL, rot, NULL, &layer, NULL))
 			return OPERATOR_CANCELLED;
 
-		ob = ED_object_add_type(C, OB_EMPTY, NULL, rot, false, layer);
+		ob = ED_object_add_type(C, OB_EMPTY, NULL, NULL, rot, false, layer);
 
 		/* add under the mouse */
 		ED_object_location_from_view(C, ob->loc);
@@ -893,13 +904,13 @@ void OBJECT_OT_drop_named_image(wmOperatorType *ot)
 static const char *get_lamp_defname(int type)
 {
 	switch (type) {
-		case LA_LOCAL: return CTX_DATA_(BLF_I18NCONTEXT_ID_LAMP, "Point");
-		case LA_SUN: return CTX_DATA_(BLF_I18NCONTEXT_ID_LAMP, "Sun");
-		case LA_SPOT: return CTX_DATA_(BLF_I18NCONTEXT_ID_LAMP, "Spot");
-		case LA_HEMI: return CTX_DATA_(BLF_I18NCONTEXT_ID_LAMP, "Hemi");
-		case LA_AREA: return CTX_DATA_(BLF_I18NCONTEXT_ID_LAMP, "Area");
+		case LA_LOCAL: return CTX_DATA_(BLT_I18NCONTEXT_ID_LAMP, "Point");
+		case LA_SUN: return CTX_DATA_(BLT_I18NCONTEXT_ID_LAMP, "Sun");
+		case LA_SPOT: return CTX_DATA_(BLT_I18NCONTEXT_ID_LAMP, "Spot");
+		case LA_HEMI: return CTX_DATA_(BLT_I18NCONTEXT_ID_LAMP, "Hemi");
+		case LA_AREA: return CTX_DATA_(BLT_I18NCONTEXT_ID_LAMP, "Area");
 		default:
-			return CTX_DATA_(BLF_I18NCONTEXT_ID_LAMP, "Lamp");
+			return CTX_DATA_(BLT_I18NCONTEXT_ID_LAMP, "Lamp");
 	}
 }
 
@@ -916,13 +927,11 @@ static int object_lamp_add_exec(bContext *C, wmOperator *op)
 	if (!ED_object_add_generic_get_opts(C, op, 'Z', loc, rot, NULL, &layer, NULL))
 		return OPERATOR_CANCELLED;
 
-	ob = ED_object_add_type(C, OB_LAMP, loc, rot, false, layer);
+	ob = ED_object_add_type(C, OB_LAMP, get_lamp_defname(type), loc, rot, false, layer);
 	BKE_object_obdata_size_init(ob, RNA_float_get(op->ptr, "radius"));
 
 	la = (Lamp *)ob->data;
 	la->type = type;
-	rename_id(&ob->id, get_lamp_defname(type));
-	rename_id(&la->id, get_lamp_defname(type));
 
 	if (BKE_scene_use_new_shading_nodes(scene)) {
 		ED_node_shader_default(C, &la->id);
@@ -948,8 +957,8 @@ void OBJECT_OT_lamp_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", lamp_type_items, 0, "Type", "");
-	RNA_def_property_translation_context(ot->prop, BLF_I18NCONTEXT_ID_LAMP);
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_lamp_type_items, 0, "Type", "");
+	RNA_def_property_translation_context(ot->prop, BLT_I18NCONTEXT_ID_LAMP);
 
 	ED_object_add_unit_props(ot);
 	ED_object_add_generic_props(ot, false);
@@ -988,11 +997,10 @@ static int group_instance_add_exec(bContext *C, wmOperator *op)
 	if (group) {
 		Main *bmain = CTX_data_main(C);
 		Scene *scene = CTX_data_scene(C);
-		Object *ob = ED_object_add_type(C, OB_EMPTY, loc, rot, false, layer);
-		rename_id(&ob->id, group->id.name + 2);
+		Object *ob = ED_object_add_type(C, OB_EMPTY, group->id.name + 2, loc, rot, false, layer);
 		ob->dup_group = group;
 		ob->transflag |= OB_DUPLIGROUP;
-		id_lib_extern(&group->id);
+		id_us_plus(&group->id);
 
 		/* works without this except if you try render right after, see: 22027 */
 		DAG_relations_tag_update(bmain);
@@ -1044,14 +1052,14 @@ static int object_speaker_add_exec(bContext *C, wmOperator *op)
 	if (!ED_object_add_generic_get_opts(C, op, 'Z', loc, rot, NULL, &layer, NULL))
 		return OPERATOR_CANCELLED;
 
-	ob = ED_object_add_type(C, OB_SPEAKER, loc, rot, false, layer);
+	ob = ED_object_add_type(C, OB_SPEAKER, NULL, loc, rot, false, layer);
 
 	/* to make it easier to start using this immediately in NLA, a default sound clip is created
 	 * ready to be moved around to retime the sound and/or make new sound clips
 	 */
 	{
 		/* create new data for NLA hierarchy */
-		AnimData *adt = BKE_id_add_animdata(&ob->id);
+		AnimData *adt = BKE_animdata_add_id(&ob->id);
 		NlaTrack *nlt = add_nlatrack(adt, NULL);
 		NlaStrip *strip = add_nla_soundstrip(scene, ob->data);
 		strip->start = CFRA;
@@ -1104,12 +1112,20 @@ static void object_delete_check_glsl_update(Object *ob)
 /* note: now unlinks constraints as well */
 void ED_base_object_free_and_unlink(Main *bmain, Scene *scene, Base *base)
 {
-	DAG_id_type_tag(bmain, ID_OB);
+	if (BKE_library_ID_is_indirectly_used(bmain, base->object) &&
+	    ID_REAL_USERS(base->object) <= 1 && ID_EXTRA_USERS(base->object) == 0)
+	{
+		/* We cannot delete indirectly used object... */
+		printf("WARNING, undeletable object '%s', should have been catched before reaching this function!",
+		       base->object->id.name + 2);
+		return;
+	}
+
 	BKE_scene_base_unlink(scene, base);
 	object_delete_check_glsl_update(base->object);
 	BKE_libblock_free_us(bmain, base->object);
-	if (scene->basact == base) scene->basact = NULL;
 	MEM_freeN(base);
+	DAG_id_type_tag(bmain, ID_OB);
 }
 
 static int object_delete_exec(bContext *C, wmOperator *op)
@@ -1126,6 +1142,45 @@ static int object_delete_exec(bContext *C, wmOperator *op)
 
 	CTX_DATA_BEGIN (C, Base *, base, selected_bases)
 	{
+		const bool is_indirectly_used = BKE_library_ID_is_indirectly_used(bmain, base->object);
+		if (base->object->id.tag & LIB_TAG_INDIRECT) {
+			/* Can this case ever happen? */
+			BKE_reportf(op->reports, RPT_WARNING, "Cannot delete indirectly linked object '%s'", base->object->id.name + 2);
+			continue;
+		}
+		else if (is_indirectly_used && ID_REAL_USERS(base->object) <= 1 && ID_EXTRA_USERS(base->object) == 0) {
+			BKE_reportf(op->reports, RPT_WARNING,
+			        "Cannot delete object '%s' from scene '%s', indirectly used objects need at least one user",
+			        base->object->id.name + 2, scene->id.name + 2);
+			continue;
+		}
+
+		/* This is sort of a quick hack to address T51243 - Proper thing to do here would be to nuke most of all this
+		 * custom scene/object/base handling, and use generic lib remap/query for that.
+		 * But this is for later (aka 2.8, once layers & co are settled and working).
+		 */
+		if (use_global && base->object->id.lib == NULL) {
+			/* We want to nuke the object, let's nuke it the easy way (not for linked data though)... */
+			BKE_libblock_delete(bmain, &base->object->id);
+			changed = true;
+			continue;
+		}
+
+		/* remove from Grease Pencil parent */
+		/* XXX This is likely not correct? Will also remove parent from grease pencil from other scenes,
+		 *     even when use_global is false... */
+		for (bGPdata *gpd = bmain->gpencil.first; gpd; gpd = gpd->id.next) {
+			for (bGPDlayer *gpl = gpd->layers.first; gpl; gpl = gpl->next) {
+				if (gpl->parent != NULL) {
+					Object *ob = gpl->parent;
+					Object *curob = base->object;
+					if (ob == curob) {
+						gpl->parent = NULL;
+					}
+				}
+			}
+		}
+
 		/* deselect object -- it could be used in other scenes */
 		base->object->flag &= ~SELECT;
 
@@ -1138,16 +1193,21 @@ static int object_delete_exec(bContext *C, wmOperator *op)
 			Base *base_other;
 
 			for (scene_iter = bmain->scene.first; scene_iter; scene_iter = scene_iter->id.next) {
-				if (scene_iter != scene && !(scene_iter->id.lib)) {
+				if (scene_iter != scene && !ID_IS_LINKED_DATABLOCK(scene_iter)) {
 					base_other = BKE_scene_base_find(scene_iter, base->object);
 					if (base_other) {
+						if (is_indirectly_used && ID_REAL_USERS(base->object) <= 1 && ID_EXTRA_USERS(base->object) == 0) {
+							BKE_reportf(op->reports, RPT_WARNING,
+							            "Cannot delete object '%s' from scene '%s', indirectly used objects need at least one user",
+							            base->object->id.name + 2, scene_iter->id.name + 2);
+							break;
+						}
 						ED_base_object_free_and_unlink(bmain, scene_iter, base_other);
 					}
 				}
 			}
 		}
 		/* end global */
-
 	}
 	CTX_DATA_END;
 
@@ -1155,12 +1215,12 @@ static int object_delete_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 
 	/* delete has to handle all open scenes */
-	BKE_main_id_flag_listbase(&bmain->scene, LIB_DOIT, 1);
+	BKE_main_id_tag_listbase(&bmain->scene, LIB_TAG_DOIT, true);
 	for (win = wm->windows.first; win; win = win->next) {
 		scene = win->screen->scene;
 		
-		if (scene->id.flag & LIB_DOIT) {
-			scene->id.flag &= ~LIB_DOIT;
+		if (scene->id.tag & LIB_TAG_DOIT) {
+			scene->id.tag &= ~LIB_TAG_DOIT;
 			
 			DAG_relations_tag_update(bmain);
 
@@ -1193,88 +1253,15 @@ void OBJECT_OT_delete(wmOperatorType *ot)
 /**************************** Copy Utilities ******************************/
 
 /* after copying objects, copied data should get new pointers */
-static void copy_object_set_idnew(bContext *C, int dupflag)
+static void copy_object_set_idnew(bContext *C)
 {
 	Main *bmain = CTX_data_main(C);
-	Material *ma, *mao;
-	ID *id;
-	int a;
 
-	/* XXX check object pointers */
 	CTX_DATA_BEGIN (C, Object *, ob, selected_editable_objects)
 	{
-		BKE_object_relink(ob);
+		BKE_libblock_relink_to_newid(&ob->id);
 	}
 	CTX_DATA_END;
-
-	/* materials */
-	if (dupflag & USER_DUP_MAT) {
-		mao = bmain->mat.first;
-		while (mao) {
-			if (mao->id.newid) {
-				ma = (Material *)mao->id.newid;
-
-				if (dupflag & USER_DUP_TEX) {
-					for (a = 0; a < MAX_MTEX; a++) {
-						if (ma->mtex[a]) {
-							id = (ID *)ma->mtex[a]->tex;
-							if (id) {
-								ID_NEW_US(ma->mtex[a]->tex)
-								else
-									ma->mtex[a]->tex = BKE_texture_copy(ma->mtex[a]->tex);
-								id->us--;
-							}
-						}
-					}
-				}
-#if 0 // XXX old animation system
-				id = (ID *)ma->ipo;
-				if (id) {
-					ID_NEW_US(ma->ipo)
-					else
-						ma->ipo = copy_ipo(ma->ipo);
-					id->us--;
-				}
-#endif // XXX old animation system
-			}
-			mao = mao->id.next;
-		}
-	}
-
-#if 0 // XXX old animation system
-	  /* lamps */
-	if (dupflag & USER_DUP_IPO) {
-		Lamp *la = bmain->lamp.first;
-		while (la) {
-			if (la->id.newid) {
-				Lamp *lan = (Lamp *)la->id.newid;
-				id = (ID *)lan->ipo;
-				if (id) {
-					ID_NEW_US(lan->ipo)
-					else
-						lan->ipo = copy_ipo(lan->ipo);
-					id->us--;
-				}
-			}
-			la = la->id.next;
-		}
-	}
-
-	/* ipos */
-	ipo = bmain->ipo.first;
-	while (ipo) {
-		if (ipo->id.lib == NULL && ipo->id.newid) {
-			Ipo *ipon = (Ipo *)ipo->id.newid;
-			IpoCurve *icu;
-			for (icu = ipon->curve.first; icu; icu = icu->next) {
-				if (icu->driver) {
-					ID_NEW(icu->driver->ob);
-				}
-			}
-		}
-		ipo = ipo->id.next;
-	}
-#endif // XXX old animation system
 
 	set_sca_new_poins();
 
@@ -1284,10 +1271,10 @@ static void copy_object_set_idnew(bContext *C, int dupflag)
 /********************* Make Duplicates Real ************************/
 
 /**
- * \note regarding hashing dupli-objects, skip the first member of #DupliObject.persistent_id
+ * \note regarding hashing dupli-objects when using OB_DUPLIGROUP, skip the first member of #DupliObject.persistent_id
  * since its a unique index and we only want to know if the group objects are from the same dupli-group instance.
  */
-static unsigned int dupliobject_hash(const void *ptr)
+static unsigned int dupliobject_group_hash(const void *ptr)
 {
 	const DupliObject *dob = ptr;
 	unsigned int hash = BLI_ghashutil_ptrhash(dob->ob);
@@ -1298,7 +1285,20 @@ static unsigned int dupliobject_hash(const void *ptr)
 	return hash;
 }
 
-static bool dupliobject_cmp(const void *a_, const void *b_)
+/**
+ * \note regarding hashing dupli-objects when NOT using OB_DUPLIGROUP, include the first member of #DupliObject.persistent_id
+ * since its the index of the vertex/face the object is instantiated on and we want to identify objects on the same vertex/face.
+ */
+static unsigned int dupliobject_hash(const void *ptr)
+{
+	const DupliObject *dob = ptr;
+	unsigned int hash = BLI_ghashutil_ptrhash(dob->ob);
+	hash ^= (dob->persistent_id[0] ^ 0);
+	return hash;
+}
+
+/* Compare function that matches dupliobject_group_hash */
+static bool dupliobject_group_cmp(const void *a_, const void *b_)
 {
 	const DupliObject *a = a_;
 	const DupliObject *b = b_;
@@ -1321,6 +1321,24 @@ static bool dupliobject_cmp(const void *a_, const void *b_)
 	return false;
 }
 
+/* Compare function that matches dupliobject_hash */
+static bool dupliobject_cmp(const void *a_, const void *b_)
+{
+	const DupliObject *a = a_;
+	const DupliObject *b = b_;
+
+	if (a->ob != b->ob) {
+		return true;
+	}
+
+	if (a->persistent_id[0] != b->persistent_id[0]) {
+		return true;
+	}
+
+	/* matching */
+	return false;
+}
+
 static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
                                        const bool use_base_parent,
                                        const bool use_hierarchy)
@@ -1336,14 +1354,19 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 
 	lb = object_duplilist(bmain->eval_ctx, scene, base->object);
 
-	if (use_hierarchy || use_base_parent) {
-		dupli_gh = BLI_ghash_ptr_new(__func__);
-		parent_gh = BLI_ghash_new(dupliobject_hash, dupliobject_cmp, __func__);
+	dupli_gh = BLI_ghash_ptr_new(__func__);
+	if (use_hierarchy) {
+		if (base->object->transflag & OB_DUPLIGROUP) {
+			parent_gh = BLI_ghash_new(dupliobject_group_hash, dupliobject_group_cmp, __func__);
+		}
+		else {
+			parent_gh = BLI_ghash_new(dupliobject_hash, dupliobject_cmp, __func__);
+		}
 	}
 
 	for (dob = lb->first; dob; dob = dob->next) {
 		Base *basen;
-		Object *ob = BKE_object_copy(dob->ob);
+		Object *ob = ID_NEW_SET(dob->ob, BKE_object_copy(bmain, dob->ob));
 
 		/* font duplis can have a totcol without material, we get them from parent
 		 * should be implemented better...
@@ -1358,7 +1381,7 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 		basen->object = ob;
 
 		/* make sure apply works */
-		BKE_free_animdata(&ob->id);
+		BKE_animdata_free(&ob->id, true);
 		ob->adt = NULL;
 
 		/* Proxies are not to be copied. */
@@ -1367,7 +1390,7 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 		ob->proxy = NULL;
 
 		ob->parent = NULL;
-		BLI_listbase_clear(&ob->constraints);
+		BKE_constraints_free(&ob->constraints);
 		ob->curve_cache = NULL;
 		ob->transflag &= ~OB_DUPLI;
 		ob->lay = base->lay;
@@ -1375,21 +1398,30 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 		copy_m4_m4(ob->obmat, dob->mat);
 		BKE_object_apply_mat4(ob, ob->obmat, false, false);
 
-		if (dupli_gh)
-			BLI_ghash_insert(dupli_gh, dob, ob);
-		if (parent_gh)
-			BLI_ghash_insert(parent_gh, dob, ob);
-
-		DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
+		BLI_ghash_insert(dupli_gh, dob, ob);
+		if (parent_gh) {
+			void **val;
+			/* Due to nature of hash/comparison of this ghash, a lot of duplis may be considered as 'the same',
+			 * this avoids trying to insert same key several time and raise asserts in debug builds... */
+			if (!BLI_ghash_ensure_p(parent_gh, dob, &val)) {
+				*val = ob;
+			}
+		}
 	}
 
-	if (use_hierarchy) {
-		for (dob = lb->first; dob; dob = dob->next) {
-			/* original parents */
-			Object *ob_src =     dob->ob;
-			Object *ob_src_par = ob_src->parent;
+	for (dob = lb->first; dob; dob = dob->next) {
+		Object *ob_src = dob->ob;
+		Object *ob_dst = BLI_ghash_lookup(dupli_gh, dob);
 
-			Object *ob_dst =     BLI_ghash_lookup(dupli_gh, dob);
+		/* Remap new object to itself, and clear again newid pointer of orig object. */
+		BKE_libblock_relink_to_newid(&ob_dst->id);
+		set_sca_new_poins_ob(ob_dst);
+
+		DAG_id_tag_update(&ob_dst->id, OB_RECALC_DATA);
+
+		if (use_hierarchy) {
+			/* original parents */
+			Object *ob_src_par = ob_src->parent;
 			Object *ob_dst_par = NULL;
 
 			/* find parent that was also made real */
@@ -1398,9 +1430,14 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 				 * they won't be read, this is simply for a hash lookup. */
 				DupliObject dob_key;
 				dob_key.ob = ob_src_par;
-				memcpy(&dob_key.persistent_id[1],
-				       &dob->persistent_id[1],
-				       sizeof(dob->persistent_id[1]) * (MAX_DUPLI_RECUR - 1));
+				if (base->object->transflag & OB_DUPLIGROUP) {
+					memcpy(&dob_key.persistent_id[1],
+					       &dob->persistent_id[1],
+					       sizeof(dob->persistent_id[1]) * (MAX_DUPLI_RECUR - 1));
+				}
+				else {
+					dob_key.persistent_id[0] = dob->persistent_id[0];
+				}
 				ob_dst_par = BLI_ghash_lookup(parent_gh, &dob_key);
 			}
 
@@ -1420,37 +1457,24 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 				ob_dst->parent = base->object;
 				ob_dst->partype = PAROBJECT;
 			}
-
-			if (ob_dst->parent) {
-				invert_m4_m4(ob_dst->parentinv, dob->mat);
-
-				/* note, this may be the parent of other objects, but it should
-				 * still work out ok */
-				BKE_object_apply_mat4(ob_dst, dob->mat, false, true);
-
-				/* to set ob_dst->orig and in case theres any other discrepicies */
-				DAG_id_tag_update(&ob_dst->id, OB_RECALC_OB);
-			}
 		}
-	}
-	else if (use_base_parent) {
-		/* since we are ignoring the internal hierarchy - parent all to the
-		 * base object */
-		for (dob = lb->first; dob; dob = dob->next) {
-			/* original parents */
-			Object *ob_dst = BLI_ghash_lookup(dupli_gh, dob);
-
+		else if (use_base_parent) {
+			/* since we are ignoring the internal hierarchy - parent all to the
+			 * base object */
 			ob_dst->parent = base->object;
 			ob_dst->partype = PAROBJECT;
+		}
 
-			/* similer to the code above, see comments */
-			invert_m4_m4(ob_dst->parentinv, dob->mat);
+		if (ob_dst->parent) {
+			/* note, this may be the parent of other objects, but it should
+			 * still work out ok */
 			BKE_object_apply_mat4(ob_dst, dob->mat, false, true);
+
+			/* to set ob_dst->orig and in case theres any other discrepicies */
 			DAG_id_tag_update(&ob_dst->id, OB_RECALC_OB);
 		}
 	}
 
-	/* The same how BKE_object_unlink detects which object proxies to clear. */
 	if (base->object->transflag & OB_DUPLIGROUP && base->object->dup_group) {
 		for (object = bmain->object.first; object; object = object->id.next) {
 			if (object->proxy_group == base->object) {
@@ -1461,14 +1485,13 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 		}
 	}
 
-	if (dupli_gh)
-		BLI_ghash_free(dupli_gh, NULL, NULL);
+	BLI_ghash_free(dupli_gh, NULL, NULL);
 	if (parent_gh)
 		BLI_ghash_free(parent_gh, NULL, NULL);
 
-	copy_object_set_idnew(C, 0);
-
 	free_object_duplilist(lb);
+
+	BKE_main_id_clear_newpoins(bmain);
 
 	base->object->transflag &= ~OB_DUPLI;
 }
@@ -1560,11 +1583,12 @@ static int convert_poll(bContext *C)
 	Object *obact = CTX_data_active_object(C);
 	Scene *scene = CTX_data_scene(C);
 
-	return (!scene->id.lib && obact && scene->obedit != obact && (obact->flag & SELECT) && !(obact->id.lib));
+	return (!ID_IS_LINKED_DATABLOCK(scene) && obact && scene->obedit != obact &&
+	        (obact->flag & SELECT) && !ID_IS_LINKED_DATABLOCK(obact));
 }
 
 /* Helper for convert_exec */
-static Base *duplibase_for_convert(Scene *scene, Base *base, Object *ob)
+static Base *duplibase_for_convert(Main *bmain, Scene *scene, Base *base, Object *ob)
 {
 	Object *obn;
 	Base *basen;
@@ -1573,7 +1597,7 @@ static Base *duplibase_for_convert(Scene *scene, Base *base, Object *ob)
 		ob = base->object;
 	}
 
-	obn = BKE_object_copy(ob);
+	obn = BKE_object_copy(bmain, ob);
 	DAG_id_tag_update(&ob->id, OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME);
 
 	basen = MEM_mallocN(sizeof(Base), "duplibase");
@@ -1600,7 +1624,7 @@ static int convert_exec(bContext *C, wmOperator *op)
 	MetaBall *mb;
 	Mesh *me;
 	const short target = RNA_enum_get(op->ptr, "target");
-	const bool keep_original = RNA_boolean_get(op->ptr, "keep_original");
+	bool keep_original = RNA_boolean_get(op->ptr, "keep_original");
 	int a, mballConverted = 0;
 
 	/* don't forget multiple users! */
@@ -1614,7 +1638,7 @@ static int convert_exec(bContext *C, wmOperator *op)
 
 			/* flag data thats not been edited (only needed for !keep_original) */
 			if (ob->data) {
-				((ID *)ob->data)->flag |= LIB_DOIT;
+				((ID *)ob->data)->tag |= LIB_TAG_DOIT;
 			}
 
 			/* possible metaball basis is not in this scene */
@@ -1630,8 +1654,38 @@ static int convert_exec(bContext *C, wmOperator *op)
 		}
 	}
 
-	CTX_DATA_BEGIN (C, Base *, base, selected_editable_bases)
+	ListBase selected_editable_bases = CTX_data_collection_get(C, "selected_editable_bases");
+
+	/* Ensure we get all meshes calculated with a sufficient data-mask,
+	 * needed since re-evaluating single modifiers causes bugs if they depend
+	 * on other objects data masks too, see: T50950. */
 	{
+		for (CollectionPointerLink *link = selected_editable_bases.first; link; link = link->next) {
+			Base *base = link->ptr.data;
+			ob = base->object;
+
+			/* The way object type conversion works currently (enforcing conversion of *all* objetcs using converted
+			 * obdata, even some un-selected/hidden/inother scene ones, sounds totally bad to me.
+			 * However, changing this is more design than bugfix, not to mention convoluted code below,
+			 * so that will be for later.
+			 * But at the very least, do not do that with linked IDs! */
+			if ((ID_IS_LINKED_DATABLOCK(ob) || (ob->data && ID_IS_LINKED_DATABLOCK(ob->data))) && !keep_original) {
+				keep_original = true;
+				BKE_reportf(op->reports, RPT_INFO,
+				            "Converting some linked object/object data, enforcing 'Keep Original' option to True");
+			}
+
+			DAG_id_tag_update(&base->object->id, OB_RECALC_DATA);
+		}
+
+		uint64_t customdata_mask_prev = scene->customdata_mask;
+		scene->customdata_mask |= CD_MASK_MESH;
+		BKE_scene_update_tagged(bmain->eval_ctx, bmain, scene);
+		scene->customdata_mask = customdata_mask_prev;
+	}
+
+	for (CollectionPointerLink *link = selected_editable_bases.first; link; link = link->next) {
+		Base *base = link->ptr.data;
 		ob = base->object;
 
 		if (ob->flag & OB_DONE || !IS_TAGGED(ob->data)) {
@@ -1653,15 +1707,15 @@ static int convert_exec(bContext *C, wmOperator *op)
 			ob->flag |= OB_DONE;
 
 			if (keep_original) {
-				basen = duplibase_for_convert(scene, base, NULL);
+				basen = duplibase_for_convert(bmain, scene, base, NULL);
 				newob = basen->object;
 
 				/* decrement original mesh's usage count  */
 				me = newob->data;
-				me->id.us--;
+				id_us_min(&me->id);
 
 				/* make a new copy of the mesh */
-				newob->data = BKE_mesh_copy(me);
+				newob->data = BKE_mesh_copy(bmain, me);
 			}
 			else {
 				newob = ob;
@@ -1671,22 +1725,22 @@ static int convert_exec(bContext *C, wmOperator *op)
 
 			if (newob->type == OB_CURVE) {
 				BKE_object_free_modifiers(newob);   /* after derivedmesh calls! */
-				ED_rigidbody_object_remove(scene, newob);
+				ED_rigidbody_object_remove(bmain, scene, newob);
 			}
 		}
-		else if (ob->type == OB_MESH && ob->modifiers.first) { /* converting a mesh with no modifiers causes a segfault */
+		else if (ob->type == OB_MESH) {
 			ob->flag |= OB_DONE;
 
 			if (keep_original) {
-				basen = duplibase_for_convert(scene, base, NULL);
+				basen = duplibase_for_convert(bmain, scene, base, NULL);
 				newob = basen->object;
 
 				/* decrement original mesh's usage count  */
 				me = newob->data;
-				me->id.us--;
+				id_us_min(&me->id);
 
 				/* make a new copy of the mesh */
-				newob->data = BKE_mesh_copy(me);
+				newob->data = BKE_mesh_copy(bmain, me);
 			}
 			else {
 				newob = ob;
@@ -1698,7 +1752,6 @@ static int convert_exec(bContext *C, wmOperator *op)
 			 * cases this doesnt give correct results (when MDEF is used for eg)
 			 */
 			dm = mesh_get_derived_final(scene, newob, CD_MASK_MESH);
-			// dm = mesh_create_derived_no_deform(ob1, NULL);  /* this was called original (instead of get_derived). man o man why! (ton) */
 
 			DM_to_mesh(dm, newob->data, newob, CD_MASK_MESH, true);
 
@@ -1710,14 +1763,14 @@ static int convert_exec(bContext *C, wmOperator *op)
 			ob->flag |= OB_DONE;
 
 			if (keep_original) {
-				basen = duplibase_for_convert(scene, base, NULL);
+				basen = duplibase_for_convert(bmain, scene, base, NULL);
 				newob = basen->object;
 
 				/* decrement original curve's usage count  */
-				((Curve *)newob->data)->id.us--;
+				id_us_min(&((Curve *)newob->data)->id);
 
 				/* make a new copy of the curve */
-				newob->data = BKE_curve_copy(ob->data);
+				newob->data = BKE_curve_copy(bmain, ob->data);
 			}
 			else {
 				newob = ob;
@@ -1735,19 +1788,19 @@ static int convert_exec(bContext *C, wmOperator *op)
 			cu->type = OB_CURVE;
 
 			if (cu->vfont) {
-				cu->vfont->id.us--;
+				id_us_min(&cu->vfont->id);
 				cu->vfont = NULL;
 			}
 			if (cu->vfontb) {
-				cu->vfontb->id.us--;
+				id_us_min(&cu->vfontb->id);
 				cu->vfontb = NULL;
 			}
 			if (cu->vfonti) {
-				cu->vfonti->id.us--;
+				id_us_min(&cu->vfonti->id);
 				cu->vfonti = NULL;
 			}
 			if (cu->vfontbi) {
-				cu->vfontbi->id.us--;
+				id_us_min(&cu->vfontbi->id);
 				cu->vfontbi = NULL;
 			}
 
@@ -1781,14 +1834,14 @@ static int convert_exec(bContext *C, wmOperator *op)
 
 			if (target == OB_MESH) {
 				if (keep_original) {
-					basen = duplibase_for_convert(scene, base, NULL);
+					basen = duplibase_for_convert(bmain, scene, base, NULL);
 					newob = basen->object;
 
 					/* decrement original curve's usage count  */
-					((Curve *)newob->data)->id.us--;
+					id_us_min(&((Curve *)newob->data)->id);
 
 					/* make a new copy of the curve */
-					newob->data = BKE_curve_copy(ob->data);
+					newob->data = BKE_curve_copy(bmain, ob->data);
 				}
 				else {
 					newob = ob;
@@ -1816,11 +1869,11 @@ static int convert_exec(bContext *C, wmOperator *op)
 			if (!(baseob->flag & OB_DONE)) {
 				baseob->flag |= OB_DONE;
 
-				basen = duplibase_for_convert(scene, base, baseob);
+				basen = duplibase_for_convert(bmain, scene, base, baseob);
 				newob = basen->object;
 
 				mb = newob->data;
-				mb->id.us--;
+				id_us_min(&mb->id);
 
 				newob->data = BKE_mesh_add(bmain, "Mesh");
 				newob->type = OB_MESH;
@@ -1860,10 +1913,10 @@ static int convert_exec(bContext *C, wmOperator *op)
 
 		if (!keep_original && (ob->flag & OB_DONE)) {
 			DAG_id_tag_update(&ob->id, OB_RECALC_DATA);
-			((ID *)ob->data)->flag &= ~LIB_DOIT; /* flag not to convert this datablock again */
+			((ID *)ob->data)->tag &= ~LIB_TAG_DOIT; /* flag not to convert this datablock again */
 		}
 	}
-	CTX_DATA_END;
+	BLI_freelistN(&selected_editable_bases);
 
 	if (!keep_original) {
 		if (mballConverted) {
@@ -1941,8 +1994,12 @@ void OBJECT_OT_convert(wmOperatorType *ot)
 
 /* used below, assumes id.new is correct */
 /* leaves selection of base/object unaltered */
+/* Does set ID->newid pointers. */
 static Base *object_add_duplicate_internal(Main *bmain, Scene *scene, Base *base, int dupflag)
 {
+#define ID_NEW_REMAP_US(a)	if (      (a)->id.newid) { (a) = (void *)(a)->id.newid;       (a)->id.us++; }
+#define ID_NEW_REMAP_US2(a)	if (((ID *)a)->newid)    { (a) = ((ID  *)a)->newid;     ((ID *)a)->us++;    }
+
 	Base *basen = NULL;
 	Material ***matarar;
 	Object *ob, *obn;
@@ -1954,7 +2011,7 @@ static Base *object_add_duplicate_internal(Main *bmain, Scene *scene, Base *base
 		; /* nothing? */
 	}
 	else {
-		obn = BKE_object_copy(ob);
+		obn = ID_NEW_SET(ob, BKE_object_copy(bmain, ob));
 		DAG_id_tag_update(&obn->id, OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME);
 
 		basen = MEM_mallocN(sizeof(Base), "duplibase");
@@ -1976,20 +2033,21 @@ static Base *object_add_duplicate_internal(Main *bmain, Scene *scene, Base *base
 
 		/* duplicates using userflags */
 		if (dupflag & USER_DUP_ACT) {
-			BKE_copy_animdata_id_action(&obn->id);
+			BKE_animdata_copy_id_action(&obn->id, true);
 		}
 
 		if (dupflag & USER_DUP_MAT) {
 			for (a = 0; a < obn->totcol; a++) {
 				id = (ID *)obn->mat[a];
 				if (id) {
-					ID_NEW_US(obn->mat[a])
-					else
-						obn->mat[a] = BKE_material_copy(obn->mat[a]);
-					id->us--;
+					ID_NEW_REMAP_US(obn->mat[a])
+					else {
+						obn->mat[a] = ID_NEW_SET(obn->mat[a], BKE_material_copy(bmain, obn->mat[a]));
+					}
+					id_us_min(id);
 
 					if (dupflag & USER_DUP_ACT) {
-						BKE_copy_animdata_id_action(&obn->mat[a]->id);
+						BKE_animdata_copy_id_action(&obn->mat[a]->id, true);
 					}
 				}
 			}
@@ -1999,15 +2057,16 @@ static Base *object_add_duplicate_internal(Main *bmain, Scene *scene, Base *base
 			for (psys = obn->particlesystem.first; psys; psys = psys->next) {
 				id = (ID *) psys->part;
 				if (id) {
-					ID_NEW_US(psys->part)
-					else
-						psys->part = BKE_particlesettings_copy(psys->part);
-
-					if (dupflag & USER_DUP_ACT) {
-						BKE_copy_animdata_id_action(&psys->part->id);
+					ID_NEW_REMAP_US(psys->part)
+					else {
+						psys->part = ID_NEW_SET(psys->part, BKE_particlesettings_copy(bmain, psys->part));
 					}
 
-					id->us--;
+					if (dupflag & USER_DUP_ACT) {
+						BKE_animdata_copy_id_action(&psys->part->id, true);
+					}
+
+					id_us_min(id);
 				}
 			}
 		}
@@ -2018,109 +2077,106 @@ static Base *object_add_duplicate_internal(Main *bmain, Scene *scene, Base *base
 		switch (obn->type) {
 			case OB_MESH:
 				if (dupflag & USER_DUP_MESH) {
-					ID_NEW_US2(obn->data)
+					ID_NEW_REMAP_US2(obn->data)
 					else {
-						obn->data = BKE_mesh_copy(obn->data);
-						if (obn->fluidsimSettings) {
-							obn->fluidsimSettings->orgMesh = (Mesh *)obn->data;
-						}
+						obn->data = ID_NEW_SET(obn->data, BKE_mesh_copy(bmain, obn->data));
 						didit = 1;
 					}
-					id->us--;
+					id_us_min(id);
 				}
 				break;
 			case OB_CURVE:
 				if (dupflag & USER_DUP_CURVE) {
-					ID_NEW_US2(obn->data)
+					ID_NEW_REMAP_US2(obn->data)
 					else {
-						obn->data = BKE_curve_copy(obn->data);
+						obn->data = ID_NEW_SET(obn->data, BKE_curve_copy(bmain, obn->data));
 						didit = 1;
 					}
-					id->us--;
+					id_us_min(id);
 				}
 				break;
 			case OB_SURF:
 				if (dupflag & USER_DUP_SURF) {
-					ID_NEW_US2(obn->data)
+					ID_NEW_REMAP_US2(obn->data)
 					else {
-						obn->data = BKE_curve_copy(obn->data);
+						obn->data = ID_NEW_SET(obn->data, BKE_curve_copy(bmain, obn->data));
 						didit = 1;
 					}
-					id->us--;
+					id_us_min(id);
 				}
 				break;
 			case OB_FONT:
 				if (dupflag & USER_DUP_FONT) {
-					ID_NEW_US2(obn->data)
+					ID_NEW_REMAP_US2(obn->data)
 					else {
-						obn->data = BKE_curve_copy(obn->data);
+						obn->data = ID_NEW_SET(obn->data, BKE_curve_copy(bmain, obn->data));
 						didit = 1;
 					}
-					id->us--;
+					id_us_min(id);
 				}
 				break;
 			case OB_MBALL:
 				if (dupflag & USER_DUP_MBALL) {
-					ID_NEW_US2(obn->data)
+					ID_NEW_REMAP_US2(obn->data)
 					else {
-						obn->data = BKE_mball_copy(obn->data);
+						obn->data = ID_NEW_SET(obn->data, BKE_mball_copy(bmain, obn->data));
 						didit = 1;
 					}
-					id->us--;
+					id_us_min(id);
 				}
 				break;
 			case OB_LAMP:
 				if (dupflag & USER_DUP_LAMP) {
-					ID_NEW_US2(obn->data)
+					ID_NEW_REMAP_US2(obn->data)
 					else {
-						obn->data = BKE_lamp_copy(obn->data);
+						obn->data = ID_NEW_SET(obn->data, BKE_lamp_copy(bmain, obn->data));
 						didit = 1;
 					}
-					id->us--;
+					id_us_min(id);
 				}
 				break;
 			case OB_ARMATURE:
 				DAG_id_tag_update(&obn->id, OB_RECALC_DATA);
 				if (obn->pose)
-					obn->pose->flag |= POSE_RECALC;
+					BKE_pose_tag_recalc(bmain, obn->pose);
 				if (dupflag & USER_DUP_ARM) {
-					ID_NEW_US2(obn->data)
+					ID_NEW_REMAP_US2(obn->data)
 					else {
-						obn->data = BKE_armature_copy(obn->data);
+						obn->data = ID_NEW_SET(obn->data, BKE_armature_copy(bmain, obn->data));
 						BKE_pose_rebuild(obn, obn->data);
 						didit = 1;
 					}
-					id->us--;
+					id_us_min(id);
 				}
 				break;
 			case OB_LATTICE:
 				if (dupflag != 0) {
-					ID_NEW_US2(obn->data)
+					ID_NEW_REMAP_US2(obn->data)
 					else {
-						obn->data = BKE_lattice_copy(obn->data);
+						obn->data = ID_NEW_SET(obn->data, BKE_lattice_copy(bmain, obn->data));
 						didit = 1;
 					}
-					id->us--;
+					id_us_min(id);
 				}
 				break;
 			case OB_CAMERA:
 				if (dupflag != 0) {
-					ID_NEW_US2(obn->data)
+					ID_NEW_REMAP_US2(obn->data)
 					else {
-						obn->data = BKE_camera_copy(obn->data);
+						obn->data = ID_NEW_SET(obn->data, BKE_camera_copy(bmain, obn->data));
 						didit = 1;
 					}
-					id->us--;
+					id_us_min(id);
 				}
 				break;
 			case OB_SPEAKER:
 				if (dupflag != 0) {
-					ID_NEW_US2(obn->data)
+					ID_NEW_REMAP_US2(obn->data)
 					else {
-						obn->data = BKE_speaker_copy(obn->data);
+						obn->data = ID_NEW_SET(obn->data, BKE_speaker_copy(bmain, obn->data));
 						didit = 1;
 					}
-					id->us--;
+					id_us_min(id);
 				}
 				break;
 		}
@@ -2129,15 +2185,23 @@ static Base *object_add_duplicate_internal(Main *bmain, Scene *scene, Base *base
 		if (didit) {
 			Key *key = BKE_key_from_object(obn);
 
+			Key *oldkey = BKE_key_from_object(ob);
+			if (oldkey != NULL) {
+				ID_NEW_SET(oldkey, key);
+			}
+
 			if (dupflag & USER_DUP_ACT) {
 				bActuator *act;
 
-				BKE_copy_animdata_id_action((ID *)obn->data);
+				BKE_animdata_copy_id_action((ID *)obn->data, true);
 				if (key) {
-					BKE_copy_animdata_id_action((ID *)key);
+					BKE_animdata_copy_id_action((ID *)key, true);
 				}
 
 				/* Update the duplicated action in the action actuators */
+				/* XXX TODO this code is all wrong! actact->act is user-refcounted (see readfile.c),
+				 * and what about other ID pointers of other BGE logic bricks,
+				 * and since this is object-level, why is it only ran if obdata was duplicated??? -mont29 */
 				for (act = obn->actuators.first; act; act = act->next) {
 					if (act->type == ACT_ACTION) {
 						bActionActuator *actact = (bActionActuator *) act->data;
@@ -2154,10 +2218,11 @@ static Base *object_add_duplicate_internal(Main *bmain, Scene *scene, Base *base
 					for (a = 0; a < obn->totcol; a++) {
 						id = (ID *)(*matarar)[a];
 						if (id) {
-							ID_NEW_US((*matarar)[a])
-							else
-								(*matarar)[a] = BKE_material_copy((*matarar)[a]);
-							id->us--;
+							ID_NEW_REMAP_US((*matarar)[a])
+							else {
+								(*matarar)[a] = ID_NEW_SET((*matarar)[a], BKE_material_copy(bmain, (*matarar)[a]));
+							}
+							id_us_min(id);
 						}
 					}
 				}
@@ -2165,6 +2230,9 @@ static Base *object_add_duplicate_internal(Main *bmain, Scene *scene, Base *base
 		}
 	}
 	return basen;
+
+#undef ID_NEW_REMAP_US
+#undef ID_NEW_REMAP_US2
 }
 
 /* single object duplicate, if dupflag==0, fully linked, else it uses the flags given */
@@ -2177,8 +2245,7 @@ Base *ED_object_add_duplicate(Main *bmain, Scene *scene, Base *base, int dupflag
 	Base *basen;
 	Object *ob;
 
-	BKE_main_id_clear_newpoins(bmain);
-	clear_sca_new_poins();  /* sensor/contr/act */
+	clear_sca_new_poins();  /* BGE logic */
 
 	basen = object_add_duplicate_internal(bmain, scene, base, dupflag);
 	if (basen == NULL) {
@@ -2188,7 +2255,7 @@ Base *ED_object_add_duplicate(Main *bmain, Scene *scene, Base *base, int dupflag
 	ob = basen->object;
 
 	/* link own references to the newly duplicated data [#26816] */
-	BKE_object_relink(ob);
+	BKE_libblock_relink_to_newid(&ob->id);
 	set_sca_new_poins_ob(ob);
 
 	/* DAG_relations_tag_update(bmain); */ /* caller must do */
@@ -2196,6 +2263,8 @@ Base *ED_object_add_duplicate(Main *bmain, Scene *scene, Base *base, int dupflag
 	if (ob->data) {
 		ED_render_id_flush_update(bmain, ob->data);
 	}
+
+	BKE_main_id_clear_newpoins(bmain);
 
 	return basen;
 }
@@ -2208,8 +2277,7 @@ static int duplicate_exec(bContext *C, wmOperator *op)
 	const bool linked = RNA_boolean_get(op->ptr, "linked");
 	int dupflag = (linked) ? 0 : U.dupflag;
 
-	BKE_main_id_clear_newpoins(bmain);
-	clear_sca_new_poins();  /* sensor/contr/act */
+	clear_sca_new_poins();  /* BGE logic */
 
 	CTX_DATA_BEGIN (C, Base *, base, selected_bases)
 	{
@@ -2233,7 +2301,9 @@ static int duplicate_exec(bContext *C, wmOperator *op)
 	}
 	CTX_DATA_END;
 
-	copy_object_set_idnew(C, dupflag);
+	copy_object_set_idnew(C);
+
+	BKE_main_id_clear_newpoins(bmain);
 
 	DAG_relations_tag_update(bmain);
 
@@ -2260,7 +2330,7 @@ void OBJECT_OT_duplicate(wmOperatorType *ot)
 
 	/* to give to transform */
 	RNA_def_boolean(ot->srna, "linked", 0, "Linked", "Duplicate object but not object data, linking to the original data");
-	prop = RNA_def_enum(ot->srna, "mode", transform_mode_types, TFM_TRANSLATION, "Mode", "");
+	prop = RNA_def_enum(ot->srna, "mode", rna_enum_transform_mode_types, TFM_TRANSLATION, "Mode", "");
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 }
 
@@ -2293,8 +2363,7 @@ static int add_named_exec(bContext *C, wmOperator *op)
 	base->flag = ob->flag;
 
 	/* prepare dupli */
-	BKE_main_id_clear_newpoins(bmain);
-	clear_sca_new_poins();  /* sensor/contr/act */
+	clear_sca_new_poins();  /* BGE logic */
 
 	basen = object_add_duplicate_internal(bmain, scene, base, dupflag);
 
@@ -2318,7 +2387,9 @@ static int add_named_exec(bContext *C, wmOperator *op)
 	ED_base_object_select(basen, BA_SELECT);
 	ED_base_object_activate(C, basen);
 
-	copy_object_set_idnew(C, dupflag);
+	copy_object_set_idnew(C);
+
+	BKE_main_id_clear_newpoins(bmain);
 
 	DAG_relations_tag_update(bmain);
 
@@ -2353,7 +2424,7 @@ static int join_poll(bContext *C)
 {
 	Object *ob = CTX_data_active_object(C);
 
-	if (!ob || ob->id.lib) return 0;
+	if (!ob || ID_IS_LINKED_DATABLOCK(ob)) return 0;
 
 	if (ELEM(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_ARMATURE))
 		return ED_operator_screenactive(C);
@@ -2406,7 +2477,7 @@ static int join_shapes_poll(bContext *C)
 {
 	Object *ob = CTX_data_active_object(C);
 
-	if (!ob || ob->id.lib) return 0;
+	if (!ob || ID_IS_LINKED_DATABLOCK(ob)) return 0;
 
 	/* only meshes supported at the moment */
 	if (ob->type == OB_MESH)

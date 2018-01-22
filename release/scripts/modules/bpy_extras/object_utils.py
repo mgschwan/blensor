@@ -31,7 +31,11 @@ __all__ = (
 
 import bpy
 
-from bpy.props import BoolProperty, FloatVectorProperty
+from bpy.props import (
+        BoolProperty,
+        BoolVectorProperty,
+        FloatVectorProperty,
+        )
 
 
 def add_object_align_init(context, operator):
@@ -133,16 +137,28 @@ def object_data_add(context, obdata, operator=None, use_active_layer=True, name=
     if context.space_data and context.space_data.type == 'VIEW_3D':
         v3d = context.space_data
 
-    if use_active_layer:
-        if v3d and v3d.local_view:
-            base.layers_from_view(context.space_data)
-            base.layers[scene.active_layer] = True
-        else:
-            base.layers = [True if i == scene.active_layer
-                           else False for i in range(len(scene.layers))]
+    if v3d and v3d.local_view:
+        base.layers_from_view(context.space_data)
+
+    if operator is not None and any(operator.layers):
+        base.layers = operator.layers
     else:
-        if v3d:
-            base.layers_from_view(context.space_data)
+        if use_active_layer:
+            if v3d and v3d.local_view:
+                base.layers[scene.active_layer] = True
+            else:
+                if v3d and not v3d.lock_camera_and_layers:
+                    base.layers = [True if i == v3d.active_layer
+                                   else False for i in range(len(v3d.layers))]
+                else:
+                    base.layers = [True if i == scene.active_layer
+                                   else False for i in range(len(scene.layers))]
+        else:
+            if v3d:
+                base.layers_from_view(context.space_data)
+
+        if operator is not None:
+            operator.layers = base.layers
 
     obj_new.matrix_world = add_object_align_init(context, operator)
 
@@ -171,7 +187,15 @@ def object_data_add(context, obdata, operator=None, use_active_layer=True, name=
 
         obj_act.select = True
         scene.update()  # apply location
-        #scene.objects.active = obj_new
+        # scene.objects.active = obj_new
+
+        # Match up UV layers, this is needed so adding an object with UV's
+        # doesn't create new layers when there happens to be a naming mis-match.
+        uv_new = obdata.uv_layers.active
+        if uv_new is not None:
+            uv_act = obj_act.data.uv_layers.active
+            if uv_act is not None:
+                uv_new.name = uv_act.name
 
         bpy.ops.object.join()  # join into the active.
         if obdata:
@@ -205,6 +229,12 @@ class AddObjectHelper:
     rotation = FloatVectorProperty(
             name="Rotation",
             subtype='EULER',
+            )
+    layers = BoolVectorProperty(
+            name="Layers",
+            size=20,
+            subtype='LAYER',
+            options={'HIDDEN', 'SKIP_SAVE'},
             )
 
     @classmethod
@@ -287,7 +317,8 @@ def world_to_camera_view(scene, obj, coord):
     Returns the camera space coords for a 3d point.
     (also known as: normalized device coordinates - NDC).
 
-    Where (0, 0) is the bottom left and (1, 1) is the top right of the camera frame.
+    Where (0, 0) is the bottom left and (1, 1)
+    is the top right of the camera frame.
     values outside 0-1 are also supported.
     A negative 'z' value means the point is behind the camera.
 
@@ -300,7 +331,8 @@ def world_to_camera_view(scene, obj, coord):
     :type obj: :class:`bpy.types.Object`
     :arg coord: World space location.
     :type coord: :class:`mathutils.Vector`
-    :return: a vector where X and Y map to the view plane and Z is the depth on the view axis.
+    :return: a vector where X and Y map to the view plane and
+       Z is the depth on the view axis.
     :rtype: :class:`mathutils.Vector`
     """
     from mathutils import Vector

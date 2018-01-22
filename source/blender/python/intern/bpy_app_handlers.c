@@ -59,8 +59,12 @@ static PyStructSequence_Field app_cb_info_fields[] = {
 	{(char *)"load_post",         (char *)"on loading a new blend file (after)"},
 	{(char *)"save_pre",          (char *)"on saving a blend file (before)"},
 	{(char *)"save_post",         (char *)"on saving a blend file (after)"},
-	{(char *)"scene_update_pre",  (char *)"on updating the scenes data (before)"},
-	{(char *)"scene_update_post", (char *)"on updating the scenes data (after)"},
+	{(char *)"scene_update_pre",  (char *)"on every scene data update. Does not imply that anything changed in the "
+                                          "scene, just that the dependency graph is about to be reevaluated, and the "
+                                          "scene is about to be updated by Blender's animation system."},
+	{(char *)"scene_update_post",  (char *)"on every scene data update. Does not imply that anything changed in the "
+                                           "scene, just that the dependency graph was reevaluated, and the scene was "
+                                           "possibly updated by Blender's animation system."},
 	{(char *)"game_pre",          (char *)"on starting the game engine"},
 	{(char *)"game_post",         (char *)"on ending the game engine"},
 	{(char *)"version_update",    (char *)"on ending the versioning code"},
@@ -126,7 +130,7 @@ static PyObject *bpy_app_handlers_persistent_new(PyTypeObject *UNUSED(type), PyO
 /* dummy type because decorators can't be PyCFunctions */
 static PyTypeObject BPyPersistent_Type = {
 
-#if defined(_MSC_VER) || defined(FREE_WINDOWS)
+#if defined(_MSC_VER)
 	PyVarObject_HEAD_INIT(NULL, 0)
 #else
 	PyVarObject_HEAD_INIT(&PyType_Type, 0)
@@ -206,7 +210,7 @@ PyObject *BPY_app_handlers_struct(void)
 {
 	PyObject *ret;
 
-#if defined(_MSC_VER) || defined(FREE_WINDOWS)
+#if defined(_MSC_VER)
 	BPyPersistent_Type.ob_base.ob_base.ob_type = &PyType_Type;
 #endif
 
@@ -317,7 +321,13 @@ void bpy_app_generic_callback(struct Main *UNUSED(main), struct ID *id, void *ar
 			func = PyList_GET_ITEM(cb_list, pos);
 			ret = PyObject_Call(func, args, NULL);
 			if (ret == NULL) {
-				PyErr_Print();
+				/* Don't set last system variables because they might cause some
+				 * dangling pointers to external render engines (when exception
+				 * happens during rendering) which will break logic of render pipeline
+				 * which expects to be the only user of render engine when rendering
+				 * is finished.
+				 */
+				PyErr_PrintEx(0);
 				PyErr_Clear();
 			}
 			else {

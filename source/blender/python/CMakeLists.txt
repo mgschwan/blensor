@@ -20,4 +20,5 @@ add_subdirectory(intern)
 add_subdirectory(generic)
 add_subdirectory(mathutils)
 add_subdirectory(bmesh)
-add_subdirectory(blensor)
+add_subdirectory(blensorintern)
+

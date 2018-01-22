@@ -40,19 +40,56 @@
  *	MISC utility functions.
  */
 
-bool bmesh_edge_swapverts(BMEdge *e, BMVert *v_orig, BMVert *v_new)
+void bmesh_disk_vert_swap(BMEdge *e, BMVert *v_dst, BMVert *v_src)
 {
-	if (e->v1 == v_orig) {
-		e->v1 = v_new;
+	if (e->v1 == v_src) {
+		e->v1 = v_dst;
 		e->v1_disk_link.next = e->v1_disk_link.prev = NULL;
-		return true;
 	}
-	else if (e->v2 == v_orig) {
-		e->v2 = v_new;
+	else if (e->v2 == v_src) {
+		e->v2 = v_dst;
 		e->v2_disk_link.next = e->v2_disk_link.prev = NULL;
-		return true;
 	}
-	return false;
+	else {
+		BLI_assert(0);
+	}
+}
+
+/**
+ * Handles all connected data, use with care.
+ *
+ * Assumes caller has setup correct state before the swap is done.
+ */
+void bmesh_edge_vert_swap(BMEdge *e, BMVert *v_dst, BMVert *v_src)
+{
+	/* swap out loops */
+	if (e->l) {
+		BMLoop *l_iter, *l_first;
+		l_iter = l_first = e->l;
+		do {
+			if (l_iter->v == v_src) {
+				l_iter->v = v_dst;
+			}
+			else if (l_iter->next->v == v_src) {
+				l_iter->next->v = v_dst;
+			}
+			else {
+				BLI_assert(l_iter->prev->v != v_src);
+			}
+		} while ((l_iter = l_iter->radial_next) != l_first);
+	}
+
+	/* swap out edges */
+	bmesh_disk_vert_replace(e, v_dst, v_src);
+}
+
+void bmesh_disk_vert_replace(BMEdge *e, BMVert *v_dst, BMVert *v_src)
+{
+	BLI_assert(e->v1 == v_src || e->v2 == v_src);
+	bmesh_disk_edge_remove(e, v_src);		/* remove e from tv's disk cycle */
+	bmesh_disk_vert_swap(e, v_dst, v_src);	/* swap out tv for v_new in e */
+	bmesh_disk_edge_append(e, v_dst);		/* add e to v_dst's disk cycle */
+	BLI_assert(e->v1 != e->v2);
 }
 
 /**
@@ -88,6 +125,7 @@ bool bmesh_edge_swapverts(BMEdge *e, BMVert *v_orig, BMVert *v_new)
  * the disk cycle has no problems dealing with non-manifold conditions involving faces.
  *
  * Functions relating to this cycle:
+ * - #bmesh_disk_vert_replace
  * - #bmesh_disk_edge_append
  * - #bmesh_disk_edge_remove
  * - #bmesh_disk_edge_next
@@ -105,7 +143,7 @@ bool bmesh_edge_swapverts(BMEdge *e, BMVert *v_orig, BMVert *v_new)
  * to store non-manifold conditions since BM does not keep track of region/shell information.
  *
  * Functions relating to this cycle:
- * - #bmesh_radial_append
+ * - #bmesh_radial_loop_append
  * - #bmesh_radial_loop_remove
  * - #bmesh_radial_facevert_count
  * - #bmesh_radial_facevert_check
@@ -206,14 +244,32 @@ int bmesh_disk_count(const BMVert *v)
 	return count;
 }
 
+int bmesh_disk_count_ex(const BMVert *v, const int count_max)
+{
+	int count = 0;
+	if (v->e) {
+		BMEdge *e_first, *e_iter;
+		e_iter = e_first = v->e;
+		do {
+			count++;
+			if (count == count_max) {
+				break;
+			}
+		} while ((e_iter = bmesh_disk_edge_next(e_iter, v)) != e_first);
+	}
+	return count;
+}
+
 bool bmesh_disk_validate(int len, BMEdge *e, BMVert *v)
 {
 	BMEdge *e_iter;
 
-	if (!BM_vert_in_edge(e, v))
+	if (!BM_vert_in_edge(e, v)) {
 		return false;
-	if (bmesh_disk_count(v) != len || len == 0)
+	}
+	if (len == 0 || bmesh_disk_count_ex(v, len + 1) != len) {
 		return false;
+	}
 
 	e_iter = e;
 	do {
@@ -236,9 +292,9 @@ bool bmesh_disk_validate(int len, BMEdge *e, BMVert *v)
 int bmesh_disk_facevert_count(const BMVert *v)
 {
 	/* is there an edge on this vert at all */
+	int count = 0;
 	if (v->e) {
 		BMEdge *e_first, *e_iter;
-		int count = 0;
 
 		/* first, loop around edge */
 		e_first = e_iter = v->e;
@@ -247,11 +303,29 @@ int bmesh_disk_facevert_count(const BMVert *v)
 				count += bmesh_radial_facevert_count(e_iter->l, v);
 			}
 		} while ((e_iter = bmesh_disk_edge_next(e_iter, v)) != e_first);
-		return count;
 	}
-	else {
-		return 0;
+	return count;
+}
+
+int bmesh_disk_facevert_count_ex(const BMVert *v, const int count_max)
+{
+	/* is there an edge on this vert at all */
+	int count = 0;
+	if (v->e) {
+		BMEdge *e_first, *e_iter;
+
+		/* first, loop around edge */
+		e_first = e_iter = v->e;
+		do {
+			if (e_iter->l) {
+				count += bmesh_radial_facevert_count_ex(e_iter->l, v, count_max - count);
+				if (count == count_max) {
+					break;
+				}
+			}
+		} while ((e_iter = bmesh_disk_edge_next(e_iter, v)) != e_first);
 	}
+	return count;
 }
 
 /**
@@ -264,13 +338,28 @@ int bmesh_disk_facevert_count(const BMVert *v)
  */
 BMEdge *bmesh_disk_faceedge_find_first(const BMEdge *e, const BMVert *v)
 {
-	const BMEdge *e_find = e;
+	const BMEdge *e_iter = e;
 	do {
-		if (e_find->l && bmesh_radial_facevert_check(e_find->l, v)) {
-			return (BMEdge *)e_find;
+		if (e_iter->l != NULL) {
+			return (BMEdge *)((e_iter->l->v == v) ? e_iter : e_iter->l->next->e);
 		}
-	} while ((e_find = bmesh_disk_edge_next(e_find, v)) != e);
+	} while ((e_iter = bmesh_disk_edge_next(e_iter, v)) != e);
+	return NULL;
+}
 
+/**
+ * Special case for BM_LOOPS_OF_VERT & BM_FACES_OF_VERT, avoids 2x calls.
+ *
+ * The returned BMLoop.e matches the result of #bmesh_disk_faceedge_find_first
+ */
+BMLoop *bmesh_disk_faceloop_find_first(const BMEdge *e, const BMVert *v)
+{
+	const BMEdge *e_iter = e;
+	do {
+		if (e_iter->l != NULL) {
+			return (e_iter->l->v == v) ? e_iter->l : e_iter->l->next;
+		}
+	} while ((e_iter = bmesh_disk_edge_next(e_iter, v)) != e);
 	return NULL;
 }
 
@@ -317,6 +406,30 @@ bool bmesh_radial_validate(int radlen, BMLoop *l)
 	return true;
 }
 
+void bmesh_radial_loop_append(BMEdge *e, BMLoop *l)
+{
+	if (e->l == NULL) {
+		e->l = l;
+		l->radial_next = l->radial_prev = l;
+	}
+	else {
+		l->radial_prev = e->l;
+		l->radial_next = e->l->radial_next;
+
+		e->l->radial_next->radial_prev = l;
+		e->l->radial_next = l;
+
+		e->l = l;
+	}
+
+	if (UNLIKELY(l->e && l->e != e)) {
+		/* l is already in a radial cycle for a different edge */
+		BMESH_ASSERT(0);
+	}
+
+	l->e = e;
+}
+
 /**
  * \brief BMESH RADIAL REMOVE LOOP
  *
@@ -325,28 +438,27 @@ bool bmesh_radial_validate(int radlen, BMLoop *l)
  * updated (in the case that the edge's link into the radial
  * cycle was the loop which is being removed from the cycle).
  */
-void bmesh_radial_loop_remove(BMLoop *l, BMEdge *e)
+void bmesh_radial_loop_remove(BMEdge *e, BMLoop *l)
 {
 	/* if e is non-NULL, l must be in the radial cycle of e */
-	if (UNLIKELY(e && e != l->e)) {
+	if (UNLIKELY(e != l->e)) {
 		BMESH_ASSERT(0);
 	}
 
 	if (l->radial_next != l) {
-		if (e && l == e->l)
+		if (l == e->l) {
 			e->l = l->radial_next;
+		}
 
 		l->radial_next->radial_prev = l->radial_prev;
 		l->radial_prev->radial_next = l->radial_next;
 	}
 	else {
-		if (e) {
-			if (l == e->l) {
-				e->l = NULL;
-			}
-			else {
-				BMESH_ASSERT(0);
-			}
+		if (l == e->l) {
+			e->l = NULL;
+		}
+		else {
+			BMESH_ASSERT(0);
 		}
 	}
 
@@ -356,6 +468,22 @@ void bmesh_radial_loop_remove(BMLoop *l, BMEdge *e)
 	l->e = NULL;
 }
 
+/**
+ * A version of #bmesh_radial_loop_remove which only performs the radial unlink,
+ * leaving the edge untouched.
+ */
+void bmesh_radial_loop_unlink(BMLoop *l)
+{
+	if (l->radial_next != l) {
+		l->radial_next->radial_prev = l->radial_prev;
+		l->radial_prev->radial_next = l->radial_next;
+	}
+
+	/* l is no longer in a radial cycle; empty the links
+	 * to the cycle and the link back to an edge */
+	l->radial_next = l->radial_prev = NULL;
+	l->e = NULL;
+}
 
 /**
  * \brief BME RADIAL FIND FIRST FACE VERT
@@ -412,30 +540,6 @@ int bmesh_radial_length(const BMLoop *l)
 	return i;
 }
 
-void bmesh_radial_append(BMEdge *e, BMLoop *l)
-{
-	if (e->l == NULL) {
-		e->l = l;
-		l->radial_next = l->radial_prev = l;
-	}
-	else {
-		l->radial_prev = e->l;
-		l->radial_next = e->l->radial_next;
-
-		e->l->radial_next->radial_prev = l;
-		e->l->radial_next = l;
-
-		e->l = l;
-	}
-
-	if (UNLIKELY(l->e && l->e != e)) {
-		/* l is already in a radial cycle for a different edge */
-		BMESH_ASSERT(0);
-	}
-	
-	l->e = e;
-}
-
 /**
  * \brief RADIAL COUNT FACE VERT
  *
@@ -450,6 +554,23 @@ int bmesh_radial_facevert_count(const BMLoop *l, const BMVert *v)
 	do {
 		if (l_iter->v == v) {
 			count++;
+		}
+	} while ((l_iter = l_iter->radial_next) != l);
+
+	return count;
+}
+
+int bmesh_radial_facevert_count_ex(const BMLoop *l, const BMVert *v, const int count_max)
+{
+	const BMLoop *l_iter;
+	int count = 0;
+	l_iter = l;
+	do {
+		if (l_iter->v == v) {
+			count++;
+			if (count == count_max) {
+				break;
+			}
 		}
 	} while ((l_iter = l_iter->radial_next) != l);
 

@@ -177,19 +177,18 @@ unsigned int getRowLength(int width, LogImageElement logElement)
 				return ((width * logElement.depth * 10 - 1) / 32 + 1) * 4;
 			else if (logElement.packing == 1 || logElement.packing == 2)
 				return ((width * logElement.depth - 1) / 3 + 1) * 4;
-
+			break;
 		case 12:
 			if (logElement.packing == 0)
 				return ((width * logElement.depth * 12 - 1) / 32 + 1) * 4;
 			else if (logElement.packing == 1 || logElement.packing == 2)
 				return width * logElement.depth * 2;
-
+			break;
 		case 16:
 			return width * logElement.depth * 2;
 
-		default:
-			return 0;
 	}
+	return 0;
 }
 
 
@@ -296,10 +295,11 @@ static int logImageSetData10(LogImageFile *logImage, LogImageElement logElement,
 			row[index] = swap_uint(pixel, logImage->isMSB);
 
 		if (logimage_fwrite(row, rowLength, 1, logImage) == 0) {
-			if (verbose) printf("DPX/Cineon: Error while writing file.\n"); {
-				MEM_freeN(row);
-				return 1;
+			if (verbose) {
+				printf("DPX/Cineon: Error while writing file.\n");
 			}
+			MEM_freeN(row);
+			return 1;
 		}
 	}
 	MEM_freeN(row);
@@ -571,20 +571,20 @@ static int logImageElementGetData(LogImageFile *logImage, LogImageElement logEle
 				return logImageElementGetData10Packed(logImage, logElement, data);
 			else if (logElement.packing == 1 || logElement.packing == 2)
 				return logImageElementGetData10(logImage, logElement, data);
+			break;
 
 		case 12:
 			if (logElement.packing == 0)
 				return logImageElementGetData12Packed(logImage, logElement, data);
 			else if (logElement.packing == 1 || logElement.packing == 2)
 				return logImageElementGetData12(logImage, logElement, data);
+			break;
 
 		case 16:
 			return logImageElementGetData16(logImage, logElement, data);
-
-		default:
-			/* format not supported */
-			return 1;
 	}
+	/* format not supported */
+	return 1;
 }
 
 static int logImageElementGetData1(LogImageFile *logImage, LogImageElement logElement, float *data)
@@ -623,7 +623,7 @@ static int logImageElementGetData8(LogImageFile *logImage, LogImageElement logEl
 	for (y = 0; y < logImage->height; y++) {
 		/* 8 bits are 32-bits padded so we need to seek at each row */
 		if (logimage_fseek(logImage, logElement.dataOffset + y * rowLength, SEEK_SET) != 0) {
-			if (verbose) printf("DPX/Cineon: Couldn't seek at %d\n", logElement.dataOffset + y * rowLength);
+			if (verbose) printf("DPX/Cineon: Couldn't seek at %d\n", logElement.dataOffset + y * (int)rowLength);
 			return 1;
 		}
 

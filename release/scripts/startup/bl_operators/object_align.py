@@ -26,13 +26,14 @@ from mathutils import Vector
 def GlobalBB_LQ(bb_world):
 
     # Initialize the variables with the 8th vertex
-    left, right, front, back, down, up = (bb_world[7][0],
-                                          bb_world[7][0],
-                                          bb_world[7][1],
-                                          bb_world[7][1],
-                                          bb_world[7][2],
-                                          bb_world[7][2],
-                                          )
+    left, right, front, back, down, up = (
+        bb_world[7][0],
+        bb_world[7][0],
+        bb_world[7][1],
+        bb_world[7][1],
+        bb_world[7][2],
+        bb_world[7][2],
+    )
 
     # Test against the other 7 verts
     for i in range(7):
@@ -70,7 +71,8 @@ def GlobalBB_HQ(obj):
 
     # Initialize the variables with the last vertex
 
-    verts = obj.data.vertices
+    me = obj.to_mesh(scene=bpy.context.scene, apply_modifiers=True, settings='PREVIEW')
+    verts = me.vertices
 
     val = matrix_world * verts[-1].co
 
@@ -111,6 +113,8 @@ def GlobalBB_HQ(obj):
         if val > up:
             up = val
 
+    bpy.data.meshes.remove(me)
+
     return Vector((left, front, up)), Vector((right, back, down))
 
 
@@ -122,7 +126,10 @@ def align_objects(context,
                   relative_to,
                   bb_quality):
 
-    cursor = context.scene.cursor_location
+    scene = context.scene
+    space = context.space_data
+
+    cursor = (space if space and space.type == 'VIEW_3D' else scene).cursor_location
 
     Left_Front_Up_SEL = [0.0, 0.0, 0.0]
     Right_Back_Down_SEL = [0.0, 0.0, 0.0]
@@ -133,7 +140,7 @@ def align_objects(context,
 
     for obj in context.selected_objects:
         matrix_world = obj.matrix_world.copy()
-        bb_world = [matrix_world * Vector(v[:]) for v in obj.bound_box]
+        bb_world = [matrix_world * Vector(v) for v in obj.bound_box]
         objects.append((obj, bb_world))
 
     if not objects:
@@ -338,7 +345,10 @@ def align_objects(context,
     return True
 
 
-from bpy.props import EnumProperty, BoolProperty
+from bpy.props import (
+        EnumProperty,
+        BoolProperty
+        )
 
 
 class AlignObjects(Operator):
@@ -356,6 +366,7 @@ class AlignObjects(Operator):
             )
     align_mode = EnumProperty(
             name="Align Mode:",
+            description="Side of object to use for alignment",
             items=(('OPT_1', "Negative Sides", ""),
                    ('OPT_2', "Centers", ""),
                    ('OPT_3', "Positive Sides", ""),
@@ -364,10 +375,11 @@ class AlignObjects(Operator):
             )
     relative_to = EnumProperty(
             name="Relative To:",
-            items=(('OPT_1', "Scene Origin", ""),
-                   ('OPT_2', "3D Cursor", ""),
-                   ('OPT_3', "Selection", ""),
-                   ('OPT_4', "Active", ""),
+            description="Reference location to align to",
+            items=(('OPT_1', "Scene Origin", "Use the Scene Origin as the position for the selected objects to align to"),
+                   ('OPT_2', "3D Cursor", "Use the 3D cursor as the position for the selected objects to align to"),
+                   ('OPT_3', "Selection", "Use the selected objects as the position for the selected objects to align to"),
+                   ('OPT_4', "Active", "Use the active object as the position for the selected objects to align to"),
                    ),
             default='OPT_4',
             )
@@ -387,16 +399,23 @@ class AlignObjects(Operator):
 
     def execute(self, context):
         align_axis = self.align_axis
-        ret = align_objects(context,
-                            'X' in align_axis,
-                            'Y' in align_axis,
-                            'Z' in align_axis,
-                            self.align_mode,
-                            self.relative_to,
-                            self.bb_quality)
+        ret = align_objects(
+            context,
+            'X' in align_axis,
+            'Y' in align_axis,
+            'Z' in align_axis,
+            self.align_mode,
+            self.relative_to,
+            self.bb_quality,
+        )
 
         if not ret:
             self.report({'WARNING'}, "No objects with bound-box selected")
             return {'CANCELLED'}
         else:
             return {'FINISHED'}
+
+
+classes = (
+    AlignObjects,
+)

@@ -36,7 +36,7 @@
 #include "BLI_listbase.h"
 #include "BLI_math.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_image.h"
@@ -44,6 +44,8 @@
 #include "BKE_main.h"
 #include "BKE_node.h"
 #include "BKE_report.h"
+#include "BKE_scene.h"
+#include "BKE_texture.h"
 
 #include "ED_node.h"  /* own include */
 #include "ED_screen.h"
@@ -105,13 +107,15 @@ static bool add_reroute_intersect_check(bNodeLink *link, float mcoords[][2], int
 
 	if (node_link_bezier_points(NULL, NULL, link, coord_array, NODE_LINK_RESOL)) {
 
-		for (i = 0; i < tot - 1; i++)
-			for (b = 0; b < NODE_LINK_RESOL; b++)
-				if (isect_line_line_v2(mcoords[i], mcoords[i + 1], coord_array[b], coord_array[b + 1]) > 0) {
+		for (i = 0; i < tot - 1; i++) {
+			for (b = 0; b < NODE_LINK_RESOL; b++) {
+				if (isect_seg_seg_v2(mcoords[i], mcoords[i + 1], coord_array[b], coord_array[b + 1]) > 0) {
 					result[0] = (mcoords[i][0] + mcoords[i + 1][0]) / 2.0f;
 					result[1] = (mcoords[i][1] + mcoords[i + 1][1]) / 2.0f;
 					return 1;
 				}
+			}
+		}
 	}
 	return 0;
 }
@@ -312,7 +316,10 @@ static int node_add_file_exec(bContext *C, wmOperator *op)
 
 	switch (snode->nodetree->type) {
 		case NTREE_SHADER:
-			type = SH_NODE_TEX_IMAGE;
+			if (BKE_scene_use_new_shading_nodes(CTX_data_scene(C)))
+				type = SH_NODE_TEX_IMAGE;
+			else
+				type = SH_NODE_TEXTURE;
 			break;
 		case NTREE_TEXTURE:
 			type = TEX_NODE_IMAGE;
@@ -333,7 +340,14 @@ static int node_add_file_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 	
-	node->id = (ID *)ima;
+	if (type == SH_NODE_TEXTURE) {
+		Tex *tex = BKE_texture_add(CTX_data_main(C), DATA_(ima->id.name));
+		tex->ima = ima;
+		node->id = (ID *)tex;
+		WM_event_add_notifier(C, NC_TEXTURE | NA_ADDED, node->id);
+	}
+	else
+		node->id = (ID *)ima;
 
 	/* When adding new image file via drag-drop we need to load imbuf in order
 	 * to get proper image source.
@@ -379,9 +393,10 @@ void NODE_OT_add_file(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-	WM_operator_properties_filesel(ot, FILE_TYPE_FOLDER | FILE_TYPE_IMAGE | FILE_TYPE_MOVIE, FILE_SPECIAL, FILE_OPENFILE,
-	                               WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY);
-	RNA_def_string(ot->srna, "name", "Image", MAX_ID_NAME - 2, "Name", "Datablock name to assign");
+	WM_operator_properties_filesel(
+	        ot, FILE_TYPE_FOLDER | FILE_TYPE_IMAGE | FILE_TYPE_MOVIE, FILE_SPECIAL, FILE_OPENFILE,
+	        WM_FILESEL_FILEPATH | WM_FILESEL_RELPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
+	RNA_def_string(ot->srna, "name", "Image", MAX_ID_NAME - 2, "Name", "Data-block name to assign");
 }
 
 /* ****************** Add Mask Node Operator  ******************* */
@@ -438,9 +453,9 @@ void NODE_OT_add_mask(wmOperatorType *ot)
 	ot->poll = node_add_mask_poll;
 
 	/* flags */
-	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_INTERNAL;
 
-	RNA_def_string(ot->srna, "name", "Mask", MAX_ID_NAME - 2, "Name", "Datablock name to assign");
+	RNA_def_string(ot->srna, "name", "Mask", MAX_ID_NAME - 2, "Name", "Data-block name to assign");
 }
 
 /********************** New node tree operator *********************/
@@ -487,7 +502,7 @@ static int new_node_tree_exec(bContext *C, wmOperator *op)
 		/* RNA_property_pointer_set increases the user count,
 		 * fixed here as the editor is the initial user.
 		 */
-		ntree->id.us--;
+		id_us_min(&ntree->id);
 
 		RNA_id_pointer_create(&ntree->id, &idptr);
 		RNA_property_pointer_set(&ptr, prop, idptr);

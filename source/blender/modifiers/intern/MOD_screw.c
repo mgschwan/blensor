@@ -44,8 +44,11 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_cdderivedmesh.h"
+#include "BKE_library_query.h"
 
 #include "depsgraph_private.h"
+#include "DEG_depsgraph_build.h"
+
 #include "MOD_modifiertypes.h"
 #include "MEM_guardedalloc.h"
 
@@ -70,7 +73,7 @@ typedef struct ScrewVertIter {
 
 #define SV_UNUSED (UINT_MAX)
 #define SV_INVALID ((UINT_MAX) - 1)
-#define SV_IS_VALID(v) (v < SV_INVALID)
+#define SV_IS_VALID(v) ((v) < SV_INVALID)
 
 static void screwvert_iter_init(ScrewVertIter *iter, ScrewVertConnect *array, unsigned int v_init, unsigned int dir)
 {
@@ -109,6 +112,56 @@ static void screwvert_iter_step(ScrewVertIter *iter)
 	}
 }
 
+static DerivedMesh *dm_remove_doubles_on_axis(
+        DerivedMesh *result, MVert *mvert_new, const uint totvert, const uint step_tot,
+        const float axis_vec[3], const float axis_offset[3], const float merge_threshold)
+{
+	const float merge_threshold_sq = SQUARE(merge_threshold);
+	const bool use_offset = axis_offset != NULL;
+	uint tot_doubles = 0;
+	for (uint i = 0; i < totvert; i += 1) {
+		float axis_co[3];
+		if (use_offset) {
+			float offset_co[3];
+			sub_v3_v3v3(offset_co, mvert_new[i].co, axis_offset);
+			project_v3_v3v3_normalized(axis_co, offset_co, axis_vec);
+			add_v3_v3(axis_co, axis_offset);
+		}
+		else {
+			project_v3_v3v3_normalized(axis_co, mvert_new[i].co, axis_vec);
+		}
+		const float dist_sq = len_squared_v3v3(axis_co, mvert_new[i].co);
+		if (dist_sq <= merge_threshold_sq) {
+			mvert_new[i].flag |= ME_VERT_TMP_TAG;
+			tot_doubles += 1;
+			copy_v3_v3(mvert_new[i].co, axis_co);
+		}
+	}
+
+	if (tot_doubles != 0) {
+		uint tot = totvert * step_tot;
+		int *full_doubles_map = MEM_mallocN(sizeof(int) * tot, __func__);
+		copy_vn_i(full_doubles_map, (int)tot, -1);
+
+		uint tot_doubles_left = tot_doubles;
+		for (uint i = 0; i < totvert; i += 1) {
+			if (mvert_new[i].flag & ME_VERT_TMP_TAG) {
+				int *doubles_map = &full_doubles_map[totvert + i] ;
+				for (uint step = 1; step < step_tot; step += 1) {
+					*doubles_map = (int)i;
+					doubles_map += totvert;
+				}
+				tot_doubles_left -= 1;
+				if (tot_doubles_left == 0) {
+					break;
+				}
+			}
+		}
+		result = CDDM_merge_verts(result, full_doubles_map, (int)(tot_doubles * (step_tot - 1)), CDDM_MERGE_VERTS_DUMP_IF_MAPPED);
+		MEM_freeN(full_doubles_map);
+	}
+	return result;
+}
 
 static void initData(ModifierData *md)
 {
@@ -120,6 +173,7 @@ static void initData(ModifierData *md)
 	ltmd->steps = 16;
 	ltmd->render_steps = 16;
 	ltmd->iter = 1;
+	ltmd->merge_dist = 0.01f;
 }
 
 static void copyData(ModifierData *md, ModifierData *target)
@@ -138,15 +192,15 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	DerivedMesh *dm = derivedData;
 	DerivedMesh *result;
 	ScrewModifierData *ltmd = (ScrewModifierData *) md;
-	const int useRenderParams = flag & MOD_APPLY_RENDER;
+	const bool use_render_params = (flag & MOD_APPLY_RENDER) != 0;
 	
 	int *origindex;
 	int mpoly_index = 0;
 	unsigned int step;
 	unsigned int i, j;
 	unsigned int i1, i2;
-	unsigned int step_tot = useRenderParams ? ltmd->render_steps : ltmd->steps;
-	const bool do_flip = ltmd->flag & MOD_SCREW_NORMAL_FLIP ? 1 : 0;
+	unsigned int step_tot = use_render_params ? ltmd->render_steps : ltmd->steps;
+	const bool do_flip = (ltmd->flag & MOD_SCREW_NORMAL_FLIP) != 0;
 
 	const int quad_ord[4] = {
 	    do_flip ? 3 : 0,
@@ -156,9 +210,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 	};
 	const int quad_ord_ofs[4] = {
 	    do_flip ? 2 : 0,
-	    do_flip ? 1 : 1,
+	    1,
 	    do_flip ? 0 : 2,
-	    do_flip ? 3 : 3,
+	    3,
 	};
 
 	unsigned int maxVerts = 0, maxEdges = 0, maxPolys = 0;
@@ -764,7 +818,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 				}
 
 				/* we wont be looping on this data again so copy normals here */
-				if (angle < 0.0f)
+				if ((angle < 0.0f) != do_flip)
 					negate_v3(vc->no);
 
 				normalize_v3(vc->no);
@@ -795,13 +849,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 
 		if (ltmd->ob_axis) {
 			axis_angle_normalized_to_mat3(mat3, axis_vec, step_angle);
-			copy_m4_m3(mat, mat3);
 		}
 		else {
-			unit_m4(mat);
-			rotate_m4(mat, axis_char, step_angle);
-			copy_m3_m4(mat3, mat);
+			axis_angle_to_mat3_single(mat3, axis_char, step_angle);
 		}
+		copy_m4_m3(mat, mat3);
 
 		if (screw_ofs)
 			madd_v3_v3fl(mat[3], axis_vec, screw_ofs * ((float)step / (float)(step_tot - 1)));
@@ -1049,6 +1101,16 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 		MEM_freeN(vert_loop_map);
 	}
 
+	if ((ltmd->flag & MOD_SCREW_MERGE) && (screw_ofs == 0.0f)) {
+		DerivedMesh *result_prev = result;
+		result = dm_remove_doubles_on_axis(
+		        result, mvert_new, totvert, step_tot,
+		        axis_vec, ltmd->ob_axis ? mtx_tx[3] : NULL, ltmd->merge_dist);
+		if (result != result_prev) {
+			result->dirty |= DM_DIRTY_NORMALS;
+		}
+	}
+
 	if ((ltmd->flag & MOD_SCREW_NORMAL_CALC) == 0) {
 		result->dirty |= DM_DIRTY_NORMALS;
 	}
@@ -1074,14 +1136,25 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 	}
 }
 
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *UNUSED(ob),
+                            struct DepsNodeHandle *node)
+{
+	ScrewModifierData *ltmd = (ScrewModifierData *)md;
+	if (ltmd->ob_axis != NULL) {
+		DEG_add_object_relation(node, ltmd->ob_axis, DEG_OB_COMP_TRANSFORM, "Screw Modifier");
+	}
+}
+
 static void foreachObjectLink(
         ModifierData *md, Object *ob,
-        void (*walk)(void *userData, Object *ob, Object **obpoin),
-        void *userData)
+        ObjectWalkFunc walk, void *userData)
 {
 	ScrewModifierData *ltmd = (ScrewModifierData *) md;
 
-	walk(userData, ob, &ltmd->ob_axis);
+	walk(userData, ob, &ltmd->ob_axis, IDWALK_CB_NOP);
 }
 
 ModifierTypeInfo modifierType_Screw = {
@@ -1107,6 +1180,7 @@ ModifierTypeInfo modifierType_Screw = {
 	/* freeData */          NULL,
 	/* isDisabled */        NULL,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     NULL,
 	/* dependsOnNormals */	NULL,
 	/* foreachObjectLink */ foreachObjectLink,

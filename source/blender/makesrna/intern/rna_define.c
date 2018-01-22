@@ -42,7 +42,7 @@
 #include "BLI_listbase.h"
 #include "BLI_ghash.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "RNA_define.h"
 
@@ -71,8 +71,8 @@ BlenderDefRNA DefRNA = {NULL, {NULL, NULL}, {NULL, NULL}, NULL, 0, 0, 0, 1, 1};
 	if (description && (description)[0]) {                                         \
 		int i = strlen(description);                                               \
 		if (i > 3 && (description)[i - 1] == '.' && (description)[i - 3] != '.') { \
-			fprintf(stderr, "%s: '%s' '%s' description ends with a '.' !\n",       \
-			        __func__, id1 ? id1 : "", id2 ? id2 : "");                     \
+			fprintf(stderr, "%s: '%s' description from '%s' '%s' ends with a '.' !\n",       \
+			        __func__, description, id1 ? id1 : "", id2 ? id2 : "");                     \
 		}                                                                          \
 	} (void)0
 
@@ -531,11 +531,17 @@ BlenderRNA *RNA_create(void)
 	BlenderRNA *brna;
 
 	brna = MEM_callocN(sizeof(BlenderRNA), "BlenderRNA");
+	const char *error_message = NULL;
 
-	DefRNA.sdna = DNA_sdna_from_data(DNAstr,  DNAlen, false);
-	DefRNA.structs.first = DefRNA.structs.last = NULL;
+	BLI_listbase_clear(&DefRNA.structs);
 	DefRNA.error = 0;
 	DefRNA.preprocess = 1;
+
+	DefRNA.sdna = DNA_sdna_from_data(DNAstr, DNAlen, false, false, &error_message);
+	if (DefRNA.sdna == NULL) {
+		fprintf(stderr, "Error decoding SDNA: %s\n", error_message);
+		DefRNA.error = 1;
+	}
 
 	return brna;
 }
@@ -612,7 +618,7 @@ void RNA_struct_free(BlenderRNA *brna, StructRNA *srna)
 
 		RNA_def_property_free_pointers(prop);
 
-		if (prop->flag & PROP_RUNTIME)
+		if (prop->flag_internal & PROP_INTERN_RUNTIME)
 			rna_freelinkN(&srna->cont.properties, prop);
 	}
 
@@ -624,7 +630,7 @@ void RNA_struct_free(BlenderRNA *brna, StructRNA *srna)
 
 			RNA_def_property_free_pointers(parm);
 
-			if (parm->flag & PROP_RUNTIME)
+			if (parm->flag_internal & PROP_INTERN_RUNTIME)
 				rna_freelinkN(&func->cont.properties, parm);
 		}
 
@@ -720,8 +726,8 @@ StructRNA *RNA_def_struct_ptr(BlenderRNA *brna, const char *identifier, StructRN
 		 * use MEM_dupallocN, data structs may not be alloced but builtin */
 		memcpy(srna, srnafrom, sizeof(StructRNA));
 		srna->cont.prophash = NULL;
-		srna->cont.properties.first = srna->cont.properties.last = NULL;
-		srna->functions.first = srna->functions.last = NULL;
+		BLI_listbase_clear(&srna->cont.properties);
+		BLI_listbase_clear(&srna->functions);
 		srna->py_type = NULL;
 
 		if (DefRNA.preprocess) {
@@ -736,7 +742,7 @@ StructRNA *RNA_def_struct_ptr(BlenderRNA *brna, const char *identifier, StructRN
 	srna->name = identifier; /* may be overwritten later RNA_def_struct_ui_text */
 	srna->description = "";
 	/* may be overwritten later RNA_def_struct_translation_context */
-	srna->translation_context = BLF_I18NCONTEXT_DEFAULT_BPYRNA;
+	srna->translation_context = BLT_I18NCONTEXT_DEFAULT_BPYRNA;
 	srna->flag |= STRUCT_UNDO;
 	if (!srnafrom)
 		srna->icon = ICON_DOT;
@@ -765,7 +771,7 @@ StructRNA *RNA_def_struct_ptr(BlenderRNA *brna, const char *identifier, StructRN
 	else {
 		/* define some builtin properties */
 		prop = RNA_def_property(&srna->cont, "rna_properties", PROP_COLLECTION, PROP_NONE);
-		RNA_def_property_flag(prop, PROP_BUILTIN);
+		prop->flag_internal |= PROP_INTERN_BUILTIN;
 		RNA_def_property_ui_text(prop, "Properties", "RNA property collection");
 
 		if (DefRNA.preprocess) {
@@ -984,7 +990,7 @@ void RNA_def_struct_ui_icon(StructRNA *srna, int icon)
 
 void RNA_def_struct_translation_context(StructRNA *srna, const char *context)
 {
-	srna->translation_context = context ? context : BLF_I18NCONTEXT_DEFAULT_BPYRNA;
+	srna->translation_context = context ? context : BLT_I18NCONTEXT_DEFAULT_BPYRNA;
 }
 
 /* Property Definition */
@@ -1091,7 +1097,7 @@ PropertyRNA *RNA_def_property(StructOrFunctionRNA *cont_, const char *identifier
 			break;
 		}
 		case PROP_POINTER:
-			prop->flag |= PROP_THICK_WRAP;  /* needed for default behavior when PROP_RNAPTR is set */
+			prop->flag |= PROP_THICK_WRAP;  /* needed for default behavior when PARM_RNAPTR is set */
 			break;
 		case PROP_ENUM:
 		case PROP_COLLECTION:
@@ -1113,7 +1119,7 @@ PropertyRNA *RNA_def_property(StructOrFunctionRNA *cont_, const char *identifier
 	prop->subtype = subtype;
 	prop->name = identifier;
 	prop->description = "";
-	prop->translation_context = BLF_I18NCONTEXT_DEFAULT_BPYRNA;
+	prop->translation_context = BLT_I18NCONTEXT_DEFAULT_BPYRNA;
 	/* a priori not raw editable */
 	prop->rawtype = -1;
 
@@ -1183,7 +1189,8 @@ PropertyRNA *RNA_def_property(StructOrFunctionRNA *cont_, const char *identifier
 		}
 	}
 	else {
-		prop->flag |= PROP_IDPROPERTY | PROP_RUNTIME;
+		prop->flag |= PROP_IDPROPERTY;
+		prop->flag_internal |= PROP_INTERN_RUNTIME;
 #ifdef RNA_RUNTIME
 		if (cont->prophash)
 			BLI_ghash_insert(cont->prophash, (void *)prop->identifier, prop);
@@ -1195,14 +1202,26 @@ PropertyRNA *RNA_def_property(StructOrFunctionRNA *cont_, const char *identifier
 	return prop;
 }
 
-void RNA_def_property_flag(PropertyRNA *prop, int flag)
+void RNA_def_property_flag(PropertyRNA *prop, PropertyFlag flag)
 {
 	prop->flag |= flag;
 }
 
-void RNA_def_property_clear_flag(PropertyRNA *prop, int flag)
+void RNA_def_property_clear_flag(PropertyRNA *prop, PropertyFlag flag)
 {
 	prop->flag &= ~flag;
+}
+
+void RNA_def_parameter_flags(PropertyRNA *prop, PropertyFlag flag_property, ParameterFlag flag_parameter)
+{
+	prop->flag |= flag_property;
+	prop->flag_parameter |= flag_parameter;
+}
+
+void RNA_def_parameter_clear_flags(PropertyRNA *prop, PropertyFlag flag_property, ParameterFlag flag_parameter)
+{
+	prop->flag &= ~flag_property;
+	prop->flag_parameter &= ~flag_parameter;
 }
 
 void RNA_def_property_subtype(PropertyRNA *prop, PropertySubType subtype)
@@ -1314,8 +1333,10 @@ void RNA_def_property_ui_icon(PropertyRNA *prop, int icon, bool consecutive)
 /**
  * The values hare are a little confusing:
  *
- * \param step For floats this is (step / 100), why /100? - nobody knows.
- * for int's, whole values are used.
+ * \param step: Used as the value to increase/decrease when clicking on number buttons,
+ * as well as scaling mouse input for click-dragging number buttons.
+ * For floats this is (step * UI_PRECISION_FLOAT_SCALE), why? - nobody knows.
+ * For ints, whole values are used.
  *
  * \param precision The number of zeros to show
  * (as a whole number - common range is 1 - 6), see PRECISION_FLOAT_MAX
@@ -2106,7 +2127,7 @@ void RNA_def_property_collection_sdna(PropertyRNA *prop, const char *structname,
 
 void RNA_def_property_translation_context(PropertyRNA *prop, const char *context)
 {
-	prop->translation_context = context ? context : BLF_I18NCONTEXT_DEFAULT_BPYRNA;
+	prop->translation_context = context ? context : BLT_I18NCONTEXT_DEFAULT_BPYRNA;
 }
 
 /* Functions */
@@ -2145,6 +2166,16 @@ void RNA_def_property_update(PropertyRNA *prop, int noteflag, const char *func)
 void RNA_def_property_update_runtime(PropertyRNA *prop, const void *func)
 {
 	prop->update = (void *)func;
+}
+
+void RNA_def_property_poll_runtime(PropertyRNA *prop, const void *func)
+{
+	if (prop->type == PROP_POINTER) {
+		((PointerPropertyRNA *)prop)->poll = func;
+	}
+	else {
+		fprintf(stderr, "%s: %s is not a Pointer Property.\n", __func__, prop->identifier);
+	}
 }
 
 void RNA_def_property_dynamic_array_funcs(PropertyRNA *prop, const char *getlength)
@@ -2857,7 +2888,7 @@ PropertyRNA *RNA_def_float_rotation(StructOrFunctionRNA *cont_, const char *iden
 
 	ASSERT_SOFT_HARD_LIMITS;
 
-	prop = RNA_def_property(cont, identifier, PROP_FLOAT, (len != 0) ? PROP_EULER : PROP_ANGLE);
+	prop = RNA_def_property(cont, identifier, PROP_FLOAT, (len >= 3) ? PROP_EULER : PROP_ANGLE);
 	if (len != 0) {
 		RNA_def_property_array(prop, len);
 		if (default_value) RNA_def_property_float_array_default(prop, default_value);
@@ -2868,7 +2899,19 @@ PropertyRNA *RNA_def_float_rotation(StructOrFunctionRNA *cont_, const char *iden
 	}
 	if (hardmin != hardmax) RNA_def_property_range(prop, hardmin, hardmax);
 	RNA_def_property_ui_text(prop, ui_name, ui_description);
-	RNA_def_property_ui_range(prop, softmin, softmax, 1, 3);
+	RNA_def_property_ui_range(prop, softmin, softmax, 10, 3);
+
+	return prop;
+}
+
+PropertyRNA *RNA_def_float_distance(StructOrFunctionRNA *cont_, const char *identifier,
+                                    float default_value, float hardmin, float hardmax, const char *ui_name,
+                                    const char *ui_description, float softmin, float softmax)
+{
+	PropertyRNA *prop = RNA_def_float(cont_, identifier, default_value,
+	                                  hardmin, hardmax, ui_name, ui_description,
+	                                  softmin, softmax);
+	RNA_def_property_subtype(prop, PROP_DISTANCE);
 
 	return prop;
 }
@@ -2949,6 +2992,9 @@ PropertyRNA *RNA_def_pointer_runtime(StructOrFunctionRNA *cont_, const char *ide
 	
 	prop = RNA_def_property(cont, identifier, PROP_POINTER, PROP_NONE);
 	RNA_def_property_struct_runtime(prop, type);
+	if ((type->flag & STRUCT_ID) != 0) {
+		prop->flag |= PROP_EDITABLE;
+	}
 	RNA_def_property_ui_text(prop, ui_name, ui_description);
 
 	return prop;
@@ -3077,7 +3123,7 @@ void RNA_def_function_return(FunctionRNA *func, PropertyRNA *ret)
 
 void RNA_def_function_output(FunctionRNA *UNUSED(func), PropertyRNA *ret)
 {
-	ret->flag |= PROP_OUTPUT;
+	ret->flag_parameter |= PARM_OUTPUT;
 }
 
 void RNA_def_function_flag(FunctionRNA *func, int flag)
@@ -3124,12 +3170,13 @@ int rna_parameter_size(PropertyRNA *parm)
 					StringPropertyRNA *sparm = (StringPropertyRNA *)parm;
 					return sizeof(char) * sparm->maxlength;
 				}
-				else
+				else {
 					return sizeof(char *);
+				}
 			case PROP_POINTER:
 			{
 #ifdef RNA_RUNTIME
-				if (parm->flag & PROP_RNAPTR)
+				if (parm->flag_parameter & PARM_RNAPTR)
 					if (parm->flag & PROP_THICK_WRAP) {
 						return sizeof(PointerRNA);
 					}
@@ -3139,7 +3186,7 @@ int rna_parameter_size(PropertyRNA *parm)
 				else
 					return sizeof(void *);
 #else
-				if (parm->flag & PROP_RNAPTR) {
+				if (parm->flag_parameter & PARM_RNAPTR) {
 					if (parm->flag & PROP_THICK_WRAP) {
 						return sizeof(PointerRNA);
 					}
@@ -3300,7 +3347,7 @@ void RNA_def_property_duplicate_pointers(StructOrFunctionRNA *cont_, PropertyRNA
 			EnumPropertyRNA *eprop = (EnumPropertyRNA *)prop;
 
 			if (eprop->item) {
-				earray = MEM_callocN(sizeof(EnumPropertyItem) * (eprop->totitem + 1), "RNA_def_property_store"),
+				earray = MEM_callocN(sizeof(EnumPropertyItem) * (eprop->totitem + 1), "RNA_def_property_store");
 				memcpy(earray, eprop->item, sizeof(EnumPropertyItem) * (eprop->totitem + 1));
 				eprop->item = earray;
 
@@ -3337,12 +3384,12 @@ void RNA_def_property_duplicate_pointers(StructOrFunctionRNA *cont_, PropertyRNA
 			break;
 	}
 
-	prop->flag |= PROP_FREE_POINTERS;
+	prop->flag_internal |= PROP_INTERN_FREE_POINTERS;
 }
 
 void RNA_def_property_free_pointers(PropertyRNA *prop)
 {
-	if (prop->flag & PROP_FREE_POINTERS) {
+	if (prop->flag_internal & PROP_INTERN_FREE_POINTERS) {
 		int a;
 
 		if (prop->identifier)
@@ -3409,9 +3456,9 @@ static void rna_def_property_free(StructOrFunctionRNA *cont_, PropertyRNA *prop)
 {
 	ContainerRNA *cont = cont_;
 	
-	if (prop->flag & PROP_RUNTIME) {
+	if (prop->flag_internal & PROP_INTERN_RUNTIME) {
 		if (cont->prophash)
-			BLI_ghash_remove(cont->prophash, (void *)prop->identifier, NULL, NULL);
+			BLI_ghash_remove(cont->prophash, prop->identifier, NULL, NULL);
 
 		RNA_def_property_free_pointers(prop);
 		rna_freelinkN(&cont->properties, prop);
@@ -3429,7 +3476,7 @@ int RNA_def_property_free_identifier(StructOrFunctionRNA *cont_, const char *ide
 	
 	for (prop = cont->properties.first; prop; prop = prop->next) {
 		if (STREQ(prop->identifier, identifier)) {
-			if (prop->flag & PROP_RUNTIME) {
+			if (prop->flag_internal & PROP_INTERN_RUNTIME) {
 				rna_def_property_free(cont_, prop);
 				return 1;
 			}
@@ -3440,7 +3487,7 @@ int RNA_def_property_free_identifier(StructOrFunctionRNA *cont_, const char *ide
 	}
 	return 0;
 }
-#endif
+#endif  /* RNA_RUNTIME */
 
 const char *RNA_property_typename(PropertyType type)
 {

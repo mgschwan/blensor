@@ -30,12 +30,14 @@ set(INC
 	../blenkernel
 	../blenlib
 	../blenfont
+	../depsgraph
 	../makesdna
 	../makesrna
 	../bmesh
 	../render/extern/include
 	../../../intern/elbeem/extern
 	../../../intern/guardedalloc
+	../../../intern/eigen
 )
 
 set(INC_SYS
@@ -51,6 +53,7 @@ set(SRC
 	intern/MOD_cast.c
 	intern/MOD_cloth.c
 	intern/MOD_collision.c
+	intern/MOD_correctivesmooth.c
 	intern/MOD_curve.c
 	intern/MOD_datatransfer.c
 	intern/MOD_decimate.c
@@ -70,6 +73,7 @@ set(SRC
 	intern/MOD_meshcache_pc2.c
 	intern/MOD_meshcache_util.c
 	intern/MOD_meshdeform.c
+	intern/MOD_meshsequencecache.c
 	intern/MOD_mirror.c
 	intern/MOD_multires.c
 	intern/MOD_none.c
@@ -89,6 +93,7 @@ set(SRC
 	intern/MOD_solidify.c
 	intern/MOD_subsurf.c
 	intern/MOD_surface.c
+	intern/MOD_surfacedeform.c
 	intern/MOD_triangulate.c
 	intern/MOD_util.c
 	intern/MOD_uvwarp.c
@@ -108,6 +113,17 @@ set(SRC
 	intern/MOD_util.h
 	intern/MOD_weightvg_util.h
 )
+
+if(WITH_LEGACY_DEPSGRAPH)
+	add_definitions(-DWITH_LEGACY_DEPSGRAPH)
+endif()
+
+if(WITH_ALEMBIC)
+	add_definitions(-DWITH_ALEMBIC)
+	list(APPEND INC
+		../alembic
+	)
+endif()
 
 if(WITH_MOD_BOOLEAN)
 	add_definitions(-DWITH_MOD_BOOLEAN)
@@ -142,11 +158,8 @@ if(WITH_INTERNATIONAL)
 	add_definitions(-DWITH_INTERNATIONAL)
 endif()
 
-if(WITH_OPENNL)
-	add_definitions(-DWITH_OPENNL)
-	list(APPEND INC_SYS
-		../../../intern/opennl/extern
-	)
+if(WITH_OPENSUBDIV)
+	add_definitions(-DWITH_OPENSUBDIV)
 endif()
 
 blender_add_lib(bf_modifiers "${SRC}" "${INC}" "${INC_SYS}")

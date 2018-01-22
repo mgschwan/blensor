@@ -22,7 +22,7 @@
 # 'bmesh_opdefines.c' in order to avoid having to add a lot of introspection
 # data access into the api.
 #
-# The script is stupid becase it makes assumptions about formatting...
+# The script is stupid because it makes assumptions about formatting...
 # that each arg has its own line, that comments above or directly after will be __doc__ etc...
 #
 # We may want to replace this script with something else one day but for now its good enough.
@@ -57,7 +57,7 @@ Operator Example
 ++++++++++++++++
 This script shows how operators can be used to model a link of a chain.
 
-.. literalinclude:: ../examples/bmesh.ops.1.py
+.. literalinclude:: __/examples/bmesh.ops.1.py
 """
 
 
@@ -163,6 +163,9 @@ def main():
 
         for i, l in enumerate(b):
             l = l.strip()
+            # casts
+            l = l.replace("(int)", "")
+
             l = l.replace("{", "(")
             l = l.replace("}", ")")
 
@@ -177,8 +180,8 @@ def main():
                 l = "None,"
             b[i] = l
 
-        #for l in b:
-        #    print(l)
+        # for l in b:
+        #     print(l)
 
         text = "\n".join(b)
         global_namespace = {

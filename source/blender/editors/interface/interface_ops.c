@@ -33,16 +33,18 @@
 
 #include "DNA_screen_types.h"
 #include "DNA_text_types.h" /* for UI_OT_reports_to_text */
+#include "DNA_object_types.h" /* for OB_DATA_SUPPORT_ID */
 
 #include "BLI_blenlib.h"
 #include "BLI_math_color.h"
 
 #include "BLF_api.h"
-#include "BLF_translation.h"
+#include "BLT_lang.h"
 
 #include "BKE_context.h"
 #include "BKE_screen.h"
 #include "BKE_global.h"
+#include "BKE_node.h"
 #include "BKE_text.h" /* for UI_OT_reports_to_text */
 #include "BKE_report.h"
 
@@ -111,19 +113,33 @@ static int copy_data_path_button_poll(bContext *C)
 	return 0;
 }
 
-static int copy_data_path_button_exec(bContext *C, wmOperator *UNUSED(op))
+static int copy_data_path_button_exec(bContext *C, wmOperator *op)
 {
 	PointerRNA ptr;
 	PropertyRNA *prop;
 	char *path;
 	int index;
 
+	const bool full_path = RNA_boolean_get(op->ptr, "full_path");
+
 	/* try to create driver using property retrieved from UI */
 	UI_context_active_but_prop_get(C, &ptr, &prop, &index);
 
-	if (ptr.id.data && ptr.data && prop) {
-		path = RNA_path_from_ID_to_property(&ptr, prop);
-		
+	if (ptr.id.data != NULL) {
+
+		if (full_path) {
+
+			if (prop) {
+				path = RNA_path_full_property_py_ex(&ptr, prop, index, true);
+			}
+			else {
+				path = RNA_path_full_struct_py(&ptr);
+			}
+		}
+		else {
+			path = RNA_path_from_ID_to_property(&ptr, prop);
+		}
+
 		if (path) {
 			WM_clipboard_text_set(path, false);
 			MEM_freeN(path);
@@ -136,6 +152,8 @@ static int copy_data_path_button_exec(bContext *C, wmOperator *UNUSED(op))
 
 static void UI_OT_copy_data_path_button(wmOperatorType *ot)
 {
+	PropertyRNA *prop;
+
 	/* identifiers */
 	ot->name = "Copy Data Path";
 	ot->idname = "UI_OT_copy_data_path_button";
@@ -144,6 +162,57 @@ static void UI_OT_copy_data_path_button(wmOperatorType *ot)
 	/* callbacks */
 	ot->exec = copy_data_path_button_exec;
 	ot->poll = copy_data_path_button_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER;
+
+	/* properties */
+	prop = RNA_def_boolean(ot->srna, "full_path", false, "full_path", "Copy full data path");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+}
+
+static int copy_python_command_button_poll(bContext *C)
+{
+	uiBut *but = UI_context_active_but_get(C);
+
+	if (but && (but->optype != NULL)) {
+		return 1;
+	}
+
+	return 0;
+}
+
+static int copy_python_command_button_exec(bContext *C, wmOperator *UNUSED(op))
+{
+	uiBut *but = UI_context_active_but_get(C);
+
+	if (but && (but->optype != NULL)) {
+		PointerRNA *opptr;
+		char *str;
+		opptr = UI_but_operator_ptr_get(but); /* allocated when needed, the button owns it */
+
+		str = WM_operator_pystring_ex(C, NULL, false, true, but->optype, opptr);
+
+		WM_clipboard_text_set(str, 0);
+
+		MEM_freeN(str);
+
+		return OPERATOR_FINISHED;
+	}
+
+	return OPERATOR_CANCELLED;
+}
+
+static void UI_OT_copy_python_command_button(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Copy Python Command";
+	ot->idname = "UI_OT_copy_python_command_button";
+	ot->description = "Copy the Python command matching this button";
+
+	/* callbacks */
+	ot->exec = copy_python_command_button_exec;
+	ot->poll = copy_python_command_button_poll;
 
 	/* flags */
 	ot->flag = OPTYPE_REGISTER;
@@ -261,7 +330,7 @@ static void UI_OT_unset_property_button(wmOperatorType *ot)
 
 /* Copy To Selected Operator ------------------------ */
 
-static bool copy_to_selected_list(
+bool UI_context_copy_to_selected_list(
         bContext *C, PointerRNA *ptr, PropertyRNA *prop,
         ListBase *r_lb, bool *r_use_path_from_id, char **r_path)
 {
@@ -274,8 +343,65 @@ static bool copy_to_selected_list(
 	else if (RNA_struct_is_a(ptr->type, &RNA_PoseBone)) {
 		*r_lb = CTX_data_collection_get(C, "selected_pose_bones");
 	}
+	else if (RNA_struct_is_a(ptr->type, &RNA_Bone)) {
+		ListBase lb;
+		lb = CTX_data_collection_get(C, "selected_pose_bones");
+
+		if (!BLI_listbase_is_empty(&lb)) {
+			CollectionPointerLink *link;
+			for (link = lb.first; link; link = link->next) {
+				bPoseChannel *pchan = link->ptr.data;
+				RNA_pointer_create(link->ptr.id.data, &RNA_Bone, pchan->bone, &link->ptr);
+			}
+		}
+
+		*r_lb = lb;
+	}
 	else if (RNA_struct_is_a(ptr->type, &RNA_Sequence)) {
 		*r_lb = CTX_data_collection_get(C, "selected_editable_sequences");
+	}
+	else if (RNA_struct_is_a(ptr->type, &RNA_Node) ||
+	         RNA_struct_is_a(ptr->type, &RNA_NodeSocket))
+	{
+		ListBase lb = {NULL, NULL};
+		char *path = NULL;
+		bNode *node = NULL;
+
+		/* Get the node we're editing */
+		if (RNA_struct_is_a(ptr->type, &RNA_NodeSocket)) {
+			bNodeTree *ntree = ptr->id.data;
+			bNodeSocket *sock = ptr->data;
+			if (nodeFindNode(ntree, sock, &node, NULL)) {
+				if ((path = RNA_path_resolve_from_type_to_property(ptr, prop, &RNA_Node)) != NULL) {
+					/* we're good! */
+				}
+				else {
+					node = NULL;
+				}
+			}
+		}
+		else {
+			node = ptr->data;
+		}
+
+		/* Now filter by type */
+		if (node) {
+			CollectionPointerLink *link, *link_next;
+			lb = CTX_data_collection_get(C, "selected_nodes");
+
+			for (link = lb.first; link; link = link_next) {
+				bNode *node_data = link->ptr.data;
+				link_next = link->next;
+
+				if (node_data->type != node->type) {
+					BLI_remlink(&lb, link);
+					MEM_freeN(link);
+				}
+			}
+		}
+
+		*r_lb = lb;
+		*r_path = path;
 	}
 	else if (ptr->id.data) {
 		ID *id = ptr->id.data;
@@ -284,6 +410,51 @@ static bool copy_to_selected_list(
 			*r_lb = CTX_data_collection_get(C, "selected_editable_objects");
 			*r_use_path_from_id = true;
 			*r_path = RNA_path_from_ID_to_property(ptr, prop);
+		}
+		else if (OB_DATA_SUPPORT_ID(GS(id->name))) {
+			/* check we're using the active object */
+			const short id_code = GS(id->name);
+			ListBase lb = CTX_data_collection_get(C, "selected_editable_objects");
+			char *path = RNA_path_from_ID_to_property(ptr, prop);
+
+			/* de-duplicate obdata */
+			if (!BLI_listbase_is_empty(&lb)) {
+				CollectionPointerLink *link, *link_next;
+
+				for (link = lb.first; link; link = link->next) {
+					Object *ob = link->ptr.id.data;
+					if (ob->data) {
+						ID *id_data = ob->data;
+						id_data->tag |= LIB_TAG_DOIT;
+					}
+				}
+
+				for (link = lb.first; link; link = link_next) {
+					Object *ob = link->ptr.id.data;
+					ID *id_data = ob->data;
+					link_next = link->next;
+
+					if ((id_data == NULL) ||
+					    (id_data->tag & LIB_TAG_DOIT) == 0 ||
+					    ID_IS_LINKED_DATABLOCK(id_data) ||
+					    (GS(id_data->name) != id_code))
+					{
+						BLI_remlink(&lb, link);
+						MEM_freeN(link);
+					}
+					else {
+						/* avoid prepending 'data' to the path */
+						RNA_id_pointer_create(id_data, &link->ptr);
+					}
+
+					if (id_data) {
+						id_data->tag &= ~LIB_TAG_DOIT;
+					}
+				}
+			}
+
+			*r_lb = lb;
+			*r_path = path;
 		}
 		else if (GS(id->name) == ID_SCE) {
 			/* Sequencer's ID is scene :/ */
@@ -323,10 +494,11 @@ static bool copy_to_selected_button(bContext *C, bool all, bool poll)
 		char *path = NULL;
 		bool use_path_from_id;
 		CollectionPointerLink *link;
-		ListBase lb;
+		ListBase lb = {NULL};
 
-		if (!copy_to_selected_list(C, &ptr, prop, &lb, &use_path_from_id, &path))
-			return success;
+		if (!UI_context_copy_to_selected_list(C, &ptr, prop, &lb, &use_path_from_id, &path)) {
+			goto finally;
+		}
 
 		for (link = lb.first; link; link = link->next) {
 			if (link->ptr.data != ptr.data) {
@@ -368,6 +540,7 @@ static bool copy_to_selected_button(bContext *C, bool all, bool poll)
 			}
 		}
 
+finally:
 		MEM_SAFE_FREE(path);
 		BLI_freelistN(&lb);
 	}
@@ -406,7 +579,7 @@ static void UI_OT_copy_to_selected_button(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
 	/* properties */
-	RNA_def_boolean(ot->srna, "all", 1, "All", "Reset to default values all elements of the array");
+	RNA_def_boolean(ot->srna, "all", true, "All", "Copy to selected all elements of the array");
 }
 
 /* Reports to Textblock Operator ------------------------ */
@@ -553,8 +726,9 @@ void UI_editsource_active_but_test(uiBut *but)
 	BLI_ghash_insert(ui_editsource_info->hash, but, but_store);
 }
 
-static int editsource_text_edit(bContext *C, wmOperator *op,
-                                char filepath[FILE_MAX], int line)
+static int editsource_text_edit(
+        bContext *C, wmOperator *op,
+        char filepath[FILE_MAX], int line)
 {
 	struct Main *bmain = CTX_data_main(C);
 	Text *text;
@@ -567,6 +741,7 @@ static int editsource_text_edit(bContext *C, wmOperator *op,
 
 	if (text == NULL) {
 		text = BKE_text_load(bmain, filepath, bmain->name);
+		id_us_ensure_real(&text->id);
 	}
 
 	if (text == NULL) {
@@ -613,6 +788,7 @@ static int editsource_exec(bContext *C, wmOperator *op)
 
 		/* redraw and get active button python info */
 		ED_region_do_draw(C, ar);
+		ar->do_draw = false;
 
 		for (BLI_ghashIterator_init(&ghi, ui_editsource_info->hash);
 		     BLI_ghashIterator_done(&ghi) == false;
@@ -667,10 +843,12 @@ static void UI_OT_editsource(wmOperatorType *ot)
 }
 
 /* ------------------------------------------------------------------------- */
-/* EditTranslation utility funcs and operator,
- * Note: this includes utility functions and button matching checks.
- *       this only works in conjunction with a py operator! */
 
+/**
+ * EditTranslation utility funcs and operator,
+ * \note: this includes utility functions and button matching checks.
+ * this only works in conjunction with a py operator!
+ */
 static void edittranslation_find_po_file(const char *root, const char *uilng, char *path, const size_t maxlen)
 {
 	char tstr[32]; /* Should be more than enough! */
@@ -722,7 +900,7 @@ static int edittranslation_exec(bContext *C, wmOperator *op)
 		PointerRNA ptr;
 		char popath[FILE_MAX];
 		const char *root = U.i18ndir;
-		const char *uilng = BLF_lang_get();
+		const char *uilng = BLT_lang_get();
 
 		uiStringInfo but_label = {BUT_GET_LABEL, NULL};
 		uiStringInfo rna_label = {BUT_GET_RNA_LABEL, NULL};
@@ -742,7 +920,7 @@ static int edittranslation_exec(bContext *C, wmOperator *op)
 		}
 		ot = WM_operatortype_find(EDTSRC_I18N_OP_NAME, 0);
 		if (ot == NULL) {
-			BKE_reportf(op->reports, RPT_ERROR, "Could not find operator '%s'! Please enable ui_translate addon "
+			BKE_reportf(op->reports, RPT_ERROR, "Could not find operator '%s'! Please enable ui_translate add-on "
 			                                    "in the User Preferences", EDTSRC_I18N_OP_NAME);
 			return OPERATOR_CANCELLED;
 		}
@@ -817,9 +995,9 @@ static void UI_OT_edittranslation_init(wmOperatorType *ot)
 
 static int reloadtranslation_exec(bContext *UNUSED(C), wmOperator *UNUSED(op))
 {
-	BLF_lang_init();
+	BLT_lang_init();
 	BLF_cache_clear();
-	BLF_lang_set(NULL);
+	BLT_lang_set(NULL);
 	UI_reinit_font();
 	return OPERATOR_FINISHED;
 }
@@ -928,14 +1106,14 @@ static void UI_OT_drop_color(wmOperatorType *ot)
 }
 
 
-
 /* ********************************************************* */
 /* Registration */
 
-void ED_button_operatortypes(void)
+void ED_operatortypes_ui(void)
 {
 	WM_operatortype_append(UI_OT_reset_default_theme);
 	WM_operatortype_append(UI_OT_copy_data_path_button);
+	WM_operatortype_append(UI_OT_copy_python_command_button);
 	WM_operatortype_append(UI_OT_reset_default_button);
 	WM_operatortype_append(UI_OT_unset_property_button);
 	WM_operatortype_append(UI_OT_copy_to_selected_button);
@@ -951,4 +1129,40 @@ void ED_button_operatortypes(void)
 	WM_operatortype_append(UI_OT_eyedropper_color);
 	WM_operatortype_append(UI_OT_eyedropper_id);
 	WM_operatortype_append(UI_OT_eyedropper_depth);
+	WM_operatortype_append(UI_OT_eyedropper_driver);
+}
+
+/**
+ * \brief User Interface Keymap
+ */
+void ED_keymap_ui(wmKeyConfig *keyconf)
+{
+	wmKeyMap *keymap = WM_keymap_find(keyconf, "User Interface", 0, 0);
+	wmKeyMapItem *kmi;
+
+	/* eyedroppers - notice they all have the same shortcut, but pass the event
+	 * through until a suitable eyedropper for the active button is found */
+	WM_keymap_add_item(keymap, "UI_OT_eyedropper_color", EKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "UI_OT_eyedropper_id", EKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "UI_OT_eyedropper_depth", EKEY, KM_PRESS, 0, 0);
+
+	/* Copy Data Path */
+	WM_keymap_add_item(keymap, "UI_OT_copy_data_path_button", CKEY, KM_PRESS, KM_CTRL | KM_SHIFT, 0);
+	kmi = WM_keymap_add_item(keymap, "UI_OT_copy_data_path_button", CKEY, KM_PRESS, KM_CTRL | KM_SHIFT | KM_ALT, 0);
+	RNA_boolean_set(kmi->ptr, "full_path", true);
+
+	/* keyframes */
+	WM_keymap_add_item(keymap, "ANIM_OT_keyframe_insert_button", IKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "ANIM_OT_keyframe_delete_button", IKEY, KM_PRESS, KM_ALT, 0);
+	WM_keymap_add_item(keymap, "ANIM_OT_keyframe_clear_button", IKEY, KM_PRESS, KM_SHIFT | KM_ALT, 0);
+
+	/* drivers */
+	WM_keymap_add_item(keymap, "ANIM_OT_driver_button_add", DKEY, KM_PRESS, KM_CTRL, 0);
+	WM_keymap_add_item(keymap, "ANIM_OT_driver_button_remove", DKEY, KM_PRESS, KM_CTRL | KM_ALT, 0);
+
+	/* keyingsets */
+	WM_keymap_add_item(keymap, "ANIM_OT_keyingset_button_add", KKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "ANIM_OT_keyingset_button_remove", KKEY, KM_PRESS, KM_ALT, 0);
+
+	eyedropper_modal_keymap(keyconf);
 }

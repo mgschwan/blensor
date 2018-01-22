@@ -32,23 +32,19 @@
  *  \since March 2001
  *  \author nzc
  */
-struct EvaluationContext;
 struct Main;
 struct MetaBall;
 struct Object;
 struct Scene;
 struct MetaElem;
 
-void BKE_mball_unlink(struct MetaBall *mb);
 void BKE_mball_free(struct MetaBall *mb);
+void BKE_mball_init(struct MetaBall *mb);
 struct MetaBall *BKE_mball_add(struct Main *bmain, const char *name);
-struct MetaBall *BKE_mball_copy(struct MetaBall *mb);
+struct MetaBall *BKE_mball_copy(struct Main *bmain, const struct MetaBall *mb);
 
-void BKE_mball_make_local(struct MetaBall *mb);
+void BKE_mball_make_local(struct Main *bmain, struct MetaBall *mb, const bool lib_local);
 
-void BKE_mball_cubeTable_free(void);
-
-void BKE_mball_polygonize(struct EvaluationContext *eval_ctx, struct Scene *scene, struct Object *ob, struct ListBase *dispbase);
 bool BKE_mball_is_basis_for(struct Object *ob1, struct Object *ob2);
 bool BKE_mball_is_basis(struct Object *ob);
 struct Object *BKE_mball_basis_find(struct Scene *scene, struct Object *ob);
@@ -71,5 +67,12 @@ struct MetaElem *BKE_mball_element_add(struct MetaBall *mb, const int type);
 void BKE_mball_select_all(struct MetaBall *mb);
 void BKE_mball_deselect_all(struct MetaBall *mb);
 void BKE_mball_select_swap(struct MetaBall *mb);
+
+/* **** Depsgraph evaluation **** */
+
+struct EvaluationContext;
+
+void BKE_mball_eval_geometry(struct EvaluationContext *eval_ctx,
+                             struct MetaBall *mball);
 
 #endif

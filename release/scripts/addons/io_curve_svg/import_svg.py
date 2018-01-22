@@ -45,6 +45,12 @@ SVGUnits = {"": 1.0,
 SVGEmptyStyles = {'useFill': None,
                   'fill': None}
 
+def srgb_to_linearrgb(c):
+    if c < 0.04045:
+        return 0.0 if c < 0.0 else c * (1.0 / 12.92);
+    else:
+        return pow((c + 0.055) * (1.0 / 1.055), 2.4);
+
 
 def SVGParseFloat(s, i=0):
     """
@@ -102,13 +108,10 @@ def SVGParseFloat(s, i=0):
             token += s[i]
             i += 1
 
-            if s[i].isdigit():
-                while i < n and s[i].isdigit():
-                    token += s[i]
-                    i += 1
-            else:
-                raise Exception('Invalid float value near ' +
-                    s[start:start + 10])
+        if s[i].isdigit():
+            while i < n and s[i].isdigit():
+                token += s[i]
+                i += 1
         else:
             raise Exception('Invalid float value near ' + s[start:start + 10])
 
@@ -199,6 +202,7 @@ def SVGMatrixFromNode(node, context):
         return Matrix()
 
     rect = context['rect']
+    has_user_coordinate = (len(context['rects']) > 1)
 
     m = Matrix()
     x = SVGParseCoord(node.getAttribute('x') or '0', rect[0])
@@ -207,9 +211,10 @@ def SVGMatrixFromNode(node, context):
     h = SVGParseCoord(node.getAttribute('height') or str(rect[1]), rect[1])
 
     m = Matrix.Translation(Vector((x, y, 0.0)))
-    if len(context['rects']) > 1:
-        m = m * Matrix.Scale(w / rect[0], 4, Vector((1.0, 0.0, 0.0)))
-        m = m * Matrix.Scale(h / rect[1], 4, Vector((0.0, 1.0, 0.0)))
+    if has_user_coordinate:
+        if rect[0] != 0 and rect[1] != 0:
+            m = m * Matrix.Scale(w / rect[0], 4, Vector((1.0, 0.0, 0.0)))
+            m = m * Matrix.Scale(h / rect[1], 4, Vector((0.0, 1.0, 0.0)))
 
     if node.getAttribute('viewBox'):
         viewBox = node.getAttribute('viewBox').replace(',', ' ').split()
@@ -218,9 +223,17 @@ def SVGMatrixFromNode(node, context):
         vw = SVGParseCoord(viewBox[2], w)
         vh = SVGParseCoord(viewBox[3], h)
 
-        sx = w / vw
-        sy = h / vh
-        scale = min(sx, sy)
+        if vw == 0 or vh == 0:
+            return m
+
+        if has_user_coordinate or (w != 0 and h != 0):
+            sx = w / vw
+            sy = h / vh
+            scale = min(sx, sy)
+        else:
+            scale = 1.0
+            w = vw
+            h = vh
 
         tx = (w - vw * scale) / 2
         ty = (h - vh * scale) / 2
@@ -282,8 +295,16 @@ def SVGGetMaterial(color, context):
     else:
         return None
 
+    diffuse_color = ([x / 255.0 for x in diff])
+
+    if context['do_colormanage']:
+        diffuse_color[0] = srgb_to_linearrgb(diffuse_color[0])
+        diffuse_color[1] = srgb_to_linearrgb(diffuse_color[1])
+        diffuse_color[2] = srgb_to_linearrgb(diffuse_color[2])
+
     mat = bpy.data.materials.new(name='SVGMat')
-    mat.diffuse_color = ([x / 255.0 for x in diff])
+    mat.diffuse_color = diffuse_color
+    mat.diffuse_intensity = 1.0
 
     materials[color] = mat
 
@@ -617,7 +638,7 @@ class SVGPathParser:
             self._splines.append(self._spline)
 
         if len(self._spline['points']) > 0:
-            # Not sure bout specifications, but Illustrator could create
+            # Not sure about specifications, but Illustrator could create
             # last point at the same position, as start point (which was
             # reached by MoveTo command) to set needed handle coords.
             # It's also could use last point at last position to make path
@@ -636,6 +657,11 @@ class SVGPathParser:
                     self._spline['closed'] = True
 
                 return
+
+            last = self._spline['points'][-1]
+            if last['handle_right_type'] == 'VECTOR' and handle_left_type == 'FREE':
+                last['handle_right'] = (last['x'], last['y'])
+                last['handle_right_type'] = 'FREE'
 
         point = {'x': x,
                  'y': y,
@@ -1516,6 +1542,9 @@ class SVGGeometryELLIPSE(SVGGeometry):
         ob = SVGCreateCurve()
         cu = ob.data
 
+        if self._node.getAttribute('id'):
+            cu.name = self._node.getAttribute('id')
+
         if self._styles['useFill']:
             cu.dimensions = '2D'
             cu.materials.append(self._styles['fill'])
@@ -1795,7 +1824,7 @@ class SVGLoader(SVGGeometryContainer):
 
         return None
 
-    def __init__(self, filepath):
+    def __init__(self, filepath, do_colormanage):
         """
         Initialize SVG loader
         """
@@ -1806,7 +1835,7 @@ class SVGLoader(SVGGeometryContainer):
         m = m * Matrix.Scale(1.0 / 90.0 * 0.3048 / 12.0, 4, Vector((1.0, 0.0, 0.0)))
         m = m * Matrix.Scale(-1.0 / 90.0 * 0.3048 / 12.0, 4, Vector((0.0, 1.0, 0.0)))
 
-        rect = (1, 1)
+        rect = (0, 0)
 
         self._context = {'defines': {},
                          'transform': [],
@@ -1815,7 +1844,8 @@ class SVGLoader(SVGGeometryContainer):
                          'matrix': m,
                          'materials': {},
                          'styles': [None],
-                         'style': None}
+                         'style': None,
+                         'do_colormanage': do_colormanage}
 
         super().__init__(node, self._context)
 
@@ -1852,7 +1882,7 @@ def parseAbstractNode(node, context):
     return None
 
 
-def load_svg(filepath):
+def load_svg(filepath, do_colormanage):
     """
     Load specified SVG file
     """
@@ -1860,7 +1890,7 @@ def load_svg(filepath):
     if bpy.ops.object.mode_set.poll():
         bpy.ops.object.mode_set(mode='OBJECT')
 
-    loader = SVGLoader(filepath)
+    loader = SVGLoader(filepath, do_colormanage)
     loader.parse()
     loader.createGeom(False)
 
@@ -1869,8 +1899,9 @@ def load(operator, context, filepath=""):
 
     # error in code should raise exceptions but loading
     # non SVG files can give useful messages.
+    do_colormanage = context.scene.display_settings.display_device != 'NONE'
     try:
-        load_svg(filepath)
+        load_svg(filepath, do_colormanage)
     except (xml.parsers.expat.ExpatError, UnicodeEncodeError) as e:
         import traceback
         traceback.print_exc()

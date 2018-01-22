@@ -514,12 +514,12 @@ ccl_device_inline float len3(const ssef& a)
 /* faster version for SSSE3 */
 typedef ssei shuffle_swap_t;
 
-ccl_device_inline const shuffle_swap_t shuffle_swap_identity(void)
+ccl_device_inline shuffle_swap_t shuffle_swap_identity(void)
 {
 	return _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
 }
 
-ccl_device_inline const shuffle_swap_t shuffle_swap_swap(void)
+ccl_device_inline shuffle_swap_t shuffle_swap_swap(void)
 {
 	return _mm_set_epi8(7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8);
 }
@@ -534,12 +534,12 @@ ccl_device_inline const ssef shuffle_swap(const ssef& a, const shuffle_swap_t& s
 /* somewhat slower version for SSE2 */
 typedef int shuffle_swap_t;
 
-ccl_device_inline const shuffle_swap_t shuffle_swap_identity(void)
+ccl_device_inline shuffle_swap_t shuffle_swap_identity(void)
 {
 	return 0;
 }
 
-ccl_device_inline const shuffle_swap_t shuffle_swap_swap(void)
+ccl_device_inline shuffle_swap_t shuffle_swap_swap(void)
 {
 	return 1;
 }
@@ -558,7 +558,7 @@ ccl_device_inline const ssef shuffle_swap(const ssef& a, shuffle_swap_t shuf)
 #ifdef __KERNEL_SSE41__
 
 ccl_device_inline void gen_idirsplat_swap(const ssef &pn, const shuffle_swap_t &shuf_identity, const shuffle_swap_t &shuf_swap,
-										  const float3& idir, ssef idirsplat[3], shuffle_swap_t shufflexyz[3])
+                                          const float3& idir, ssef idirsplat[3], shuffle_swap_t shufflexyz[3])
 {
 	const __m128 idirsplat_raw[] = { _mm_set_ps1(idir.x), _mm_set_ps1(idir.y), _mm_set_ps1(idir.z) };
 	idirsplat[0] = _mm_xor_ps(idirsplat_raw[0], pn);
@@ -577,7 +577,7 @@ ccl_device_inline void gen_idirsplat_swap(const ssef &pn, const shuffle_swap_t &
 #else
 
 ccl_device_inline void gen_idirsplat_swap(const ssef &pn, const shuffle_swap_t &shuf_identity, const shuffle_swap_t &shuf_swap,
-										  const float3& idir, ssef idirsplat[3], shuffle_swap_t shufflexyz[3])
+                                          const float3& idir, ssef idirsplat[3], shuffle_swap_t shufflexyz[3])
 {
 	idirsplat[0] = ssef(idir.x) ^ pn;
 	idirsplat[1] = ssef(idir.y) ^ pn;

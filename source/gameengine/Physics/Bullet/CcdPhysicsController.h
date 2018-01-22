@@ -72,14 +72,14 @@ public:
 
 	CcdShapeConstructionInfo() :
 		m_shapeType(PHY_SHAPE_NONE),
-		m_radius(1.0),
-		m_height(1.0),
+		m_radius(1.0f),
+		m_height(1.0f),
 		m_halfExtend(0.f,0.f,0.f),
 		m_childScale(1.0f,1.0f,1.0f),
 		m_userData(NULL),
 		m_refCount(1),
 		m_meshObject(NULL),
-		m_unscaledShape(NULL),
+		m_triangleIndexVertexArray(NULL),
 		m_forceReInstance(false),
 		m_weldingThreshold1(0.f),
 		m_shapeProxy(NULL)
@@ -110,10 +110,11 @@ public:
 
 	void AddShape(CcdShapeConstructionInfo* shapeInfo);
 
-	btTriangleMeshShape* GetMeshShape(void)
+	btStridingMeshInterface *GetMeshInterface()
 	{
-		return (m_unscaledShape);
+		return m_triangleIndexVertexArray;
 	}
+
 	CcdShapeConstructionInfo* GetChildShape(int i)
 	{
 		if (i < 0 || i >= (int)m_shapeArray.size())
@@ -195,8 +196,8 @@ protected:
 	int						m_refCount;		// this class is shared between replicas
 											// keep track of users so that we can release it 
 	RAS_MeshObject*	m_meshObject;			// Keep a pointer to the original mesh 
-	btBvhTriangleMeshShape* m_unscaledShape;// holds the shared unscale BVH mesh shape, 
-											// the actual shape is of type btScaledBvhTriangleMeshShape
+	// The list of vertexes and indexes for the triangle mesh, shared between Bullet shape.
+	btTriangleIndexVertexArray *m_triangleIndexVertexArray;
 	std::vector<CcdShapeConstructionInfo*> m_shapeArray;	// for compound shapes
 	bool	m_forceReInstance; //use gimpact for concave dynamic/moving collision detection
 	float	m_weldingThreshold1;	//welding closeby vertices together can improve softbody stability etc.
@@ -235,6 +236,8 @@ struct CcdConstructionInfo
 		m_mass(0.f),
 		m_clamp_vel_min(-1.f),
 		m_clamp_vel_max(-1.f),
+	    m_clamp_angvel_min(0.0f),
+	    m_clamp_angvel_max(0.0f),
 		m_restitution(0.1f),
 		m_friction(0.5f),
 		m_linearDamping(0.1f),
@@ -301,6 +304,8 @@ struct CcdConstructionInfo
 	btScalar	m_mass;
 	btScalar	m_clamp_vel_min;  
 	btScalar	m_clamp_vel_max;  
+	btScalar	m_clamp_angvel_min;  // Minimum angular velocity, in radians/sec.
+	btScalar	m_clamp_angvel_max;  // Maximum angular velocity, in radians/sec.
 	btScalar	m_restitution;
 	btScalar	m_friction;
 	btScalar	m_linearDamping;
@@ -311,7 +316,8 @@ struct CcdConstructionInfo
 	float	m_stepHeight;
 	float	m_jumpSpeed;
 	float	m_fallSpeed;
-	
+	unsigned char m_maxJumps;
+
 	int		m_gamesoftFlag;
 	float	m_soft_linStiff;			/* linear stiffness 0..1 */
 	float	m_soft_angStiff;		/* angular stiffness 0..1 */
@@ -402,19 +408,19 @@ class BlenderBulletCharacterController : public btKinematicCharacterController, 
 {
 private:
 	btMotionState* m_motionState;
-	int m_jumps;
-	int m_maxJumps;
+	unsigned char m_jumps;
+	unsigned char m_maxJumps;
 
 public:
 	BlenderBulletCharacterController(btMotionState *motionState, btPairCachingGhostObject *ghost, btConvexShape* shape, float stepHeight);
 
 	virtual void updateAction(btCollisionWorld *collisionWorld, btScalar dt);
 
-	int getMaxJumps() const;
+	unsigned char getMaxJumps() const;
 
-	void setMaxJumps(int maxJumps);
+	void setMaxJumps(unsigned char maxJumps);
 
-	int getJumpCount() const;
+	unsigned char getJumpCount() const;
 
 	virtual bool canJump() const;
 
@@ -424,12 +430,12 @@ public:
 
 	// PHY_ICharacter interface
 	virtual void Jump()	{ jump(); }
-	virtual bool OnGround(){ return onGround(); }
+	virtual bool OnGround() { return onGround(); }
 	virtual float GetGravity() { return getGravity(); }
 	virtual void SetGravity(float gravity) { setGravity(gravity); }
-	virtual int GetMaxJumps() { return getMaxJumps(); }
-	virtual void SetMaxJumps(int maxJumps) { setMaxJumps(maxJumps); }
-	virtual int GetJumpCount() { return getJumpCount(); }
+	virtual unsigned char GetMaxJumps() { return getMaxJumps(); }
+	virtual void SetMaxJumps(unsigned char maxJumps) { setMaxJumps(maxJumps); }
+	virtual unsigned char GetJumpCount() { return getJumpCount(); }
 	virtual void SetWalkDirection(const MT_Vector3& dir)
 	{
 		btVector3 vec = btVector3(dir[0], dir[1], dir[2]);
@@ -445,6 +451,23 @@ public:
 	using PHY_ICharacter::operator new;
 	using PHY_ICharacter::operator delete;
 #endif
+};
+
+class CleanPairCallback : public btOverlapCallback
+{
+	btBroadphaseProxy *m_cleanProxy;
+	btOverlappingPairCache *m_pairCache;
+	btDispatcher *m_dispatcher;
+
+public:
+	CleanPairCallback(btBroadphaseProxy *cleanProxy, btOverlappingPairCache *pairCache, btDispatcher *dispatcher)
+		:m_cleanProxy(cleanProxy),
+		m_pairCache(pairCache),
+		m_dispatcher(dispatcher)
+	{
+	}
+
+	virtual bool processOverlap(btBroadphasePair &pair);
 };
 
 ///CcdPhysicsController is a physics object that supports continuous collision detection and time of impact based physics resolution.
@@ -498,6 +521,11 @@ protected:
 		return (--m_registerCount == 0) ? true : false;
 	}
 
+	bool Registered() const
+	{
+		return (m_registerCount != 0);
+	}
+
 	void addCcdConstraintRef(btTypedConstraint* c);
 	void removeCcdConstraintRef(btTypedConstraint* c);
 	btTypedConstraint* getCcdConstraintRef(int index);
@@ -513,7 +541,15 @@ protected:
 
 		CcdPhysicsController (const CcdConstructionInfo& ci);
 
+		/**
+		 * Delete the current Bullet shape used in the rigid body.
+		 */
 		bool DeleteControllerShape();
+
+		/**
+		 * Delete the old Bullet shape and set the new Bullet shape : newShape
+		 * \param newShape The new Bullet shape to set, if is NULL we create a new Bullet shape
+		 */
 		bool ReplaceControllerShape(btCollisionShape *newShape);
 
 		virtual ~CcdPhysicsController();
@@ -548,6 +584,13 @@ protected:
 		 * SynchronizeMotionStates ynchronizes dynas, kinematic and deformable entities (and do 'late binding')
 		 */
 		virtual bool		SynchronizeMotionStates(float time);
+
+		/**
+		 * Called for every physics simulation step. Use this method for
+		 * things like limiting linear and angular velocity.
+		 */
+		void SimulationTick(float timestep);
+
 		/**
 		 * WriteMotionStateToDynamics ynchronizes dynas, kinematic and deformable entities (and do 'late binding')
 		 */
@@ -598,7 +641,7 @@ protected:
 
 		
 		virtual void		ResolveCombinedVelocities(float linvelX,float linvelY,float linvelZ,float angVelX,float angVelY,float angVelZ);
-
+		virtual void		RefreshCollisions();
 		virtual void		SuspendDynamics(bool ghost);
 		virtual void		RestoreDynamics();
 
@@ -626,8 +669,12 @@ protected:
 		virtual void CalcXform() {}
 		virtual void SetMargin(float margin) 
 		{
-			if (m_collisionShape)
-				m_collisionShape->setMargin(btScalar(margin));
+			if (m_collisionShape) {
+				m_collisionShape->setMargin(margin);
+				// if the shape use a unscaled shape we have also to set the correct margin in it
+				if (m_collisionShape->getShapeType() == SCALED_TRIANGLE_MESH_SHAPE_PROXYTYPE)
+					((btScaledBvhTriangleMeshShape *)m_collisionShape)->getChildShape()->setMargin(margin);
+			}
 		}
 		virtual float GetMargin() const 
 		{
@@ -664,6 +711,23 @@ protected:
 		virtual float GetLinVelocityMax() const 
 		{
 			return m_cci.m_clamp_vel_max;
+		}
+
+		virtual void SetAngularVelocityMin(float val)
+		{
+			m_cci.m_clamp_angvel_min = val;
+		}
+		virtual float GetAngularVelocityMin() const
+		{
+			return m_cci.m_clamp_angvel_min;
+		}
+		virtual void SetAngularVelocityMax(float val)
+		{
+			m_cci.m_clamp_angvel_max = val;
+		}
+		virtual float GetAngularVelocityMax() const
+		{
+			return m_cci.m_clamp_angvel_max;
 		}
 
 		bool	WantsSleeping();
@@ -712,12 +776,20 @@ protected:
 			return GetConstructionInfo().m_bDyna;
 		}
 
+		virtual bool IsSuspended() const
+		{
+			return m_suspended;
+		}
+
 		virtual bool IsCompound()
 		{
 			return GetConstructionInfo().m_shapeInfo->m_shapeType == PHY_SHAPE_COMPOUND;
 		}
 
 		virtual bool ReinstancePhysicsShape(KX_GameObject *from_gameobj, RAS_MeshObject* from_meshobj);
+
+		/* Method to replicate rigid body joint contraints for group instances. */
+		virtual void ReplicateConstraints(KX_GameObject *gameobj, std::vector<KX_GameObject*> constobj);
 
 #ifdef WITH_CXX_GUARDEDALLOC
 	MEM_CXX_CLASS_ALLOC_FUNCS("GE:CcdPhysicsController")

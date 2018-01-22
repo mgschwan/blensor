@@ -83,7 +83,7 @@ class DATA_PT_lamp(DataButtonsPanel, Panel):
 
         lamp = context.lamp
 
-        layout.prop(lamp, "type", expand=True)
+        layout.row().prop(lamp, "type", expand=True)
 
         split = layout.split()
 
@@ -102,6 +102,13 @@ class DATA_PT_lamp(DataButtonsPanel, Panel):
                 sub = col.column(align=True)
                 sub.prop(lamp, "linear_attenuation", slider=True, text="Linear")
                 sub.prop(lamp, "quadratic_attenuation", slider=True, text="Quadratic")
+
+            elif lamp.falloff_type == 'INVERSE_COEFFICIENTS':
+                col.label(text="Inverse Coefficients:")
+                sub = col.column(align=True)
+                sub.prop(lamp, "constant_coefficient", text="Constant")
+                sub.prop(lamp, "linear_coefficient", text="Linear")
+                sub.prop(lamp, "quadratic_coefficient", text="Quadratic")
 
             col.prop(lamp, "use_sphere")
 
@@ -203,7 +210,7 @@ class DATA_PT_shadow(DataButtonsPanel, Panel):
 
         lamp = context.lamp
 
-        layout.prop(lamp, "shadow_method", expand=True)
+        layout.row().prop(lamp, "shadow_method", expand=True)
 
         if lamp.shadow_method == 'NOSHADOW' and lamp.type == 'AREA':
             split = layout.split()
@@ -355,6 +362,7 @@ class DATA_PT_spot(DataButtonsPanel, Panel):
 
         col = split.column()
 
+        col.active = (lamp.shadow_method != 'BUFFER_SHADOW' or lamp.shadow_buffer_type != 'DEEP')
         col.prop(lamp, "use_halo")
         sub = col.column(align=True)
         sub.active = lamp.use_halo
@@ -386,5 +394,21 @@ class DATA_PT_custom_props_lamp(DataButtonsPanel, PropertyPanel, Panel):
     _context_path = "object.data"
     _property_type = bpy.types.Lamp
 
+
+classes = (
+    LAMP_MT_sunsky_presets,
+    DATA_PT_context_lamp,
+    DATA_PT_preview,
+    DATA_PT_lamp,
+    DATA_PT_sunsky,
+    DATA_PT_shadow,
+    DATA_PT_area,
+    DATA_PT_spot,
+    DATA_PT_falloff_curve,
+    DATA_PT_custom_props_lamp,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

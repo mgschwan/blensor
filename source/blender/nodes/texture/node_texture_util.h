@@ -39,7 +39,6 @@
 #include "MEM_guardedalloc.h"
 
 #include "DNA_color_types.h"
-#include "DNA_ipo_types.h"
 #include "DNA_ID.h"
 #include "DNA_image_types.h"
 #include "DNA_material_types.h"
@@ -54,7 +53,6 @@
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
-#include "BKE_blender.h"
 #include "BKE_colortools.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
@@ -67,9 +65,7 @@
 #include "node_util.h"
 #include "NOD_texture.h"
 
-#include "NOD_texture.h"
-
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"

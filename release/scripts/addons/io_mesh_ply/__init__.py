@@ -21,7 +21,7 @@
 bl_info = {
     "name": "Stanford PLY format",
     "author": "Bruce Merry, Campbell Barton",
-    "blender": (2, 73, 0),
+    "blender": (2, 74, 0),
     "location": "File > Import-Export",
     "description": "Import-Export PLY mesh data withs UV's and vertex colors",
     "warning": "",
@@ -45,17 +45,22 @@ if "bpy" in locals():
 
 import os
 import bpy
-from bpy.props import (CollectionProperty,
-                       StringProperty,
-                       BoolProperty,
-                       EnumProperty,
-                       FloatProperty,
-                       )
-from bpy_extras.io_utils import (ImportHelper,
-                                 ExportHelper,
-                                 OrientationHelper,
-                                 axis_conversion,
-                                 )
+from bpy.props import (
+        CollectionProperty,
+        StringProperty,
+        BoolProperty,
+        EnumProperty,
+        FloatProperty,
+        )
+from bpy_extras.io_utils import (
+        ImportHelper,
+        ExportHelper,
+        orientation_helper_factory,
+        axis_conversion,
+        )
+
+
+IOPLYOrientationHelper = orientation_helper_factory("IOPLYOrientationHelper", axis_forward='Y', axis_up='Z')
 
 
 class ImportPLY(bpy.types.Operator, ImportHelper):
@@ -88,7 +93,7 @@ class ImportPLY(bpy.types.Operator, ImportHelper):
         return {'FINISHED'}
 
 
-class ExportPLY(bpy.types.Operator, ExportHelper, OrientationHelper):
+class ExportPLY(bpy.types.Operator, ExportHelper, IOPLYOrientationHelper):
     """Export a single object as a Stanford PLY with normals, """ \
     """colors and texture coordinates"""
     bl_idname = "export_mesh.ply"
@@ -129,7 +134,7 @@ class ExportPLY(bpy.types.Operator, ExportHelper, OrientationHelper):
 
     @classmethod
     def poll(cls, context):
-        return context.active_object != None
+        return context.active_object is not None
 
     def execute(self, context):
         from . import export_ply
@@ -175,15 +180,23 @@ def menu_func_export(self, context):
     self.layout.operator(ExportPLY.bl_idname, text="Stanford (.ply)")
 
 
+classes = (
+    ImportPLY,
+    ExportPLY,
+    )
+
+
 def register():
-    bpy.utils.register_module(__name__)
+    for cls in classes:
+        bpy.utils.register_class(cls)
 
     bpy.types.INFO_MT_file_import.append(menu_func_import)
     bpy.types.INFO_MT_file_export.append(menu_func_export)
 
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
+    for cls in classes:
+        bpy.utils.unregister_class(cls)
 
     bpy.types.INFO_MT_file_import.remove(menu_func_import)
     bpy.types.INFO_MT_file_export.remove(menu_func_export)

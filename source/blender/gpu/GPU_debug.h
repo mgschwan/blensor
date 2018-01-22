@@ -34,8 +34,6 @@
 
 #include "GPU_glew.h"
 
-#include "BLI_utildefines.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -49,9 +47,9 @@ const char *gpuErrorString(GLenum err);
 /* prints current OpenGL state */
 void GPU_state_print(void);
 
-void gpu_assert_no_gl_errors(const char *file, int line, const char *str);
+void GPU_assert_no_gl_errors(const char *file, int line, const char *str);
 
-#  define GPU_ASSERT_NO_GL_ERRORS(str) gpu_assert_no_gl_errors(__FILE__, __LINE__, (str))
+#  define GPU_ASSERT_NO_GL_ERRORS(str) GPU_assert_no_gl_errors(__FILE__, __LINE__, (str))
 
 #  define GPU_CHECK_ERRORS_AROUND(glProcCall)                      \
        (                                             \
@@ -61,14 +59,8 @@ void gpu_assert_no_gl_errors(const char *file, int line, const char *str);
        )
 
 
-#ifdef WITH_GPU_DEBUG
 /* inserts a debug marker message for the debug context messaging system */
-void gpu_string_marker     (size_t size, const char *str);
-
-#  define GPU_STRING_MARKER(size, str) gpu_string_marker((size), (str))
-#else /* WITH_GPU_DEBUG */
-#  define GPU_STRING_MARKER(len, str)  ((void)(size),(void)(str))
-#endif /* WITH_GPU_DEBUG */
+void GPU_string_marker(const char *str);
 
 #ifdef __cplusplus
 }

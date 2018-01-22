@@ -36,7 +36,7 @@
 #include "BLI_listbase.h"
 #include "BLI_utildefines.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "DNA_armature_types.h"
 #include "DNA_lamp_types.h"
@@ -59,6 +59,7 @@
 
 #include "RNA_access.h"
 
+#include "ED_buttons.h"
 #include "ED_armature.h"
 #include "ED_screen.h"
 #include "ED_physics.h"
@@ -1105,7 +1106,7 @@ void buttons_context_draw(const bContext *C, uiLayout *layout)
 	block = uiLayoutGetBlock(row);
 	UI_block_emboss_set(block, UI_EMBOSS_NONE);
 	but = uiDefIconButBitC(block, UI_BTYPE_ICON_TOGGLE, SB_PIN_CONTEXT, 0, ICON_UNPINNED, 0, 0, UI_UNIT_X, UI_UNIT_Y, &sbuts->flag,
-	                       0, 0, 0, 0, TIP_("Follow context or keep fixed datablock displayed"));
+	                       0, 0, 0, 0, TIP_("Follow context or keep fixed data-block displayed"));
 	UI_but_flag_disable(but, UI_BUT_UNDO); /* skip undo on screen buttons */
 	UI_but_func_set(but, pin_cb, NULL, NULL);
 
@@ -1146,7 +1147,7 @@ void buttons_context_register(ARegionType *art)
 	pt = MEM_callocN(sizeof(PanelType), "spacetype buttons panel context");
 	strcpy(pt->idname, "BUTTONS_PT_context");
 	strcpy(pt->label, N_("Context"));  /* XXX C panels are not available through RNA (bpy.types)! */
-	strcpy(pt->translation_context, BLF_I18NCONTEXT_DEFAULT_BPYRNA);
+	strcpy(pt->translation_context, BLT_I18NCONTEXT_DEFAULT_BPYRNA);
 	pt->draw = buttons_panel_context;
 	pt->flag = PNL_NO_HEADER;
 	BLI_addtail(&art->paneltypes, pt);

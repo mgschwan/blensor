@@ -86,12 +86,12 @@ struct ShadeInputCopy {
 
 typedef struct ShadeInputUV {
 	float dxuv[3], dyuv[3], uv[3];
-	char *name;
+	const char *name;
 } ShadeInputUV;
 
 typedef struct ShadeInputCol {
 	float col[4];
-	char *name;
+	const char *name;
 } ShadeInputCol;
 
 /* localized renderloop data */
@@ -139,6 +139,7 @@ typedef struct ShadeInput {
 	float refcol[4], displace[3];
 	float strandco, tang[3], nmapnorm[3], nmaptang[4], stress, winspeed[4];
 	float duplilo[3], dupliuv[3];
+	float tangents[8][4]; /* 8 = MAX_MTFACE */
 
 	ShadeInputUV uv[8];   /* 8 = MAX_MTFACE */
 	ShadeInputCol col[8]; /* 8 = MAX_MCOL */
@@ -171,14 +172,16 @@ typedef struct ShadeInput {
 	/* from initialize, part or renderlayer */
 	bool do_preview;		/* for nodes, in previewrender */
 	bool do_manage;			/* color management flag */
+	bool use_world_space_shading;
 	short thread, sample;	/* sample: ShadeSample array index */
 	short nodes;			/* indicate node shading, temp hack to prevent recursion */
 	
 	unsigned int lay;
 	int layflag, passflag, combinedflag;
+	short object_pass_index;
 	struct Group *light_override;
 	struct Material *mat_override;
-	
+
 #ifdef RE_RAYCOUNTER
 	RayCounter raycounter;
 #endif
@@ -198,7 +201,15 @@ struct ImagePool;
 struct Object;
 
 /* this one uses nodes */
-int	multitex_ext(struct Tex *tex, float texvec[3], float dxt[3], float dyt[3], int osatex, struct TexResult *texres, struct ImagePool *pool, bool scene_color_manage, const bool skip_load_image);
+int multitex_ext(struct Tex *tex,
+                 float texvec[3],
+                 float dxt[3], float dyt[3],
+                 int osatex,
+                 struct TexResult *texres,
+                 const short thread,
+                 struct ImagePool *pool,
+                 bool scene_color_manage,
+                 const bool skip_load_image);
 /* nodes disabled */
 int multitex_ext_safe(struct Tex *tex, float texvec[3], struct TexResult *texres, struct ImagePool *pool, bool scene_color_manage, const bool skip_load_image);
 /* only for internal node usage */
@@ -206,6 +217,9 @@ int multitex_nodes(struct Tex *tex, float texvec[3], float dxt[3], float dyt[3],
                    const short thread, short which_output, struct ShadeInput *shi, struct MTex *mtex,
                    struct ImagePool *pool);
 float RE_lamp_get_data(struct ShadeInput *shi, struct Object *lamp_obj, float col[4], float lv[3], float *dist, float shadow[4]);
+void RE_instance_get_particle_info(struct ObjectInstanceRen *obi, float *index, float *age, float *lifetime, float co[3], float *size, float vel[3], float angvel[3]);
+
+float RE_fresnel_dielectric(float incoming[3], float normal[3], float eta);
 
 /* shaded view and bake */
 struct Render;
@@ -218,6 +232,25 @@ void RE_bake_ibuf_normalize_displacement(struct ImBuf *ibuf, float *displacement
 float RE_bake_make_derivative(struct ImBuf *ibuf, float *heights_buffer, const char *mask,
                               const float height_min, const float height_max,
                               const float fmult);
+
+enum {
+	RE_OBJECT_INSTANCE_MATRIX_OB,
+	RE_OBJECT_INSTANCE_MATRIX_OBINV,
+	RE_OBJECT_INSTANCE_MATRIX_LOCALTOVIEW,
+	RE_OBJECT_INSTANCE_MATRIX_LOCALTOVIEWINV,
+};
+
+const float (*RE_object_instance_get_matrix(struct ObjectInstanceRen *obi, int matrix_id))[4];
+
+float RE_object_instance_get_object_pass_index(struct ObjectInstanceRen *obi);
+float RE_object_instance_get_random_id(struct ObjectInstanceRen *obi);
+
+enum {
+	RE_VIEW_MATRIX,
+	RE_VIEWINV_MATRIX,
+};
+
+const float (*RE_render_current_get_matrix(int matrix_id))[4];
 
 #define BAKE_RESULT_OK			0
 #define BAKE_RESULT_NO_OBJECTS		1

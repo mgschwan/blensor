@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include <util_logging.h>
+#include "util/util_logging.h"
 
-#include "util_math.h"
+#include "util/util_math.h"
 
 #include <stdio.h>
 #ifdef _MSC_VER
@@ -30,10 +30,10 @@ void util_logging_init(const char *argv0)
 #ifdef WITH_CYCLES_LOGGING
 	using CYCLES_GFLAGS_NAMESPACE::SetCommandLineOption;
 
-	/* Make it so FATAL messages are always print into console. */
+	/* Make it so ERROR messages are always print into console. */
 	char severity_fatal[32];
 	snprintf(severity_fatal, sizeof(severity_fatal), "%d",
-	         google::GLOG_FATAL);
+	         google::GLOG_ERROR);
 
 	google::InitGoogleLogging(argv0);
 	SetCommandLineOption("logtostderr", "1");
@@ -66,6 +66,15 @@ void util_logging_verbosity_set(int verbosity)
 #else
 	(void) verbosity;
 #endif
+}
+
+std::ostream& operator <<(std::ostream &os,
+                          const int2 &value)
+{
+	os << "(" << value.x
+	   << ", " << value.y
+	   << ")";
+	return os;
 }
 
 std::ostream& operator <<(std::ostream &os,

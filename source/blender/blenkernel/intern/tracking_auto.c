@@ -36,8 +36,9 @@
 #include "DNA_movieclip_types.h"
 #include "DNA_object_types.h"   /* SELECT */
 
-#include "BLI_threads.h"
 #include "BLI_utildefines.h"
+#include "BLI_listbase.h"
+#include "BLI_threads.h"
 #include "BLI_math.h"
 
 #include "BKE_movieclip.h"
@@ -75,6 +76,9 @@ typedef struct AutoTrackContext {
 
 	int num_tracks;  /* Number of tracks being tracked. */
 	AutoTrackOptions *options;  /* Per-tracking track options. */
+
+	/* Array of all tracks, indexed by track_index. */
+	MovieTrackingTrack **tracks;
 
 	bool backwards;
 	bool sequence;
@@ -306,8 +310,15 @@ AutoTrackContext *BKE_autotrack_context_new(MovieClip *clip,
 
 	BLI_spin_init(&context->spin_lock);
 
+	int num_total_tracks = BLI_listbase_count(tracksbase);
+	context->tracks =
+		MEM_callocN(sizeof(MovieTrackingTrack*) * num_total_tracks,
+		            "auto track pointers");
+
 	context->image_accessor =
-		tracking_image_accessor_new(context->clips, 1, user->framenr);
+		tracking_image_accessor_new(context->clips, 1,
+		                            context->tracks, num_total_tracks,
+		                            user->framenr);
 	context->autotrack =
 		libmv_autoTrackNew(context->image_accessor->libmv_accessor);
 
@@ -361,6 +372,7 @@ AutoTrackContext *BKE_autotrack_context_new(MovieClip *clip,
 			options->use_keyframe_match =
 				track->pattern_match == TRACK_MATCH_KEYFRAME;
 		}
+		context->tracks[track_index] = track;
 		++track_index;
 	}
 
@@ -376,6 +388,9 @@ bool BKE_autotrack_context_step(AutoTrackContext *context)
 #pragma omp parallel for if (context->num_tracks > 1)
 	for (track = 0; track < context->num_tracks; ++track) {
 		AutoTrackOptions *options = &context->options[track];
+		if (options->is_failed) {
+			continue;
+		}
 		libmv_Marker libmv_current_marker,
 		             libmv_reference_marker,
 		             libmv_tracked_marker;
@@ -447,7 +462,7 @@ bool BKE_autotrack_context_step(AutoTrackContext *context)
 void BKE_autotrack_context_sync(AutoTrackContext *context)
 {
 	int newframe, frame_delta = context->backwards ? -1 : 1;
-	int clip, frame;
+	int frame;
 
 	BLI_spin_lock(&context->spin_lock);
 	newframe = context->user.framenr;
@@ -463,16 +478,25 @@ void BKE_autotrack_context_sync(AutoTrackContext *context)
 			AutoTrackOptions *options = &context->options[track];
 			int track_frame = BKE_movieclip_remap_scene_to_clip_frame(
 				context->clips[options->clip_index], frame);
-			if (options->is_failed && options->failed_frame == track_frame) {
-				MovieTrackingMarker *prev_marker =
-					BKE_tracking_marker_get_exact(options->track, frame);
-				if (prev_marker) {
-					marker = *prev_marker;
-					marker.framenr = context->backwards ?
-					                 track_frame - 1 :
-					                 track_frame + 1;
-					marker.flag |= MARKER_DISABLED;
-					BKE_tracking_marker_insert(options->track, &marker);
+			if (options->is_failed) {
+				if (options->failed_frame == track_frame) {
+					MovieTrackingMarker *prev_marker =
+					        BKE_tracking_marker_get_exact(
+					                options->track,
+					                context->backwards
+					                        ? frame + 1
+					                        : frame - 1);
+					if (prev_marker) {
+						marker = *prev_marker;
+						marker.framenr = track_frame;
+						marker.flag |= MARKER_DISABLED;
+						BKE_tracking_marker_insert(options->track, &marker);
+						continue;
+					}
+				}
+				if ((context->backwards && options->failed_frame > track_frame) ||
+				    (!context->backwards && options->failed_frame < track_frame))
+				{
 					continue;
 				}
 			}
@@ -502,7 +526,7 @@ void BKE_autotrack_context_sync(AutoTrackContext *context)
 	}
 	BLI_spin_unlock(&context->spin_lock);
 
-	for (clip = 0; clip < context->num_clips; ++clip) {
+	for (int clip = 0; clip < context->num_clips; ++clip) {
 		MovieTracking *tracking = &context->clips[clip]->tracking;
 		BKE_tracking_dopesheet_tag_update(tracking);
 	}
@@ -534,19 +558,9 @@ void BKE_autotrack_context_finish(AutoTrackContext *context)
 			if ((plane_track->flag & PLANE_TRACK_AUTOKEY) == 0) {
 				int track;
 				for (track = 0; track < context->num_tracks; ++track) {
-					MovieTrackingTrack *old_track;
-					bool do_update = false;
-					int j;
-
-					old_track = context->options[track].track;
-					for (j = 0; j < plane_track->point_tracksnr; j++) {
-						if (plane_track->point_tracks[j] == old_track) {
-							do_update = true;
-							break;
-						}
-					}
-
-					if (do_update) {
+					if (BKE_tracking_plane_track_has_point_track(plane_track,
+					                                             context->options[track].track))
+					{
 						BKE_tracking_track_plane_from_existing_motion(
 						        plane_track,
 						        context->first_frame);
@@ -563,6 +577,7 @@ void BKE_autotrack_context_free(AutoTrackContext *context)
 	libmv_autoTrackDestroy(context->autotrack);
 	tracking_image_accessor_destroy(context->image_accessor);
 	MEM_freeN(context->options);
+	MEM_freeN(context->tracks);
 	BLI_spin_end(&context->spin_lock);
 	MEM_freeN(context);
 }

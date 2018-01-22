@@ -48,6 +48,8 @@ public:
 	inline Rep() : BaseObject()
 	{
 		_Id = 0;
+		_Name = 0;
+		_LibraryPath = 0;
 		_FrsMaterial = 0;
 	}
 
@@ -55,6 +57,7 @@ public:
 	{
 		_Id = iBrother._Id;
 		_Name = iBrother._Name;
+		_LibraryPath = iBrother._LibraryPath;
 		if (0 == iBrother._FrsMaterial)
 			_FrsMaterial = 0;
 		else
@@ -68,6 +71,7 @@ public:
 		std::swap(_BBox, ioOther._BBox);
 		std::swap(_Id, ioOther._Id);
 		std::swap(_Name, ioOther._Name);
+		std::swap(_LibraryPath, ioOther._LibraryPath);
 		std::swap(_FrsMaterial, ioOther._FrsMaterial);
 	}
 
@@ -76,6 +80,7 @@ public:
 		if (&iBrother != this) {
 			_Id = iBrother._Id;
 			_Name = iBrother._Name;
+			_LibraryPath = iBrother._LibraryPath;
 			if (0 == iBrother._FrsMaterial) {
 				_FrsMaterial = 0;
 			}
@@ -117,7 +122,7 @@ public:
 	virtual void ComputeBBox() = 0;
 
 	/*! Returns the rep bounding box */
-	virtual const BBox<Vec3r>& bbox() const
+	virtual const BBox<Vec3f>& bbox() const
 	{
 		return _BBox;
 	}
@@ -127,9 +132,14 @@ public:
 		return _Id;
 	}
 
-	inline const string& getName() const
+	inline const char *getName() const
 	{
 		return _Name;
+	}
+
+	inline const char *getLibraryPath() const
+	{
+		return _LibraryPath;
 	}
 
 	inline const FrsMaterial *frs_material() const
@@ -138,7 +148,7 @@ public:
 	}
 
 	/*! Sets the Rep bounding box */
-	virtual void setBBox(const BBox<Vec3r>& iBox)
+	virtual void setBBox(const BBox<Vec3f>& iBox)
 	{
 		_BBox = iBox;
 	}
@@ -148,20 +158,26 @@ public:
 		_Id = id;
 	}
 
-	inline void setName(const string& name)
+	inline void setName(const char *name)
 	{
 		_Name = name;
 	}
 
-	inline void setFrsMaterial(const FrsMaterial& iMaterial) 
+	inline void setLibraryPath(const char *path)
+	{
+		_LibraryPath = path;
+	}
+
+	inline void setFrsMaterial(const FrsMaterial& iMaterial)
 	{
 		_FrsMaterial = new FrsMaterial(iMaterial);
 	}
 
 private:
-	BBox<Vec3r> _BBox;
+	BBox<Vec3f> _BBox;
 	Id _Id;
-	string _Name;
+	const char *_Name;
+	const char *_LibraryPath;
 	FrsMaterial *_FrsMaterial;
 };
 

@@ -125,7 +125,8 @@ class RatingUsage(RatingRule):
                  "descritpiton":str(self),
                  "limit":"",
                  "id":self.id()
-	  }
+                }
+
 
 class RatingUsageByCategory(RatingRule):
     def __init__(self, get_jobs):
@@ -149,7 +150,7 @@ class RatingUsageByCategory(RatingRule):
                  "descritpiton":str(self),
                  "limit":"",
                  "id":self.id()
-	  }
+                }
 
 
 class NewJobPriority(PriorityRule):
@@ -173,10 +174,10 @@ class NewJobPriority(PriorityRule):
                  "enabled": self.enabled,
                  "editable": self.editable,
                  "descritpiton":str(self),
-                 "limit": self.limit,           
+                 "limit": self.limit,
                  "limit_str":self.str_limit(),
                  "id":self.id()
-	  }
+                }
 
 class MinimumTimeBetweenDispatchPriority(PriorityRule):
     def __init__(self, limit = 10):
@@ -203,8 +204,7 @@ class MinimumTimeBetweenDispatchPriority(PriorityRule):
                  "limit": self.limit,
                  "limit_str":self.str_limit(),
                  "id":self.id()
-                 
-	  }
+                }
 
 class ExcludeQueuedEmptyJob(ExclusionRule):
     def __init__(self):
@@ -215,7 +215,7 @@ class ExcludeQueuedEmptyJob(ExclusionRule):
 
     def test(self, job):
         return job.status != netrender.model.JOB_QUEUED or job.countFrames(status = netrender.model.FRAME_QUEUED) == 0
-    
+
     def serialize(self):
         return { "type": "exception",
                  "enabled": self.enabled,
@@ -224,7 +224,8 @@ class ExcludeQueuedEmptyJob(ExclusionRule):
                  "limit": "",
                  "limit_str":"",
                  "id":self.id()
-	  }
+                }
+
 
 class ExcludeSlavesLimit(ExclusionRule):
     def __init__(self, count_jobs, count_slaves, limit = 0.75):
@@ -253,4 +254,4 @@ class ExcludeSlavesLimit(ExclusionRule):
                  "limit": self.limit,
                  "limit_str":self.str_limit(),
                  "id":self.id()
-	  }
+                }

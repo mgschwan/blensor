@@ -17,22 +17,36 @@
 # ##### END GPL LICENSE BLOCK #####
 
 # <pep8 compliant>
-#
+
 bl_info = {
     "name": "Layer Management",
     "author": "Alfonso Annarumma, Bastien Montagne",
-    "version": (1, 5, 2),
-    "blender": (2, 72, 0),
+    "version": (1, 5, 4),
+    "blender": (2, 76, 0),
     "location": "Toolshelf > Layers Tab",
     "warning": "",
     "description": "Display and Edit Layer Name",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/3D_interaction/layer_manager",
+    "wiki_url": "https://wiki.blender.org/index.php/Extensions:2.6/Py/"
+                "Scripts/3D_interaction/layer_manager",
     "category": "3D View",
 }
 
 import bpy
-from bpy.types import Menu, Panel, UIList, PropertyGroup
-from bpy.props import StringProperty, BoolProperty, IntProperty, CollectionProperty, BoolVectorProperty, PointerProperty
+from bpy.types import (
+        Operator,
+        Panel,
+        UIList,
+        PropertyGroup,
+        AddonPreferences,
+        )
+from bpy.props import (
+        StringProperty,
+        BoolProperty,
+        IntProperty,
+        CollectionProperty,
+        BoolVectorProperty,
+        PointerProperty,
+        )
 from bpy.app.handlers import persistent
 
 EDIT_MODES = {'EDIT_MESH', 'EDIT_CURVE', 'EDIT_SURFACE', 'EDIT_METABALL', 'EDIT_TEXT', 'EDIT_ARMATURE'}
@@ -41,21 +55,49 @@ NUM_LAYERS = 20
 
 FAKE_LAYER_GROUP = [True] * NUM_LAYERS
 
+
 class NamedLayer(PropertyGroup):
-    name = StringProperty(name="Layer Name")
-    use_lock = BoolProperty(name="Lock Layer", default=False)
-    use_object_select = BoolProperty(name="Object Select", default=True)
-    use_wire = BoolProperty(name="Wire Layer", default=False)
+    name = StringProperty(
+            name="Layer Name"
+            )
+    use_lock = BoolProperty(
+            name="Lock Layer",
+            default=False
+            )
+    use_object_select = BoolProperty(
+            name="Object Select",
+            default=True
+            )
+    use_wire = BoolProperty(
+            name="Wire Layer",
+            default=False
+            )
 
 
 class NamedLayers(PropertyGroup):
     layers = CollectionProperty(type=NamedLayer)
-    use_hide_empty_layers = BoolProperty(name="Hide Empty Layer", default=False)
-    use_extra_options = BoolProperty(name="Show Extra Options", default=True)
-    use_layer_indices = BoolProperty(name="Show Layer Indices", default=False)
-    use_classic = BoolProperty(name="Classic", default=False, description="Use a classic layer selection visibility")
 
-    use_init = BoolProperty(default=True, options={'HIDDEN'})
+    use_hide_empty_layers = BoolProperty(
+            name="Hide Empty Layer",
+            default=False
+            )
+    use_extra_options = BoolProperty(
+            name="Show Extra Options",
+            default=True
+            )
+    use_layer_indices = BoolProperty(
+            name="Show Layer Indices",
+            default=False
+            )
+    use_classic = BoolProperty(
+            name="Classic",
+            default=False,
+            description="Use a classic layer selection visibility"
+            )
+    use_init = BoolProperty(
+            default=True,
+            options={'HIDDEN'}
+            )
 
 
 # Stupid, but only solution currently is to use a handler to init that layers collection...
@@ -79,7 +121,7 @@ class LayerGroup(PropertyGroup):
     layers = BoolVectorProperty(name="Layers", default=([False] * NUM_LAYERS), size=NUM_LAYERS, subtype='LAYER')
 
 
-class SCENE_OT_namedlayer_group_add(bpy.types.Operator):
+class SCENE_OT_namedlayer_group_add(Operator):
     """Add and select a new layer group"""
     bl_idname = "scene.namedlayer_group_add"
     bl_label = "Add Layer Group"
@@ -104,7 +146,7 @@ class SCENE_OT_namedlayer_group_add(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SCENE_OT_namedlayer_group_remove(bpy.types.Operator):
+class SCENE_OT_namedlayer_group_remove(Operator):
     """Remove selected layer group"""
     bl_idname = "scene.namedlayer_group_remove"
     bl_label = "Remove Layer Group"
@@ -126,7 +168,7 @@ class SCENE_OT_namedlayer_group_remove(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SCENE_OT_namedlayer_toggle_visibility(bpy.types.Operator):
+class SCENE_OT_namedlayer_toggle_visibility(Operator):
     """Show or hide given layer (shift to extend)"""
     bl_idname = "scene.namedlayer_toggle_visibility"
     bl_label = "Show/Hide Layer"
@@ -171,7 +213,7 @@ class SCENE_OT_namedlayer_toggle_visibility(bpy.types.Operator):
         return self.execute(context)
 
 
-class SCENE_OT_namedlayer_move_to_layer(bpy.types.Operator):
+class SCENE_OT_namedlayer_move_to_layer(Operator):
     """Move selected objects to this Layer (shift to extend)"""
     bl_idname = "scene.namedlayer_move_to_layer"
     bl_label = "Move Objects To Layer"
@@ -205,7 +247,7 @@ class SCENE_OT_namedlayer_move_to_layer(bpy.types.Operator):
         return self.execute(context)
 
 
-class SCENE_OT_namedlayer_toggle_wire(bpy.types.Operator):
+class SCENE_OT_namedlayer_toggle_wire(Operator):
     """Toggle all objects on this layer draw as wire"""
     bl_idname = "scene.namedlayer_toggle_wire"
     bl_label = "Toggle Objects Draw Wire"
@@ -245,7 +287,7 @@ class SCENE_OT_namedlayer_toggle_wire(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SCENE_OT_namedlayer_lock_all(bpy.types.Operator):
+class SCENE_OT_namedlayer_lock_all(Operator):
     """Lock all objects on this layer"""
     bl_idname = "scene.namedlayer_lock_all"
     bl_label = "Lock Objects"
@@ -285,7 +327,7 @@ class SCENE_OT_namedlayer_lock_all(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SCENE_OT_namedlayer_select_objects_by_layer(bpy.types.Operator):
+class SCENE_OT_namedlayer_select_objects_by_layer(Operator):
     """Select all the objects on this Layer (shift for multi selection, ctrl to make active the last selected object)"""
     bl_idname = "scene.namedlayer_select_objects_by_layer"
     bl_label = "Select Objects In Layer"
@@ -332,7 +374,7 @@ class SCENE_OT_namedlayer_select_objects_by_layer(bpy.types.Operator):
         return self.execute(context)
 
 
-class SCENE_OT_namedlayer_show_all(bpy.types.Operator):
+class SCENE_OT_namedlayer_show_all(Operator):
     """Show or hide all layers in the scene"""
     bl_idname = "scene.namedlayer_show_all"
     bl_label = "Select All Layers"
@@ -366,12 +408,12 @@ class SCENE_OT_namedlayer_show_all(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SCENE_PT_namedlayer_layers(bpy.types.Panel):
+class SCENE_PT_namedlayer_layers(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
     bl_label = "Layer Management"
-    bl_options = {'DEFAULT_CLOSED'}
     bl_category = "Layers"
+    bl_context = "objectmode"
 
     @classmethod
     def poll(self, context):
@@ -516,9 +558,10 @@ class SCENE_UL_namedlayer_groups(UIList):
             layout.alignment = 'CENTER'
 
 
-class SCENE_PT_namedlayer_groups(bpy.types.Panel):
+class SCENE_PT_namedlayer_groups(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'TOOLS'
+    bl_context = "objectmode"
     bl_category = "Layers"
     bl_label = "Layer Groups"
     bl_options = {'DEFAULT_CLOSED'}
@@ -545,6 +588,52 @@ class SCENE_PT_namedlayer_groups(bpy.types.Panel):
             layout.prop(scene.layergroups[group_idx], "name", text="Name:")
 
 
+# Add-ons Preferences Update Panel
+
+# Define Panel classes for updating
+panels = (
+        SCENE_PT_namedlayer_layers,
+        SCENE_PT_namedlayer_groups,
+        )
+
+
+def update_panel(self, context):
+    message = "Layer Management: Updating Panel locations has failed"
+    try:
+        for panel in panels:
+            if "bl_rna" in panel.__dict__:
+                bpy.utils.unregister_class(panel)
+
+        for panel in panels:
+            panel.bl_category = context.user_preferences.addons[__name__].preferences.category
+            bpy.utils.register_class(panel)
+
+    except Exception as e:
+        print("\n[{}]\n{}\n\nError:\n{}".format(__name__, message, e))
+        pass
+
+
+class LayerMAddonPreferences(AddonPreferences):
+    # this must match the addon name, use '__package__'
+    # when defining this in a submodule of a python package.
+    bl_idname = __name__
+
+    category = StringProperty(
+            name="Tab Category",
+            description="Choose a name for the category of the panel",
+            default="Layers",
+            update=update_panel
+            )
+
+    def draw(self, context):
+        layout = self.layout
+
+        row = layout.row()
+        col = row.column()
+        col.label(text="Tab Category:")
+        col.prop(self, "category", text="")
+
+
 def register():
     bpy.utils.register_module(__name__)
     bpy.types.Scene.layergroups = CollectionProperty(type=LayerGroup)
@@ -552,6 +641,7 @@ def register():
     bpy.types.Scene.layergroups_index = IntProperty(default=-1)
     bpy.types.Scene.namedlayers = PointerProperty(type=NamedLayers)
     bpy.app.handlers.scene_update_post.append(check_init_data)
+    update_panel(None, bpy.context)
 
 
 def unregister():

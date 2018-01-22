@@ -45,6 +45,8 @@
 #include "WM_api.h"
 #include "WM_types.h"
 
+#include "RNA_access.h"
+
 #include "buttons_intern.h"  /* own include */
 
 /* ******************** default callbacks for buttons space ***************** */
@@ -66,15 +68,15 @@ static SpaceLink *buttons_new(const bContext *UNUSED(C))
 	ar->alignment = RGN_ALIGN_TOP;
 	
 #if 0
-	/* context area */
-	ar = MEM_callocN(sizeof(ARegion), "context area for buts");
+	/* context region */
+	ar = MEM_callocN(sizeof(ARegion), "context region for buts");
 	BLI_addtail(&sbuts->regionbase, ar);
 	ar->regiontype = RGN_TYPE_CHANNELS;
 	ar->alignment = RGN_ALIGN_TOP;
 #endif
 
-	/* main area */
-	ar = MEM_callocN(sizeof(ARegion), "main area for buts");
+	/* main region */
+	ar = MEM_callocN(sizeof(ARegion), "main region for buts");
 	
 	BLI_addtail(&sbuts->regionbase, ar);
 	ar->regiontype = RGN_TYPE_WINDOW;
@@ -123,7 +125,7 @@ static SpaceLink *buttons_duplicate(SpaceLink *sl)
 }
 
 /* add handlers, stuff you only do once or on area/region changes */
-static void buttons_main_area_init(wmWindowManager *wm, ARegion *ar)
+static void buttons_main_region_init(wmWindowManager *wm, ARegion *ar)
 {
 	wmKeyMap *keymap;
 
@@ -133,42 +135,42 @@ static void buttons_main_area_init(wmWindowManager *wm, ARegion *ar)
 	WM_event_add_keymap_handler(&ar->handlers, keymap);
 }
 
-static void buttons_main_area_draw(const bContext *C, ARegion *ar)
+static void buttons_main_region_draw(const bContext *C, ARegion *ar)
 {
 	/* draw entirely, view changes should be handled here */
 	SpaceButs *sbuts = CTX_wm_space_buts(C);
-	int vertical = (sbuts->align == BUT_VERTICAL);
+	const bool vertical = (sbuts->align == BUT_VERTICAL);
 
 	buttons_context_compute(C, sbuts);
 
 	if (sbuts->mainb == BCONTEXT_SCENE)
-		ED_region_panels(C, ar, vertical, "scene", sbuts->mainb);
+		ED_region_panels(C, ar, "scene", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_RENDER)
-		ED_region_panels(C, ar, vertical, "render", sbuts->mainb);
+		ED_region_panels(C, ar, "render", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_RENDER_LAYER)
-		ED_region_panels(C, ar, vertical, "render_layer", sbuts->mainb);
+		ED_region_panels(C, ar, "render_layer", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_WORLD)
-		ED_region_panels(C, ar, vertical, "world", sbuts->mainb);
+		ED_region_panels(C, ar, "world", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_OBJECT)
-		ED_region_panels(C, ar, vertical, "object", sbuts->mainb);
+		ED_region_panels(C, ar, "object", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_DATA)
-		ED_region_panels(C, ar, vertical, "data", sbuts->mainb);
+		ED_region_panels(C, ar, "data", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_MATERIAL)
-		ED_region_panels(C, ar, vertical, "material", sbuts->mainb);
+		ED_region_panels(C, ar, "material", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_TEXTURE)
-		ED_region_panels(C, ar, vertical, "texture", sbuts->mainb);
+		ED_region_panels(C, ar, "texture", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_PARTICLE)
-		ED_region_panels(C, ar, vertical, "particle", sbuts->mainb);
+		ED_region_panels(C, ar, "particle", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_PHYSICS)
-		ED_region_panels(C, ar, vertical, "physics", sbuts->mainb);
+		ED_region_panels(C, ar, "physics", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_BONE)
-		ED_region_panels(C, ar, vertical, "bone", sbuts->mainb);
+		ED_region_panels(C, ar, "bone", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_MODIFIER)
-		ED_region_panels(C, ar, vertical, "modifier", sbuts->mainb);
+		ED_region_panels(C, ar, "modifier", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_CONSTRAINT)
-		ED_region_panels(C, ar, vertical, "constraint", sbuts->mainb);
+		ED_region_panels(C, ar, "constraint", sbuts->mainb, vertical);
 	else if (sbuts->mainb == BCONTEXT_BONE_CONSTRAINT)
-		ED_region_panels(C, ar, vertical, "bone_constraint", sbuts->mainb);
+		ED_region_panels(C, ar, "bone_constraint", sbuts->mainb, vertical);
 
 	sbuts->re_align = 0;
 	sbuts->mainbo = sbuts->mainb;
@@ -189,12 +191,12 @@ static void buttons_keymap(struct wmKeyConfig *keyconf)
 }
 
 /* add handlers, stuff you only do once or on area/region changes */
-static void buttons_header_area_init(wmWindowManager *UNUSED(wm), ARegion *ar)
+static void buttons_header_region_init(wmWindowManager *UNUSED(wm), ARegion *ar)
 {
 	ED_region_header_init(ar);
 }
 
-static void buttons_header_area_draw(const bContext *C, ARegion *ar)
+static void buttons_header_region_draw(const bContext *C, ARegion *ar)
 {
 	SpaceButs *sbuts = CTX_wm_space_buts(C);
 
@@ -371,9 +373,11 @@ static void buttons_area_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *
 			}
 			break;
 		/* Listener for preview render, when doing an global undo. */
-		case NC_WINDOW:
-			ED_area_tag_redraw(sa);
-			sbuts->preview = 1;
+		case NC_WM:
+			if (wmn->data == ND_UNDO) {
+				ED_area_tag_redraw(sa);
+				sbuts->preview = 1;
+			}
 			break;
 #ifdef WITH_FREESTYLE
 		case NC_LINESTYLE:
@@ -385,6 +389,59 @@ static void buttons_area_listener(bScreen *UNUSED(sc), ScrArea *sa, wmNotifier *
 
 	if (wmn->data == ND_KEYS)
 		ED_area_tag_redraw(sa);
+}
+
+static void buttons_id_remap(ScrArea *UNUSED(sa), SpaceLink *slink, ID *old_id, ID *new_id)
+{
+	SpaceButs *sbuts = (SpaceButs *)slink;
+
+	if (sbuts->pinid == old_id) {
+		sbuts->pinid = new_id;
+		if (new_id == NULL) {
+			sbuts->flag &= ~SB_PIN_CONTEXT;
+		}
+	}
+
+	if (sbuts->path) {
+		ButsContextPath *path = sbuts->path;
+		int i;
+
+		for (i = 0; i < path->len; i++) {
+			if (path->ptr[i].id.data == old_id) {
+				break;
+			}
+		}
+
+		if (i == path->len) {
+			/* pass */
+		}
+		else if (new_id == NULL) {
+			if (i == 0) {
+				MEM_SAFE_FREE(sbuts->path);
+			}
+			else {
+				memset(&path->ptr[i], 0, sizeof(path->ptr[i]) * (path->len - i));
+				path->len = i;
+			}
+		}
+		else {
+			RNA_id_pointer_create(new_id, &path->ptr[i]);
+			/* There is no easy way to check/make path downwards valid, just nullify it.
+			 * Next redraw will rebuild this anyway. */
+			i++;
+			memset(&path->ptr[i], 0, sizeof(path->ptr[i]) * (path->len - i));
+			path->len = i;
+		}
+	}
+
+	if (sbuts->texuser) {
+		ButsContextTexture *ct = sbuts->texuser;
+		if ((ID *)ct->texture == old_id) {
+			ct->texture = (Tex *)new_id;
+		}
+		BLI_freelistN(&ct->users);
+		ct->user = NULL;
+	}
 }
 
 /* only called once, from space/spacetypes.c */
@@ -404,12 +461,13 @@ void ED_spacetype_buttons(void)
 	st->keymap = buttons_keymap;
 	st->listener = buttons_area_listener;
 	st->context = buttons_context;
-	
+	st->id_remap = buttons_id_remap;
+
 	/* regions: main window */
 	art = MEM_callocN(sizeof(ARegionType), "spacetype buttons region");
 	art->regionid = RGN_TYPE_WINDOW;
-	art->init = buttons_main_area_init;
-	art->draw = buttons_main_area_draw;
+	art->init = buttons_main_region_init;
+	art->draw = buttons_main_region_draw;
 	art->keymapflag = ED_KEYMAP_UI | ED_KEYMAP_FRAMES;
 	BLI_addhead(&st->regiontypes, art);
 
@@ -421,8 +479,8 @@ void ED_spacetype_buttons(void)
 	art->prefsizey = HEADERY;
 	art->keymapflag = ED_KEYMAP_UI | ED_KEYMAP_VIEW2D | ED_KEYMAP_FRAMES | ED_KEYMAP_HEADER;
 	
-	art->init = buttons_header_area_init;
-	art->draw = buttons_header_area_draw;
+	art->init = buttons_header_region_init;
+	art->draw = buttons_header_region_draw;
 	BLI_addhead(&st->regiontypes, art);
 
 	BKE_spacetype_register(st);

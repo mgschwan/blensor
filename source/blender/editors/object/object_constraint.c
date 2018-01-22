@@ -40,7 +40,7 @@
 #include "BLI_dynstr.h"
 #include "BLI_utildefines.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "DNA_anim_types.h"
 #include "DNA_constraint_types.h"
@@ -226,7 +226,7 @@ static void update_pyconstraint_cb(void *arg1, void *arg2)
 /* helper function for add_constriant - sets the last target for the active constraint */
 static void set_constraint_nth_target(bConstraint *con, Object *target, const char subtarget[], int index)
 {
-	bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+	const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 	ListBase targets = {NULL, NULL};
 	bConstraintTarget *ct;
 	int num_targets, i;
@@ -262,7 +262,7 @@ static void set_constraint_nth_target(bConstraint *con, Object *target, const ch
 
 static void test_constraint(Object *owner, bPoseChannel *pchan, bConstraint *con, int type)
 {
-	bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
+	const bConstraintTypeInfo *cti = BKE_constraint_typeinfo_get(con);
 	ListBase targets = {NULL, NULL};
 	bConstraintTarget *ct;
 	bool check_targets = true;
@@ -415,6 +415,13 @@ static void test_constraint(Object *owner, bPoseChannel *pchan, bConstraint *con
 
 		if ((data->flag & CAMERASOLVER_ACTIVECLIP) == 0 && (data->clip == NULL))
 			con->flag |= CONSTRAINT_DISABLE;
+	}
+	else if (con->type == CONSTRAINT_TYPE_TRANSFORM_CACHE) {
+		bTransformCacheConstraint *data = con->data;
+
+		if ((data->cache_file == NULL) || (data->object_path[0] == '\0')) {
+			con->flag |= CONSTRAINT_DISABLE;
+		}
 	}
 
 	/* Check targets for constraints */
@@ -584,7 +591,7 @@ static int edit_constraint_poll_generic(bContext *C, StructRNA *rna_type)
 		return 0;
 	}
 
-	if (ob->id.lib || (ptr.id.data && ((ID *)ptr.id.data)->lib)) {
+	if (ID_IS_LINKED_DATABLOCK(ob) || (ptr.id.data && ID_IS_LINKED_DATABLOCK(ptr.id.data))) {
 		CTX_wm_operator_poll_msg_set(C, "Cannot edit library data");
 		return 0;
 	}
@@ -1194,9 +1201,9 @@ void ED_object_constraint_update(Object *ob)
 		DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 }
 
-static void object_pose_tag_update(Object *ob)
+static void object_pose_tag_update(Main *bmain, Object *ob)
 {
-	ob->pose->flag |= POSE_RECALC;    /* Checks & sort pose channels. */
+	BKE_pose_tag_recalc(bmain, ob->pose);    /* Checks & sort pose channels. */
 	if (ob->proxy && ob->adt) {
 		/* We need to make use of ugly POSE_ANIMATION_WORKAROUND here too, else anim data are not reloaded
 		 * after calling `BKE_pose_rebuild()`, which causes T43872.
@@ -1212,7 +1219,7 @@ void ED_object_constraint_dependency_update(Main *bmain, Object *ob)
 	ED_object_constraint_update(ob);
 
 	if (ob->pose) {
-		object_pose_tag_update(ob);
+		object_pose_tag_update(bmain, ob);
 	}
 	DAG_relations_tag_update(bmain);
 }
@@ -1236,7 +1243,7 @@ void ED_object_constraint_dependency_tag_update(Main *bmain, Object *ob, bConstr
 	ED_object_constraint_tag_update(ob, con);
 
 	if (ob->pose) {
-		object_pose_tag_update(ob);
+		object_pose_tag_update(bmain, ob);
 	}
 	DAG_relations_tag_update(bmain);
 }
@@ -1260,7 +1267,10 @@ static int constraint_delete_exec(bContext *C, wmOperator *UNUSED(op))
 		/* there's no active constraint now, so make sure this is the case */
 		BKE_constraints_active_set(&ob->constraints, NULL);
 		ED_object_constraint_update(ob); /* needed to set the flags on posebones correctly */
-		
+
+		/* relatiols */
+		DAG_relations_tag_update(CTX_data_main(C));
+
 		/* notifiers */
 		WM_event_add_notifier(C, NC_OBJECT | ND_CONSTRAINT | NA_REMOVED, ob);
 		
@@ -1484,8 +1494,8 @@ static int pose_constraint_copy_exec(bContext *C, wmOperator *op)
 			BKE_constraints_copy(&chan->constraints, &pchan->constraints, true);
 			/* update flags (need to add here, not just copy) */
 			chan->constflag |= pchan->constflag;
-			
-			ob->pose->flag |= POSE_RECALC;
+
+			BKE_pose_tag_recalc(bmain, ob->pose);
 			DAG_id_tag_update((ID *)ob, OB_RECALC_DATA);
 		}
 	}
@@ -1557,12 +1567,12 @@ void OBJECT_OT_constraints_copy(wmOperatorType *ot)
 /************************ add constraint operators *********************/
 
 /* get the Object and/or PoseChannel to use as target */
-static short get_new_constraint_target(bContext *C, int con_type, Object **tar_ob, bPoseChannel **tar_pchan, short add)
+static bool get_new_constraint_target(bContext *C, int con_type, Object **tar_ob, bPoseChannel **tar_pchan, bool add)
 {
 	Object *obact = ED_object_active_context(C);
 	bPoseChannel *pchanact = BKE_pose_channel_active(obact);
-	short only_curve = 0, only_mesh = 0, only_ob = 0;
-	short found = 0;
+	bool only_curve = false, only_mesh = false, only_ob = false;
+	bool found = false;
 	
 	/* clear tar_ob and tar_pchan fields before use 
 	 *	- assume for now that both always exist...
@@ -1582,7 +1592,7 @@ static short get_new_constraint_target(bContext *C, int con_type, Object **tar_o
 		case CONSTRAINT_TYPE_ROTLIMIT:
 		case CONSTRAINT_TYPE_SIZELIMIT:
 		case CONSTRAINT_TYPE_SAMEVOL:
-			return 0;
+			return false;
 			
 		/* restricted target-type constraints -------------- */
 		/* NOTE: for these, we cannot try to add a target object if no valid ones are found, since that doesn't work */
@@ -1590,26 +1600,26 @@ static short get_new_constraint_target(bContext *C, int con_type, Object **tar_o
 		case CONSTRAINT_TYPE_CLAMPTO:
 		case CONSTRAINT_TYPE_FOLLOWPATH:
 		case CONSTRAINT_TYPE_SPLINEIK:
-			only_curve = 1;
-			only_ob = 1;
-			add = 0;
+			only_curve = true;
+			only_ob = true;
+			add = false;
 			break;
 			
 		/* mesh only? */
 		case CONSTRAINT_TYPE_SHRINKWRAP:
-			only_mesh = 1;
-			only_ob = 1;
-			add = 0;
+			only_mesh = true;
+			only_ob = true;
+			add = false;
 			break;
 			
 		/* object only - add here is ok? */
 		case CONSTRAINT_TYPE_RIGIDBODYJOINT:
-			only_ob = 1;
+			only_ob = true;
 			break;
 	}
 	
 	/* if the active Object is Armature, and we can search for bones, do so... */
-	if ((obact->type == OB_ARMATURE) && (only_ob == 0)) {
+	if ((obact->type == OB_ARMATURE) && (only_ob == false)) {
 		/* search in list of selected Pose-Channels for target */
 		CTX_DATA_BEGIN (C, bPoseChannel *, pchan, selected_pose_bones)
 		{
@@ -1617,7 +1627,7 @@ static short get_new_constraint_target(bContext *C, int con_type, Object **tar_o
 			if (pchan != pchanact) {
 				*tar_ob = obact;
 				*tar_pchan = pchan;
-				found = 1;
+				found = true;
 				
 				break;
 			}
@@ -1626,43 +1636,57 @@ static short get_new_constraint_target(bContext *C, int con_type, Object **tar_o
 	}
 	
 	/* if not yet found, try selected Objects... */
-	if (found == 0) {
+	if (found == false) {
 		/* search in selected objects context */
 		CTX_DATA_BEGIN (C, Object *, ob, selected_objects)
 		{
 			/* just use the first object we encounter (that isn't the active object) 
 			 * and which fulfills the criteria for the object-target that we've got 
 			 */
-			if ((ob != obact) &&
-			    ((!only_curve) || (ob->type == OB_CURVE)) &&
-			    ((!only_mesh) || (ob->type == OB_MESH)))
-			{
-				/* set target */
-				*tar_ob = ob;
-				found = 1;
-				
-				/* perform some special operations on the target */
-				if (only_curve) {
-					/* Curve-Path option must be enabled for follow-path constraints to be able to work */
-					Curve *cu = (Curve *)ob->data;
-					cu->flag |= CU_PATH;
+			if (ob != obact) {
+				/* for armatures in pose mode, look inside the armature for the active bone
+				 * so that we set up cross-armature constraints with less effort
+				 */
+				if ((ob->type == OB_ARMATURE) && (ob->mode & OB_MODE_POSE) && 
+				    (!only_curve && !only_mesh))
+				{
+					/* just use the active bone, and assume that it is visible + usable */
+					*tar_ob = ob;
+					*tar_pchan = BKE_pose_channel_active(ob);
+					found = true;
+					
+					break;
 				}
-				
-				break;
+				else if (((!only_curve) || (ob->type == OB_CURVE)) &&
+				         ((!only_mesh) || (ob->type == OB_MESH)))
+				{
+					/* set target */
+					*tar_ob = ob;
+					found = true;
+					
+					/* perform some special operations on the target */
+					if (only_curve) {
+						/* Curve-Path option must be enabled for follow-path constraints to be able to work */
+						Curve *cu = (Curve *)ob->data;
+						cu->flag |= CU_PATH;
+					}
+					
+					break;
+				}
 			}
 		}
 		CTX_DATA_END;
 	}
 	
 	/* if still not found, add a new empty to act as a target (if allowed) */
-	if ((found == 0) && (add)) {
+	if ((found == false) && (add)) {
 		Main *bmain = CTX_data_main(C);
 		Scene *scene = CTX_data_scene(C);
 		Base *base = BASACT, *newbase = NULL;
 		Object *obt;
 		
 		/* add new target object */
-		obt = BKE_object_add(bmain, scene, OB_EMPTY);
+		obt = BKE_object_add(bmain, scene, OB_EMPTY, NULL);
 		
 		/* set layers OK */
 		newbase = BASACT;
@@ -1689,7 +1713,7 @@ static short get_new_constraint_target(bContext *C, int con_type, Object **tar_o
 		
 		/* make our new target the new object */
 		*tar_ob = obt;
-		found = 1;
+		found = true;
 	}
 	
 	/* return whether there's any target */
@@ -1796,7 +1820,7 @@ static int constraint_add_exec(bContext *C, wmOperator *op, Object *ob, ListBase
 	DAG_relations_tag_update(bmain);
 	
 	if ((ob->type == OB_ARMATURE) && (pchan)) {
-		ob->pose->flag |= POSE_RECALC;  /* sort pose channels */
+		BKE_pose_tag_recalc(bmain, ob->pose);  /* sort pose channels */
 		if (BKE_constraints_proxylocked_owner(ob, pchan) && ob->adt) {
 			/* We need to make use of ugly POSE_ANIMATION_WORKAROUND here too, else anim data are not reloaded
 			 * after calling `BKE_pose_rebuild()`, which causes T43872.
@@ -1876,7 +1900,7 @@ void OBJECT_OT_constraint_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_constraint_type_items, 0, "Type", "");
 }
 
 void OBJECT_OT_constraint_add_with_targets(wmOperatorType *ot)
@@ -1895,7 +1919,7 @@ void OBJECT_OT_constraint_add_with_targets(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_constraint_type_items, 0, "Type", "");
 }
 
 void POSE_OT_constraint_add(wmOperatorType *ot)
@@ -1914,7 +1938,7 @@ void POSE_OT_constraint_add(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_constraint_type_items, 0, "Type", "");
 }
 
 void POSE_OT_constraint_add_with_targets(wmOperatorType *ot)
@@ -1933,7 +1957,7 @@ void POSE_OT_constraint_add_with_targets(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* properties */
-	ot->prop = RNA_def_enum(ot->srna, "type", constraint_type_items, 0, "Type", "");
+	ot->prop = RNA_def_enum(ot->srna, "type", rna_enum_constraint_type_items, 0, "Type", "");
 }
 
 /************************ IK Constraint operators *********************/

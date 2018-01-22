@@ -24,15 +24,16 @@ if "bpy" in locals():
     importlib.reload(utils_i18n)
 else:
     import bpy
-    from bpy.props import (BoolProperty,
-                           CollectionProperty,
-                           EnumProperty,
-                           FloatProperty,
-                           FloatVectorProperty,
-                           IntProperty,
-                           PointerProperty,
-                           StringProperty,
-                           )
+    from bpy.props import (
+            BoolProperty,
+            CollectionProperty,
+            EnumProperty,
+            FloatProperty,
+            FloatVectorProperty,
+            IntProperty,
+            PointerProperty,
+            StringProperty,
+            )
     from . import settings
     from bl_i18n_utils import utils as utils_i18n
 
@@ -55,6 +56,8 @@ class I18nUpdateTranslationLanguage(bpy.types.PropertyGroup):
                                    description="Path to the relevant po file in trunk")
     mo_path_trunk = StringProperty(name="MO File Path", default="", subtype='FILE_PATH',
                                    description="Path to the relevant mo file")
+    po_path_git = StringProperty(name="PO Git Master File Path", default="", subtype='FILE_PATH',
+                                 description="Path to the relevant po file in Blender's translations git repository")
 
 
 class I18nUpdateTranslationSettings(bpy.types.PropertyGroup):
@@ -97,7 +100,7 @@ class UI_PT_i18n_update_translations_settings(bpy.types.Panel):
 
         if not i18n_sett.is_init:
             layout.label(text="Could not init languages data!")
-            layout.label(text="Please edit the preferences of the UI Translate addon")
+            layout.label(text="Please edit the preferences of the UI Translate add-on")
         else:
             split = layout.split(0.75)
             split.template_list("UI_UL_i18n_languages", "", i18n_sett, "langs", i18n_sett, "active_lang", rows=8)
@@ -124,11 +127,12 @@ class UI_PT_i18n_update_translations_settings(bpy.types.Panel):
                 col.prop(lng, "po_path")
                 col.prop(lng, "po_path_trunk")
                 col.prop(lng, "mo_path_trunk")
+                col.prop(lng, "po_path_git")
             layout.separator()
             layout.prop(i18n_sett, "pot_path")
 
             layout.separator()
-            layout.label("Addons:")
+            layout.label("Add-ons:")
             row = layout.row()
             op = row.operator("ui.i18n_addon_translation_invoke", text="Refresh I18n Data...")
             op.op_id = "ui.i18n_addon_translation_update"
@@ -147,7 +151,7 @@ class UI_OT_i18n_updatetranslation_svn_init_settings(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.window_manager != None
+        return context.window_manager is not None
 
     def execute(self, context):
         if not hasattr(self, "settings"):
@@ -158,6 +162,7 @@ class UI_OT_i18n_updatetranslation_svn_init_settings(bpy.types.Operator):
         i18n_sett.langs.clear()
         root_br = self.settings.BRANCHES_DIR
         root_tr_po = self.settings.TRUNK_PO_DIR
+        root_git_po = self.settings.GIT_I18N_PO_DIR
         root_tr_mo = os.path.join(self.settings.TRUNK_DIR, self.settings.MO_PATH_TEMPLATE, self.settings.MO_FILE_NAME)
         if not (os.path.isdir(root_br) and os.path.isdir(root_tr_po)):
             return {'CANCELLED'}
@@ -176,6 +181,7 @@ class UI_OT_i18n_updatetranslation_svn_init_settings(bpy.types.Operator):
                 lng.po_path = isocodes[isocode]
                 lng.po_path_trunk = os.path.join(root_tr_po, isocode + ".po")
                 lng.mo_path_trunk = root_tr_mo.format(isocode)
+                lng.po_path_git = os.path.join(root_git_po, isocode + ".po")
             else:
                 lng.use = False
                 language, _1, _2, language_country, language_variant = utils_i18n.locale_explode(uid)
@@ -186,6 +192,7 @@ class UI_OT_i18n_updatetranslation_svn_init_settings(bpy.types.Operator):
                         lng.po_path = p
                         lng.po_path_trunk = os.path.join(root_tr_po, isocode + ".po")
                         lng.mo_path_trunk = root_tr_mo.format(isocode)
+                        lng.po_path_git = os.path.join(root_git_po, isocode + ".po")
                         break
 
         i18n_sett.pot_path = self.settings.FILE_NAME_POT
@@ -204,7 +211,7 @@ class UI_OT_i18n_updatetranslation_svn_settings_select(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.window_manager != None
+        return context.window_manager is not None
 
     def execute(self, context):
         if self.use_invert:
@@ -214,3 +221,13 @@ class UI_OT_i18n_updatetranslation_svn_settings_select(bpy.types.Operator):
             for lng in context.window_manager.i18n_update_svn_settings.langs:
                 lng.use = self.use_select
         return {'FINISHED'}
+
+
+classes = (
+    I18nUpdateTranslationLanguage,
+    I18nUpdateTranslationSettings,
+    UI_UL_i18n_languages,
+    UI_PT_i18n_update_translations_settings,
+    UI_OT_i18n_updatetranslation_svn_init_settings,
+    UI_OT_i18n_updatetranslation_svn_settings_select,
+)

@@ -17,16 +17,16 @@
 #ifndef __BUFFERS_H__
 #define __BUFFERS_H__
 
-#include "device_memory.h"
+#include "device/device_memory.h"
 
-#include "film.h"
+#include "render/film.h"
 
-#include "kernel_types.h"
+#include "kernel/kernel_types.h"
 
-#include "util_half.h"
-#include "util_string.h"
-#include "util_thread.h"
-#include "util_types.h"
+#include "util/util_half.h"
+#include "util/util_string.h"
+#include "util/util_thread.h"
+#include "util/util_types.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -50,7 +50,10 @@ public:
 	int full_height;
 
 	/* passes */
-	vector<Pass> passes;
+	array<Pass> passes;
+	bool denoising_data_pass;
+	/* If only some light path types should be denoised, an additional pass is needed. */
+	bool denoising_clean_pass;
 
 	/* functions */
 	BufferParams();
@@ -59,6 +62,7 @@ public:
 	bool modified(const BufferParams& params);
 	void add_pass(PassType type);
 	int get_passes_size();
+	int get_denoising_offset();
 };
 
 /* Render Buffers */
@@ -73,18 +77,19 @@ public:
 	/* random number generator state */
 	device_vector<uint> rng_state;
 
-	RenderBuffers(Device *device);
+	Device *device;
+
+	explicit RenderBuffers(Device *device);
 	~RenderBuffers();
 
 	void reset(Device *device, BufferParams& params);
 
-	bool copy_from_device();
+	bool copy_from_device(Device *from_device = NULL);
 	bool get_pass_rect(PassType type, float exposure, int sample, int components, float *pixels);
+	bool get_denoising_pass_rect(int offset, float exposure, int sample, int components, float *pixels);
 
 protected:
 	void device_free();
-
-	Device *device;
 };
 
 /* Display Buffer
@@ -131,6 +136,9 @@ protected:
 
 class RenderTile {
 public:
+	typedef enum { PATH_TRACE, DENOISE } Task;
+
+	Task task;
 	int x, y, w, h;
 	int start_sample;
 	int num_samples;
@@ -138,6 +146,7 @@ public:
 	int resolution;
 	int offset;
 	int stride;
+	int tile_index;
 
 	device_ptr buffer;
 	device_ptr rng_state;

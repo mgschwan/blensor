@@ -29,10 +29,6 @@
  *  \ingroup gamelogic
  */
 
-#ifdef WITH_SDL
-#  include <SDL.h>
-#endif
-
 #include "SCA_Joystick.h"
 #include "SCA_JoystickPrivate.h"
 
@@ -86,9 +82,11 @@ void SCA_Joystick::HandleEvents(void)
 {
 	SDL_Event		sdl_event;
 
+#ifdef WITH_SDL_DYNLOAD
 	if (SDL_PollEvent == (void*)0) {
 		return;
 	}
+#endif
 
 	int i;
 	for (i=0; i<m_joynum; i++) { /* could use JOYINDEX_MAX but no reason to */

@@ -31,14 +31,14 @@
 /* so modifier types match their defines */
 #include "MOD_modifiertypes.h"
 
-struct CustomData;
+#include "DEG_depsgraph_build.h"
+
 struct DerivedMesh;
 struct MDeformVert;
 struct ModifierData;
 struct Object;
 struct Scene;
 struct Tex;
-struct TexResult;
 
 void modifier_init_texture(const struct Scene *scene, struct Tex *texture);
 void get_texture_coords(struct MappingInfoModifierData *dmd, struct Object *ob, struct DerivedMesh *dm,
@@ -51,22 +51,5 @@ struct DerivedMesh *get_dm(struct Object *ob, struct BMEditMesh *em, struct Deri
 struct DerivedMesh *get_dm_for_modifier(struct Object *ob, ModifierApplyFlag flag);
 void modifier_get_vgroup(struct Object *ob, struct DerivedMesh *dm,
                          const char *name, struct MDeformVert **dvert, int *defgrp_index);
-
-/* XXX workaround for non-threadsafe context in OpenNL (T38403)
- * OpenNL uses global pointer for "current context", which causes
- * conflict when multiple modifiers get evaluated in threaded depgraph.
- * This is just a stupid hack to prevent assert failure / crash,
- * otherwise we'd have to modify OpenNL on a large scale.
- * OpenNL should be replaced eventually, there are other options (eigen, ceres).
- * - lukas_t
- */
-#ifdef WITH_OPENNL
-#define OPENNL_THREADING_HACK
-#endif
-
-#ifdef OPENNL_THREADING_HACK
-void modifier_opennl_lock(void);
-void modifier_opennl_unlock(void);
-#endif
 
 #endif /* __MOD_UTIL_H__ */

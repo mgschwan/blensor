@@ -55,7 +55,6 @@
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
-#include "BKE_blender.h"
 #include "BKE_colortools.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
@@ -69,7 +68,7 @@
 #include "NOD_shader.h"
 #include "node_util.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"

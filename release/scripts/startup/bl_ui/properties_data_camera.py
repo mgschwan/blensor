@@ -79,7 +79,7 @@ class DATA_PT_lens(CameraButtonsPanel, Panel):
 
         cam = context.camera
 
-        layout.prop(cam, "type", expand=True)
+        layout.row().prop(cam, "type", expand=True)
 
         split = layout.split()
 
@@ -135,6 +135,52 @@ class DATA_PT_lens(CameraButtonsPanel, Panel):
         col.prop(cam, "clip_end", text="End")
 
 
+class DATA_PT_camera_stereoscopy(CameraButtonsPanel, Panel):
+    bl_label = "Stereoscopy"
+    COMPAT_ENGINES = {'BLENDER_RENDER'}
+
+    @classmethod
+    def poll(cls, context):
+        render = context.scene.render
+        return (super().poll(context) and render.use_multiview and
+                render.views_format == 'STEREO_3D')
+
+    def draw(self, context):
+        layout = self.layout
+        render = context.scene.render
+        st = context.camera.stereo
+        cam = context.camera
+
+        is_spherical_stereo = cam.type != 'ORTHO' and render.use_spherical_stereo
+        use_spherical_stereo = is_spherical_stereo and st.use_spherical_stereo
+
+        col = layout.column()
+        col.row().prop(st, "convergence_mode", expand=True)
+
+        sub = col.column()
+        sub.active = st.convergence_mode != 'PARALLEL'
+        sub.prop(st, "convergence_distance")
+
+        col.prop(st, "interocular_distance")
+
+        if is_spherical_stereo:
+            col.separator()
+            row = col.row()
+            row.prop(st, "use_spherical_stereo")
+            sub = row.row()
+            sub.active = st.use_spherical_stereo
+            sub.prop(st, "use_pole_merge")
+            row = col.row(align=True)
+            row.active = st.use_pole_merge
+            row.prop(st, "pole_merge_angle_from")
+            row.prop(st, "pole_merge_angle_to")
+
+        col.label(text="Pivot:")
+        row = col.row()
+        row.active = not use_spherical_stereo
+        row.prop(st, "pivot", expand=True)
+
+
 class DATA_PT_camera(CameraButtonsPanel, Panel):
     bl_label = "Camera"
     COMPAT_ENGINES = {'BLENDER_RENDER', 'BLENDER_GAME'}
@@ -184,16 +230,18 @@ class DATA_PT_camera_dof(CameraButtonsPanel, Panel):
         col = split.column()
         col.label(text="Focus:")
         col.prop(cam, "dof_object", text="")
-        col.prop(dof_options, "use_high_quality")
-
-        col = split.column()
-        col.prop(dof_options, "fstop")
-
         sub = col.column()
         sub.active = (cam.dof_object is None)
         sub.prop(cam, "dof_distance", text="Distance")
 
-        if dof_options.use_high_quality:
+        hq_support = dof_options.is_hq_supported
+        col = split.column(align=True)
+        col.label("Viewport:")
+        sub = col.column()
+        sub.active = hq_support
+        sub.prop(dof_options, "use_high_quality")
+        col.prop(dof_options, "fstop")
+        if dof_options.use_high_quality and hq_support:
             col.prop(dof_options, "blades")
 
 
@@ -277,5 +325,20 @@ def draw_display_safe_settings(layout, safe_data, settings):
     col.prop(safe_data, "action_center", slider=True)
 
 
+classes = (
+    CAMERA_MT_presets,
+    SAFE_AREAS_MT_presets,
+    DATA_PT_context_camera,
+    DATA_PT_lens,
+    DATA_PT_camera,
+    DATA_PT_camera_stereoscopy,
+    DATA_PT_camera_dof,
+    DATA_PT_camera_display,
+    DATA_PT_camera_safe_areas,
+    DATA_PT_custom_props_camera,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

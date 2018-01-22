@@ -30,16 +30,13 @@
  *  \ingroup ketsji
  */
 
-#include "glew-mx.h"
+#include "GPU_glew.h"
 
 #ifdef _MSC_VER
 #  pragma warning (disable:4786)
 #endif
 
 #ifdef WITH_PYTHON
-#  ifdef   _POSIX_C_SOURCE
-#    undef _POSIX_C_SOURCE
-#  endif
 #  ifdef   _XOPEN_SOURCE
 #    undef _XOPEN_SOURCE
 #  endif
@@ -51,6 +48,8 @@
 #  include <Python.h>
 
 extern "C" {
+	#  include "BLI_utildefines.h"
+	#  include "python_utildefines.h"
 	#  include "bpy_internal_import.h"  /* from the blender python api, but we want to import text too! */
 	#  include "py_capi_utils.h"
 	#  include "mathutils.h" // 'mathutils' module copied here so the blenderlayer can use.
@@ -59,7 +58,7 @@ extern "C" {
 
 	#  include "marshal.h" /* python header for loading/saving dicts */
 }
-#include "AUD_PyInit.h"
+#include "../../../../intern/audaspace/intern/AUD_PyInit.h"
 
 #endif  /* WITH_PYTHON */
 
@@ -99,19 +98,19 @@ extern "C" {
 #include "SCA_PythonKeyboard.h"
 #include "SCA_PythonMouse.h"
 #include "KX_ConstraintActuator.h"
-#include "KX_IpoActuator.h"
 #include "KX_SoundActuator.h"
 #include "KX_StateActuator.h"
 #include "BL_ActionActuator.h"
 #include "BL_ArmatureObject.h"
 #include "RAS_IRasterizer.h"
 #include "RAS_ICanvas.h"
+#include "RAS_IOffScreen.h"
 #include "RAS_BucketManager.h"
 #include "RAS_2DFilterManager.h"
 #include "MT_Vector3.h"
 #include "MT_Point3.h"
-#include "ListValue.h"
-#include "InputParser.h"
+#include "EXP_ListValue.h"
+#include "EXP_InputParser.h"
 #include "KX_Scene.h"
 
 #include "NG_NetworkScene.h" //Needed for sendMessage()
@@ -121,7 +120,7 @@ extern "C" {
 
 #include "KX_PyMath.h"
 
-#include "PyObjectPlus.h"
+#include "EXP_PyObjectPlus.h"
 
 #include "KX_PythonInitTypes.h" 
 
@@ -136,6 +135,7 @@ extern "C" {
 #include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_appdir.h"
+#include "BKE_blender_version.h"
 #include "BLI_blenlib.h"
 #include "GPU_material.h"
 #include "MEM_guardedalloc.h"
@@ -183,23 +183,27 @@ class KX_KetsjiEngine* KX_GetActiveEngine()
 }
 
 /* why is this in python? */
-void	KX_RasterizerDrawDebugLine(const MT_Vector3& from,const MT_Vector3& to,const MT_Vector3& color)
+void KX_RasterizerDrawDebugLine(const MT_Vector3& from,const MT_Vector3& to,const MT_Vector3& color)
 {
 	if (gp_Rasterizer)
-		gp_Rasterizer->DrawDebugLine(from,to,color);
+		gp_Rasterizer->DrawDebugLine(gp_KetsjiScene, from, to, color);
 }
 
 void KX_RasterizerDrawDebugCircle(const MT_Vector3& center, const MT_Scalar radius, const MT_Vector3& color,
                                   const MT_Vector3& normal, int nsector)
 {
 	if (gp_Rasterizer)
-		gp_Rasterizer->DrawDebugCircle(center, radius, color, normal, nsector);
+		gp_Rasterizer->DrawDebugCircle(gp_KetsjiScene, center, radius, color, normal, nsector);
 }
 
 #ifdef WITH_PYTHON
 
-static PyObject *gp_OrigPythonSysPath= NULL;
-static PyObject *gp_OrigPythonSysModules= NULL;
+
+static struct {
+	PyObject *path;
+	PyObject *meta_path;
+	PyObject *modules;
+} gp_sys_backup = {NULL};
 
 /* Macro for building the keyboard translation */
 //#define KX_MACRO_addToDict(dict, name) PyDict_SetItemString(dict, #name, PyLong_FromLong(SCA_IInputDevice::KX_##name))
@@ -218,7 +222,7 @@ static void KX_MACRO_addTypesToDict_fn(PyObject *dict, const char *name, long va
 
 
 // temporarily python stuff, will be put in another place later !
-#include "KX_Python.h"
+#include "EXP_Python.h"
 #include "SCA_PythonController.h"
 // List of methods defined in the module
 
@@ -354,7 +358,7 @@ static PyObject *gPyLoadGlobalDict(PyObject *)
 {
 	char marshal_path[512];
 	char *marshal_buffer = NULL;
-	size_t marshal_length;
+	int marshal_length;
 	FILE *fp = NULL;
 	int result;
 
@@ -365,7 +369,12 @@ static PyObject *gPyLoadGlobalDict(PyObject *)
 	if (fp) {
 		// obtain file size:
 		fseek (fp, 0, SEEK_END);
-		marshal_length = (size_t)ftell(fp);
+		marshal_length = ftell(fp);
+		if (marshal_length == -1) {
+			printf("Warning: could not read position of '%s'\n", marshal_path);
+			fclose(fp);
+			Py_RETURN_NONE;
+		}
 		rewind(fp);
 
 		marshal_buffer = (char*)malloc (sizeof(char)*marshal_length);
@@ -461,6 +470,21 @@ static PyObject *gPyGetExitKey(PyObject *)
 	return PyLong_FromLong(KX_KetsjiEngine::GetExitKey());
 }
 
+static PyObject *gPySetRender(PyObject *, PyObject *args)
+{
+	int render;
+	if (!PyArg_ParseTuple(args, "i:setRender", &render))
+		return NULL;
+	KX_KetsjiEngine::SetRender(render);
+	Py_RETURN_NONE;
+}
+
+static PyObject *gPyGetRender(PyObject *)
+{
+	return PyBool_FromLong(KX_KetsjiEngine::GetRender());
+}
+
+
 static PyObject *gPySetMaxLogicFrame(PyObject *, PyObject *args)
 {
 	int frame;
@@ -518,9 +542,88 @@ static PyObject *gPyGetPhysicsTicRate(PyObject *)
 	return PyFloat_FromDouble(PHY_GetActiveEnvironment()->GetFixedTimeStep());
 }
 
+static PyObject *gPySetAnimRecordFrame(PyObject *, PyObject *args)
+{
+	int anim_record_frame;
+
+	if (!PyArg_ParseTuple(args, "i:setAnimRecordFrame", &anim_record_frame))
+		return NULL;
+
+	if (anim_record_frame < 0 && (U.flag & USER_NONEGFRAMES)) {
+		PyErr_Format(PyExc_ValueError, "Frame number must be non-negative (was %i).", anim_record_frame);
+		return NULL;
+	}
+
+	gp_KetsjiEngine->setAnimRecordFrame(anim_record_frame);
+	Py_RETURN_NONE;
+}
+
+static PyObject *gPyGetAnimRecordFrame(PyObject *)
+{
+	return PyLong_FromLong(gp_KetsjiEngine->getAnimRecordFrame());
+}
+
 static PyObject *gPyGetAverageFrameRate(PyObject *)
 {
 	return PyFloat_FromDouble(KX_KetsjiEngine::GetAverageFrameRate());
+}
+
+static PyObject *gPyGetUseExternalClock(PyObject *)
+{
+	return PyBool_FromLong(gp_KetsjiEngine->GetUseExternalClock());
+}
+
+static PyObject *gPySetUseExternalClock(PyObject *, PyObject *args)
+{
+	bool bUseExternalClock;
+
+	if (!PyArg_ParseTuple(args, "p:setUseExternalClock", &bUseExternalClock))
+		return NULL;
+
+	gp_KetsjiEngine->SetUseExternalClock(bUseExternalClock);
+	Py_RETURN_NONE;
+}
+
+static PyObject *gPyGetClockTime(PyObject *)
+{
+	return PyFloat_FromDouble(gp_KetsjiEngine->GetClockTime());
+}
+
+static PyObject *gPySetClockTime(PyObject *, PyObject *args)
+{
+	double externalClockTime;
+
+	if (!PyArg_ParseTuple(args, "d:setClockTime", &externalClockTime))
+		return NULL;
+
+	gp_KetsjiEngine->SetClockTime(externalClockTime);
+	Py_RETURN_NONE;
+}
+
+static PyObject *gPyGetFrameTime(PyObject *)
+{
+	return PyFloat_FromDouble(gp_KetsjiEngine->GetFrameTime());
+}
+
+static PyObject *gPyGetRealTime(PyObject *)
+{
+	return PyFloat_FromDouble(gp_KetsjiEngine->GetRealTime());
+}
+
+static PyObject *gPyGetTimeScale(PyObject *)
+{
+	return PyFloat_FromDouble(gp_KetsjiEngine->GetTimeScale());
+}
+
+static PyObject *gPySetTimeScale(PyObject *, PyObject *args)
+{
+	double time_scale;
+
+	if (!PyArg_ParseTuple(args, "d:setTimeScale", &time_scale))
+			return NULL;
+
+	gp_KetsjiEngine->SetTimeScale(time_scale);
+	Py_RETURN_NONE;
 }
 
 static PyObject *gPyGetBlendFileList(PyObject *, PyObject *args)
@@ -622,71 +725,10 @@ static PyObject *pyPrintStats(PyObject *,PyObject *,PyObject *)
 
 static PyObject *pyPrintExt(PyObject *,PyObject *,PyObject *)
 {
-#define pprint(x) std::cout << x << std::endl;
-	bool count=0;
-	bool support=0;
-	pprint("Supported Extensions...");
-	pprint(" GL_ARB_shader_objects supported?       "<< (GLEW_ARB_shader_objects?"yes.":"no."));
-	count = 1;
-
-	support= GLEW_ARB_vertex_shader;
-	pprint(" GL_ARB_vertex_shader supported?        "<< (support?"yes.":"no."));
-	count = 1;
-	if (support) {
-		pprint(" ----------Details----------");
-		int max=0;
-		glGetIntegerv(GL_MAX_VERTEX_UNIFORM_COMPONENTS_ARB, (GLint*)&max);
-		pprint("  Max uniform components." << max);
-
-		glGetIntegerv(GL_MAX_VARYING_FLOATS_ARB, (GLint*)&max);
-		pprint("  Max varying floats." << max);
-
-		glGetIntegerv(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS_ARB, (GLint*)&max);
-		pprint("  Max vertex texture units." << max);
-	
-		glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS_ARB, (GLint*)&max);
-		pprint("  Max combined texture units." << max);
-		pprint("");
-	}
-
-	support=GLEW_ARB_fragment_shader;
-	pprint(" GL_ARB_fragment_shader supported?      "<< (support?"yes.":"no."));
-	count = 1;
-	if (support) {
-		pprint(" ----------Details----------");
-		int max=0;
-		glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_COMPONENTS_ARB, (GLint*)&max);
-		pprint("  Max uniform components." << max);
-		pprint("");
-	}
-
-	support = GLEW_ARB_texture_cube_map;
-	pprint(" GL_ARB_texture_cube_map supported?     "<< (support?"yes.":"no."));
-	count = 1;
-	if (support) {
-		pprint(" ----------Details----------");
-		int size=0;
-		glGetIntegerv(GL_MAX_CUBE_MAP_TEXTURE_SIZE_ARB, (GLint*)&size);
-		pprint("  Max cubemap size." << size);
-		pprint("");
-	}
-
-	support = GLEW_ARB_multitexture;
-	count = 1;
-	pprint(" GL_ARB_multitexture supported?         "<< (support?"yes.":"no."));
-	if (support) {
-		pprint(" ----------Details----------");
-		int units=0;
-		glGetIntegerv(GL_MAX_TEXTURE_UNITS_ARB, (GLint*)&units);
-		pprint("  Max texture units available.  " << units);
-		pprint("");
-	}
-
-	pprint(" GL_ARB_texture_env_combine supported?  "<< (GLEW_ARB_texture_env_combine?"yes.":"no."));
-	count = 1;
-
-	if (!count)
-		pprint("No extenstions are used in this build");
+	if (gp_Rasterizer)
+		gp_Rasterizer->PrintHardwareInfo();
+	else
+		printf("Warning: no rasterizer detected for PrintGLInfo!\n");
 
 	Py_RETURN_NONE;
 }
@@ -879,9 +921,25 @@ static struct PyMethodDef game_methods[] = {
 	{"setLogicTicRate", (PyCFunction) gPySetLogicTicRate, METH_VARARGS, (const char *)"Sets the logic tic rate"},
 	{"getPhysicsTicRate", (PyCFunction) gPyGetPhysicsTicRate, METH_NOARGS, (const char *)"Gets the physics tic rate"},
 	{"setPhysicsTicRate", (PyCFunction) gPySetPhysicsTicRate, METH_VARARGS, (const char *)"Sets the physics tic rate"},
+	{"getAnimRecordFrame", (PyCFunction) gPyGetAnimRecordFrame, METH_NOARGS, (const char *)"Gets the current frame number used for animation recording"},
+	{"setAnimRecordFrame", (PyCFunction) gPySetAnimRecordFrame, METH_VARARGS, (const char *)"Sets the current frame number used for animation recording"},
 	{"getExitKey", (PyCFunction) gPyGetExitKey, METH_NOARGS, (const char *)"Gets the key used to exit the game engine"},
 	{"setExitKey", (PyCFunction) gPySetExitKey, METH_VARARGS, (const char *)"Sets the key used to exit the game engine"},
+	{"setRender", (PyCFunction) gPySetRender, METH_VARARGS, (const char *)"Set the global render flag"},
+	{"getRender", (PyCFunction) gPyGetRender, METH_NOARGS, (const char *)"get the global render flag value"},
+	{"getUseExternalClock", (PyCFunction) gPyGetUseExternalClock, METH_NOARGS, (const char *)"Get if we use the time provided by an external clock"},
+	{"setUseExternalClock", (PyCFunction) gPySetUseExternalClock, METH_VARARGS, (const char *)"Set if we use the time provided by an external clock"},
+	{"getClockTime", (PyCFunction) gPyGetClockTime, METH_NOARGS, (const char *)"Get the last BGE render time. "
+	"The BGE render time is the simulated time corresponding to the next scene that will be renderered"},
+	{"setClockTime", (PyCFunction) gPySetClockTime, METH_VARARGS, (const char *)"Set the BGE render time. "
+	"The BGE render time is the simulated time corresponding to the next scene that will be rendered"},
+	{"getFrameTime", (PyCFunction) gPyGetFrameTime, METH_NOARGS, (const char *)"Get the BGE last frametime. "
+	"The BGE frame time is the simulated time corresponding to the last call of the logic system"},
+	{"getRealTime", (PyCFunction) gPyGetRealTime, METH_NOARGS, (const char *)"Get the real system time. "
+	"The real-time corresponds to the system time" },
 	{"getAverageFrameRate", (PyCFunction) gPyGetAverageFrameRate, METH_NOARGS, (const char *)"Gets the estimated average frame rate"},
+	{"getTimeScale", (PyCFunction) gPyGetTimeScale, METH_NOARGS, (const char *)"Get the time multiplier"},
+	{"setTimeScale", (PyCFunction) gPySetTimeScale, METH_VARARGS, (const char *)"Set the time multiplier"},
 	{"getBlendFileList", (PyCFunction)gPyGetBlendFileList, METH_VARARGS, (const char *)"Gets a list of blend files in the same directory as the current blend file"},
 	{"PrintGLInfo", (PyCFunction)pyPrintExt, METH_NOARGS, (const char *)"Prints GL Extension Info"},
 	{"PrintMemInfo", (PyCFunction)pyPrintStats, METH_NOARGS, (const char *)"Print engine statistics"},
@@ -1029,108 +1087,21 @@ static PyObject *gPyGetStereoEye(PyObject *, PyObject *, PyObject *)
 
 static PyObject *gPySetBackgroundColor(PyObject *, PyObject *value)
 {
-	
 	MT_Vector4 vec;
 	if (!PyVecTo(value, vec))
 		return NULL;
-	
-	if (gp_Canvas)
-	{
-		gp_Rasterizer->SetBackColor((float)vec[0], (float)vec[1], (float)vec[2], (float)vec[3]);
-	}
 
 	KX_WorldInfo *wi = gp_KetsjiScene->GetWorldInfo();
-	if (wi->hasWorld())
-		wi->setBackColor((float)vec[0], (float)vec[1], (float)vec[2]);
-
-	Py_RETURN_NONE;
-}
-
-
-
-static PyObject *gPySetMistColor(PyObject *, PyObject *value)
-{
-	
-	MT_Vector3 vec;
-	if (!PyVecTo(value, vec))
-		return NULL;
-	
-	if (!gp_Rasterizer) {
-		PyErr_SetString(PyExc_RuntimeError, "Rasterizer.setMistColor(color), Rasterizer not available");
+	if (!wi->hasWorld()) {
+		PyErr_SetString(PyExc_RuntimeError, "bge.render.SetBackgroundColor(color), World not available");
 		return NULL;
 	}
-	gp_Rasterizer->SetFogColor((float)vec[0], (float)vec[1], (float)vec[2]);
-	
+
+	ShowDeprecationWarning("setBackgroundColor()", "KX_WorldInfo.background_color");
+	wi->setBackColor((float)vec[0], (float)vec[1], (float)vec[2]);
+
 	Py_RETURN_NONE;
 }
-
-static PyObject *gPyDisableMist(PyObject *)
-{
-	
-	if (!gp_Rasterizer) {
-		PyErr_SetString(PyExc_RuntimeError, "Rasterizer.setMistColor(color), Rasterizer not available");
-		return NULL;
-	}
-	gp_Rasterizer->DisableFog();
-	
-	Py_RETURN_NONE;
-}
-
-static PyObject *gPySetMistStart(PyObject *, PyObject *args)
-{
-
-	float miststart;
-	if (!PyArg_ParseTuple(args,"f:setMistStart",&miststart))
-		return NULL;
-	
-	if (!gp_Rasterizer) {
-		PyErr_SetString(PyExc_RuntimeError, "Rasterizer.setMistStart(float), Rasterizer not available");
-		return NULL;
-	}
-	
-	gp_Rasterizer->SetFogStart(miststart);
-	
-	Py_RETURN_NONE;
-}
-
-
-
-static PyObject *gPySetMistEnd(PyObject *, PyObject *args)
-{
-
-	float mistend;
-	if (!PyArg_ParseTuple(args,"f:setMistEnd",&mistend))
-		return NULL;
-	
-	if (!gp_Rasterizer) {
-		PyErr_SetString(PyExc_RuntimeError, "Rasterizer.setMistEnd(float), Rasterizer not available");
-		return NULL;
-	}
-	
-	gp_Rasterizer->SetFogEnd(mistend);
-	
-	Py_RETURN_NONE;
-}
-
-
-static PyObject *gPySetAmbientColor(PyObject *, PyObject *value)
-{
-	
-	MT_Vector3 vec;
-	if (!PyVecTo(value, vec))
-		return NULL;
-	
-	if (!gp_Rasterizer) {
-		PyErr_SetString(PyExc_RuntimeError, "Rasterizer.setAmbientColor(color), Rasterizer not available");
-		return NULL;
-	}
-	gp_Rasterizer->SetAmbientColor((float)vec[0], (float)vec[1], (float)vec[2]);
-	
-	Py_RETURN_NONE;
-}
-
-
-
 
 static PyObject *gPyMakeScreenshot(PyObject *, PyObject *args)
 {
@@ -1217,10 +1188,6 @@ static PyObject *gPySetGLSLMaterialSetting(PyObject *,
 	else
 		gs->glslflag |= flag;
 
-	/* temporarily store the glsl settings in the scene for the GLSL materials */
-	GameData *gm= &(gp_KetsjiScene->GetBlenderScene()->gm);
-	gm->flag = gs->glslflag;
-
 	/* display lists and GLSL materials need to be remade */
 	if (sceneflag != gs->glslflag) {
 		GPU_materials_free();
@@ -1228,11 +1195,14 @@ static PyObject *gPySetGLSLMaterialSetting(PyObject *,
 			KX_SceneList *scenes = gp_KetsjiEngine->CurrentScenes();
 			KX_SceneList::iterator it;
 
-			for (it=scenes->begin(); it!=scenes->end(); it++)
+			for (it=scenes->begin(); it!=scenes->end(); it++) {
+				// temporarily store the glsl settings in the scene for the GLSL materials
+				(*it)->GetBlenderScene()->gm.flag = gs->glslflag;
 				if ((*it)->GetBucketManager()) {
 					(*it)->GetBucketManager()->ReleaseDisplayLists();
 					(*it)->GetBucketManager()->ReleaseMaterials();
 				}
+			}
 		}
 	}
 
@@ -1345,7 +1315,7 @@ static PyObject *gPyDrawLine(PyObject *, PyObject *args)
 	if (!PyVecTo(ob_color, color))
 		return NULL;
 
-	gp_Rasterizer->DrawDebugLine(from,to,color);
+	gp_Rasterizer->DrawDebugLine(gp_KetsjiScene, from, to, color);
 	
 	Py_RETURN_NONE;
 }
@@ -1490,6 +1460,173 @@ static PyObject *gPyClearDebugList(PyObject *)
 	Py_RETURN_NONE;
 }
 
+static PyObject *gPyGetDisplayDimensions(PyObject *)
+{
+	PyObject *result;
+	int width, height;
+
+	gp_Canvas->GetDisplayDimensions(width, height);
+
+	result = PyTuple_New(2);
+	PyTuple_SET_ITEMS(result,
+	        PyLong_FromLong(width),
+	        PyLong_FromLong(height));
+
+	return result;
+}
+
+
+/* python wrapper around RAS_IOffScreen
+ * Should eventually gets its own file
+ */
+
+static void PyRASOffScreen__tp_dealloc(PyRASOffScreen *self)
+{
+	if (self->ofs)
+		delete self->ofs;
+	Py_TYPE(self)->tp_free((PyObject *)self);
+}
+
+PyDoc_STRVAR(py_RASOffScreen_doc,
+"RASOffscreen(width, height) -> new GPU Offscreen object"
+"initialized to hold a framebuffer object of ``width`` x ``height``.\n"
+""
+);
+
+PyDoc_STRVAR(RASOffScreen_width_doc, "Offscreen buffer width.\n\n:type: integer");
+static PyObject *RASOffScreen_width_get(PyRASOffScreen *self, void *UNUSED(type))
+{
+	return PyLong_FromLong(self->ofs->GetWidth());
+}
+
+PyDoc_STRVAR(RASOffScreen_height_doc, "Offscreen buffer height.\n\n:type: GLsizei");
+static PyObject *RASOffScreen_height_get(PyRASOffScreen *self, void *UNUSED(type))
+{
+	return PyLong_FromLong(self->ofs->GetHeight());
+}
+
+PyDoc_STRVAR(RASOffScreen_color_doc, "Offscreen buffer texture object (if target is RAS_OFS_RENDER_TEXTURE).\n\n:type: GLuint");
+static PyObject *RASOffScreen_color_get(PyRASOffScreen *self, void *UNUSED(type))
+{
+	return PyLong_FromLong(self->ofs->GetColor());
+}
+
+static PyGetSetDef RASOffScreen_getseters[] = {
+	{(char *)"width", (getter)RASOffScreen_width_get, (setter)NULL, RASOffScreen_width_doc, NULL},
+	{(char *)"height", (getter)RASOffScreen_height_get, (setter)NULL, RASOffScreen_height_doc, NULL},
+	{(char *)"color", (getter)RASOffScreen_color_get, (setter)NULL, RASOffScreen_color_doc, NULL},
+	{NULL, NULL, NULL, NULL, NULL}  /* Sentinel */
+};
+
+static int PyRASOffScreen__tp_init(PyRASOffScreen *self, PyObject *args, PyObject *kwargs)
+{
+	int width, height, samples, target;
+	const char *keywords[] = {"width", "height", "samples", "target", NULL};
+
+	samples = 0;
+	target = RAS_IOffScreen::RAS_OFS_RENDER_BUFFER;
+	if (!PyArg_ParseTupleAndKeywords(args, kwargs, "ii|ii:RASOffscreen", (char **)keywords, &width, &height, &samples, &target)) {
+		return -1;
+	}
+
+	if (width <= 0) {
+		PyErr_SetString(PyExc_ValueError, "negative 'width' given");
+		return -1;
+	}
+
+	if (height <= 0) {
+		PyErr_SetString(PyExc_ValueError, "negative 'height' given");
+		return -1;
+	}
+
+	if (samples < 0) {
+		PyErr_SetString(PyExc_ValueError, "negative 'samples' given");
+		return -1;
+	}
+
+	if (target != RAS_IOffScreen::RAS_OFS_RENDER_BUFFER && target != RAS_IOffScreen::RAS_OFS_RENDER_TEXTURE)
+	{
+		PyErr_SetString(PyExc_ValueError, "invalid 'target' given, can only be RAS_OFS_RENDER_BUFFER or RAS_OFS_RENDER_TEXTURE");
+		return -1;
+	}
+	if (!gp_Rasterizer)
+	{
+		PyErr_SetString(PyExc_SystemError, "no rasterizer");
+		return -1;
+	}
+	self->ofs = gp_Rasterizer->CreateOffScreen(width, height, samples, target);
+	if (!self->ofs) {
+		PyErr_SetString(PyExc_SystemError, "creation failed");
+		return -1;
+	}
+	return 0;
+}
+
+PyTypeObject PyRASOffScreen_Type = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	"RASOffScreen",                              /* tp_name */
+	sizeof(PyRASOffScreen),                      /* tp_basicsize */
+	0,                                           /* tp_itemsize */
+	/* methods */
+	(destructor)PyRASOffScreen__tp_dealloc,      /* tp_dealloc */
+	NULL,                                        /* tp_print */
+	NULL,                                        /* tp_getattr */
+	NULL,                                        /* tp_setattr */
+	NULL,                                        /* tp_compare */
+	NULL,                                        /* tp_repr */
+	NULL,                                        /* tp_as_number */
+	NULL,                                        /* tp_as_sequence */
+	NULL,                                        /* tp_as_mapping */
+	NULL,                                        /* tp_hash */
+	NULL,                                        /* tp_call */
+	NULL,                                        /* tp_str */
+	NULL,                                        /* tp_getattro */
+	NULL,                                        /* tp_setattro */
+	NULL,                                        /* tp_as_buffer */
+	Py_TPFLAGS_DEFAULT,                          /* tp_flags */
+	py_RASOffScreen_doc,                         /* Documentation string */
+	NULL,                                        /* tp_traverse */
+	NULL,                                        /* tp_clear */
+	NULL,                                        /* tp_richcompare */
+	0,                                           /* tp_weaklistoffset */
+	NULL,                                        /* tp_iter */
+	NULL,                                        /* tp_iternext */
+	NULL,                                        /* tp_methods */
+	NULL,                                        /* tp_members */
+	RASOffScreen_getseters,                      /* tp_getset */
+	NULL,                                        /* tp_base */
+	NULL,                                        /* tp_dict */
+	NULL,                                        /* tp_descr_get */
+	NULL,                                        /* tp_descr_set */
+	0,                                           /* tp_dictoffset */
+	(initproc)PyRASOffScreen__tp_init,           /* tp_init */
+	(allocfunc)PyType_GenericAlloc,              /* tp_alloc */
+	(newfunc)PyType_GenericNew,                  /* tp_new */
+	(freefunc)0,                                 /* tp_free */
+	NULL,                                        /* tp_is_gc */
+	NULL,                                        /* tp_bases */
+	NULL,                                        /* tp_mro */
+	NULL,                                        /* tp_cache */
+	NULL,                                        /* tp_subclasses */
+	NULL,                                        /* tp_weaklist */
+	(destructor) NULL                            /* tp_del */
+};
+
+
+static PyObject *gPyOffScreenCreate(PyObject *UNUSED(self), PyObject *args)
+{
+	int width;
+	int height;
+	int samples;
+	int target;
+
+	samples = 0;
+	if (!PyArg_ParseTuple(args, "ii|ii:offScreenCreate", &width, &height, &samples, &target))
+		return NULL;
+
+	return PyObject_CallObject((PyObject *) &PyRASOffScreen_Type, args);
+}
+
 PyDoc_STRVAR(Rasterizer_module_documentation,
 "This is the Python API for the game engine of Rasterizer"
 );
@@ -1508,11 +1645,6 @@ static struct PyMethodDef rasterizer_methods[] = {
 	{"setMousePosition",(PyCFunction) gPySetMousePosition,
 	 METH_VARARGS, "setMousePosition(int x,int y)"},
 	{"setBackgroundColor",(PyCFunction)gPySetBackgroundColor,METH_O,"set Background Color (rgb)"},
-	{"setAmbientColor",(PyCFunction)gPySetAmbientColor,METH_O,"set Ambient Color (rgb)"},
-	{"disableMist",(PyCFunction)gPyDisableMist,METH_NOARGS,"turn off mist"},
-	{"setMistColor",(PyCFunction)gPySetMistColor,METH_O,"set Mist Color (rgb)"},
-	{"setMistStart",(PyCFunction)gPySetMistStart,METH_VARARGS,"set Mist Start(rgb)"},
-	{"setMistEnd",(PyCFunction)gPySetMistEnd,METH_VARARGS,"set Mist End(rgb)"},
 	{"enableMotionBlur",(PyCFunction)gPyEnableMotionBlur,METH_VARARGS,"enable motion blur"},
 	{"disableMotionBlur",(PyCFunction)gPyDisableMotionBlur,METH_NOARGS,"disable motion blur"},
 
@@ -1538,6 +1670,8 @@ static struct PyMethodDef rasterizer_methods[] = {
 	{"setWindowSize", (PyCFunction) gPySetWindowSize, METH_VARARGS, ""},
 	{"setFullScreen", (PyCFunction) gPySetFullScreen, METH_O, ""},
 	{"getFullScreen", (PyCFunction) gPyGetFullScreen, METH_NOARGS, ""},
+	{"getDisplayDimensions", (PyCFunction) gPyGetDisplayDimensions, METH_NOARGS,
+	 "Get the actual dimensions, in pixels, of the physical display (e.g., the monitor)."},
 	{"setMipmapping", (PyCFunction) gPySetMipmapping, METH_VARARGS, ""},
 	{"getMipmapping", (PyCFunction) gPyGetMipmapping, METH_NOARGS, ""},
 	{"setVsync", (PyCFunction) gPySetVsync, METH_VARARGS, ""},
@@ -1547,6 +1681,7 @@ static struct PyMethodDef rasterizer_methods[] = {
 	{"showProperties",(PyCFunction) gPyShowProperties, METH_VARARGS, "show or hide the debug properties"},
 	{"autoDebugList",(PyCFunction) gPyAutoDebugList, METH_VARARGS, "enable or disable auto adding debug properties to the debug  list"},
 	{"clearDebugList",(PyCFunction) gPyClearDebugList, METH_NOARGS, "clears the debug property list"},
+	{"offScreenCreate", (PyCFunction) gPyOffScreenCreate, METH_VARARGS, "create an offscreen buffer object, arguments are width and height in pixels"},
 	{ NULL, (PyCFunction) NULL, 0, NULL }
 };
 
@@ -1849,6 +1984,7 @@ PyMODINIT_FUNC initGameLogicPythonBinding()
 	KX_MACRO_addTypesToDict(d, KX_GAME_QUIT, KX_GameActuator::KX_GAME_QUIT);
 	KX_MACRO_addTypesToDict(d, KX_GAME_SAVECFG, KX_GameActuator::KX_GAME_SAVECFG);
 	KX_MACRO_addTypesToDict(d, KX_GAME_LOADCFG, KX_GameActuator::KX_GAME_LOADCFG);
+	KX_MACRO_addTypesToDict(d, KX_GAME_SCREENSHOT, KX_GameActuator::KX_GAME_SCREENSHOT);
 
 	/* Scene Actuator Modes */
 	KX_MACRO_addTypesToDict(d, KX_SCENE_RESTART, KX_SceneActuator::KX_SCENE_RESTART);
@@ -1946,11 +2082,12 @@ PyMODINIT_FUNC initGameLogicPythonBinding()
 	return m;
 }
 
-/* Explanation of 
+/**
+ * Explanation of
  * 
- * - backupPySysObjects()		: stores sys.path in gp_OrigPythonSysPath
- * - initPySysObjects(main)	: initializes the blendfile and library paths
- * - restorePySysObjects()		: restores sys.path from gp_OrigPythonSysPath
+ * - backupPySysObjects()       : stores sys.path in #gp_sys_backup
+ * - initPySysObjects(main)     : initializes the blendfile and library paths
+ * - restorePySysObjects()      : restores sys.path from #gp_sys_backup
  * 
  * These exist so the current blend dir "//" can always be used to import modules from.
  * the reason we need a few functions for this is that python is not only used by the game engine
@@ -1967,16 +2104,21 @@ PyMODINIT_FUNC initGameLogicPythonBinding()
  */
 static void backupPySysObjects(void)
 {
-	PyObject *sys_path= PySys_GetObject("path"); /* should never fail */
-	PyObject *sys_mods= PySys_GetObject("modules"); /* should never fail */
+	PyObject *sys_path      = PySys_GetObject("path");
+	PyObject *sys_meta_path = PySys_GetObject("meta_path");
+	PyObject *sys_mods      = PySys_GetObject("modules");
 	
 	/* paths */
-	Py_XDECREF(gp_OrigPythonSysPath); /* just in case its set */
-	gp_OrigPythonSysPath = PyList_GetSlice(sys_path, 0, INT_MAX); /* copy the list */
+	Py_XDECREF(gp_sys_backup.path); /* just in case its set */
+	gp_sys_backup.path = PyList_GetSlice(sys_path, 0, INT_MAX); /* copy the list */
 	
+	/* meta_paths */
+	Py_XDECREF(gp_sys_backup.meta_path); /* just in case its set */
+	gp_sys_backup.meta_path = PyList_GetSlice(sys_meta_path, 0, INT_MAX); /* copy the list */
+
 	/* modules */
-	Py_XDECREF(gp_OrigPythonSysModules); /* just in case its set */
-	gp_OrigPythonSysModules = PyDict_Copy(sys_mods); /* copy the list */
+	Py_XDECREF(gp_sys_backup.modules); /* just in case its set */
+	gp_sys_backup.modules = PyDict_Copy(sys_mods); /* copy the dict */
 	
 }
 
@@ -2006,15 +2148,17 @@ static void initPySysObjects__append(PyObject *sys_path, const char *filename)
 }
 static void initPySysObjects(Main *maggie)
 {
-	PyObject *sys_path= PySys_GetObject("path"); /* should never fail */
+	PyObject *sys_path      = PySys_GetObject("path");
+	PyObject *sys_meta_path = PySys_GetObject("meta_path");
 	
-	if (gp_OrigPythonSysPath==NULL) {
+	if (gp_sys_backup.path == NULL) {
 		/* backup */
 		backupPySysObjects();
 	}
 	else {
 		/* get the original sys path when the BGE started */
-		PyList_SetSlice(sys_path, 0, INT_MAX, gp_OrigPythonSysPath);
+		PyList_SetSlice(sys_path, 0, INT_MAX, gp_sys_backup.path);
+		PyList_SetSlice(sys_meta_path, 0, INT_MAX, gp_sys_backup.meta_path);
 	}
 	
 	Library *lib= (Library *)maggie->library.first;
@@ -2034,22 +2178,30 @@ static void initPySysObjects(Main *maggie)
 
 static void restorePySysObjects(void)
 {
-	if (gp_OrigPythonSysPath==NULL)
+	if (gp_sys_backup.path == NULL) {
 		return;
-	
-	PyObject *sys_path= PySys_GetObject("path"); /* should never fail */
-	PyObject *sys_mods= PySys_GetObject("modules"); /* should never fail */
+	}
+
+	/* will never fail */
+	PyObject *sys_path      = PySys_GetObject("path");
+	PyObject *sys_meta_path = PySys_GetObject("meta_path");
+	PyObject *sys_mods      = PySys_GetObject("modules");
 
 	/* paths */
-	PyList_SetSlice(sys_path, 0, INT_MAX, gp_OrigPythonSysPath);
-	Py_DECREF(gp_OrigPythonSysPath);
-	gp_OrigPythonSysPath= NULL;
+	PyList_SetSlice(sys_path, 0, INT_MAX, gp_sys_backup.path);
+	Py_DECREF(gp_sys_backup.path);
+	gp_sys_backup.path = NULL;
+
+	/* meta_path */
+	PyList_SetSlice(sys_meta_path, 0, INT_MAX, gp_sys_backup.meta_path);
+	Py_DECREF(gp_sys_backup.meta_path);
+	gp_sys_backup.meta_path = NULL;
 	
 	/* modules */
 	PyDict_Clear(sys_mods);
-	PyDict_Update(sys_mods, gp_OrigPythonSysModules);
-	Py_DECREF(gp_OrigPythonSysModules);
-	gp_OrigPythonSysModules= NULL;
+	PyDict_Update(sys_mods, gp_sys_backup.modules);
+	Py_DECREF(gp_sys_backup.modules);
+	gp_sys_backup.modules = NULL;
 	
 	
 //	fprintf(stderr, "\nRestore Path: %d ", PyList_GET_SIZE(sys_path));
@@ -2088,32 +2240,49 @@ PyMODINIT_FUNC initBGE(void)
 	PyObject *mod;
 	PyObject *submodule;
 	PyObject *sys_modules = PyThreadState_GET()->interp->modules;
+	const char *mod_full;
 
 	mod = PyModule_Create(&BGE_module_def);
 
-	PyModule_AddObject(mod, "constraints", (submodule = initConstraintPythonBinding()));
-	PyDict_SetItemString(sys_modules, PyModule_GetName(submodule), submodule);
+	/* skip "bge." */
+#define SUBMOD (mod_full + 4)
+
+	mod_full = "bge.app";
+	PyModule_AddObject(mod, SUBMOD, (submodule = initApplicationPythonBinding()));
+	PyDict_SetItemString(sys_modules, mod_full, submodule);
 	Py_INCREF(submodule);
 
-	PyModule_AddObject(mod, "events", (submodule = initGameKeysPythonBinding()));
-	PyDict_SetItemString(sys_modules, PyModule_GetName(submodule), submodule);
+	mod_full = "bge.constraints";
+	PyModule_AddObject(mod, SUBMOD, (submodule = initConstraintPythonBinding()));
+	PyDict_SetItemString(sys_modules, mod_full, submodule);
 	Py_INCREF(submodule);
 
-	PyModule_AddObject(mod, "logic", (submodule = initGameLogicPythonBinding()));
-	PyDict_SetItemString(sys_modules, PyModule_GetName(submodule), submodule);
+	mod_full = "bge.events";
+	PyModule_AddObject(mod, SUBMOD, (submodule = initGameKeysPythonBinding()));
+	PyDict_SetItemString(sys_modules, mod_full, submodule);
 	Py_INCREF(submodule);
 
-	PyModule_AddObject(mod, "render", (submodule = initRasterizerPythonBinding()));
-	PyDict_SetItemString(sys_modules, PyModule_GetName(submodule), submodule);
+	mod_full = "bge.logic";
+	PyModule_AddObject(mod, SUBMOD, (submodule = initGameLogicPythonBinding()));
+	PyDict_SetItemString(sys_modules, mod_full, submodule);
 	Py_INCREF(submodule);
 
-	PyModule_AddObject(mod, "texture", (submodule = initVideoTexturePythonBinding()));
-	PyDict_SetItemString(sys_modules, PyModule_GetName(submodule), submodule);
+	mod_full = "bge.render";
+	PyModule_AddObject(mod, SUBMOD, (submodule = initRasterizerPythonBinding()));
+	PyDict_SetItemString(sys_modules, mod_full, submodule);
 	Py_INCREF(submodule);
 
-	PyModule_AddObject(mod, "types", (submodule = initGameTypesPythonBinding()));
-	PyDict_SetItemString(sys_modules, PyModule_GetName(submodule), submodule);
+	mod_full = "bge.texture";
+	PyModule_AddObject(mod, SUBMOD, (submodule = initVideoTexturePythonBinding()));
+	PyDict_SetItemString(sys_modules, mod_full, submodule);
 	Py_INCREF(submodule);
+
+	mod_full = "bge.types";
+	PyModule_AddObject(mod, SUBMOD, (submodule = initGameTypesPythonBinding()));
+	PyDict_SetItemString(sys_modules, mod_full, submodule);
+	Py_INCREF(submodule);
+
+#undef SUBMOD
 
 	return mod;
 }
@@ -2149,14 +2318,14 @@ PyObject *initGamePlayerPythonScripting(Main *maggie, int argc, char** argv)
 	Py_SetProgramName(program_path_wchar);
 
 	/* Update, Py3.3 resolves attempting to parse non-existing header */
-	#if 0
+#if 0
 	/* Python 3.2 now looks for '2.xx/python/include/python3.2d/pyconfig.h' to
 	 * parse from the 'sysconfig' module which is used by 'site',
 	 * so for now disable site. alternatively we could copy the file. */
 	if (py_path_bundle != NULL) {
 		Py_NoSiteFlag = 1; /* inhibits the automatic importing of 'site' */
 	}
-	#endif
+#endif
 
 	Py_FrozenFlag = 1;
 
@@ -2332,6 +2501,8 @@ PyMODINIT_FUNC initRasterizerPythonBinding()
 	PyObject *m;
 	PyObject *d;
 
+	PyType_Ready(&PyRASOffScreen_Type);
+
 	m = PyModule_Create(&Rasterizer_module_def);
 	PyDict_SetItemString(PySys_GetObject("modules"), Rasterizer_module_def.m_name, m);
 
@@ -2358,6 +2529,11 @@ PyMODINIT_FUNC initRasterizerPythonBinding()
 	/* stereoscopy */
 	KX_MACRO_addTypesToDict(d, LEFT_EYE, RAS_IRasterizer::RAS_STEREO_LEFTEYE);
 	KX_MACRO_addTypesToDict(d, RIGHT_EYE, RAS_IRasterizer::RAS_STEREO_RIGHTEYE);
+
+	/* offscreen render */
+	KX_MACRO_addTypesToDict(d, RAS_OFS_RENDER_BUFFER, RAS_IOffScreen::RAS_OFS_RENDER_BUFFER);
+	KX_MACRO_addTypesToDict(d, RAS_OFS_RENDER_TEXTURE, RAS_IOffScreen::RAS_OFS_RENDER_TEXTURE);
+
 
 	// XXXX Add constants here
 
@@ -2605,6 +2781,77 @@ PyMODINIT_FUNC initGameKeysPythonBinding()
 
 	return m;
 }
+
+
+
+/* ------------------------------------------------------------------------- */
+/* Application: application values that remain unchanged during runtime       */
+/* ------------------------------------------------------------------------- */
+
+PyDoc_STRVAR(Application_module_documentation,
+	"This module contains application values that remain unchanged during runtime."
+	);
+
+static struct PyModuleDef Application_module_def = {
+	PyModuleDef_HEAD_INIT,
+	"bge.app",  /* m_name */
+	Application_module_documentation,  /* m_doc */
+	0,  /* m_size */
+	NULL,  /* m_methods */
+	0,  /* m_reload */
+	0,  /* m_traverse */
+	0,  /* m_clear */
+	0,  /* m_free */
+};
+
+PyMODINIT_FUNC initApplicationPythonBinding()
+{
+	PyObject *m;
+	PyObject *d;
+
+	m = PyModule_Create(&Application_module_def);
+	
+	// Add some symbolic constants to the module
+	d = PyModule_GetDict(m);
+
+	PyDict_SetItemString(d, "version", Py_BuildValue("(iii)",
+		BLENDER_VERSION / 100, BLENDER_VERSION % 100, BLENDER_SUBVERSION));
+	PyDict_SetItemString(d, "version_string", PyUnicode_FromFormat("%d.%02d (sub %d)",
+		BLENDER_VERSION / 100, BLENDER_VERSION % 100, BLENDER_SUBVERSION));
+	PyDict_SetItemString(d, "version_char", PyUnicode_FromString(
+		STRINGIFY(BLENDER_VERSION_CHAR)));
+
+	PyDict_SetItemString(d, "has_texture_ffmpeg",
+#ifdef WITH_FFMPEG
+		Py_True
+#else
+		Py_False
+#endif
+	);
+	PyDict_SetItemString(d, "has_joystick",
+#ifdef WITH_SDL
+		Py_True
+#else
+		Py_False
+#endif
+	);
+	PyDict_SetItemString(d, "has_physics",
+#ifdef WITH_BULLET
+		Py_True
+#else
+		Py_False
+#endif
+	);
+
+	// Check for errors
+	if (PyErr_Occurred()) {
+		PyErr_Print();
+		PyErr_Clear();
+	}
+
+	return m;
+}
+
 
 // utility function for loading and saving the globalDict
 int saveGamePythonConfig( char **marshal_buffer)

@@ -47,124 +47,8 @@
 
 // #define DEBUG_STRSIZE
 
-/* from libswish3, originally called u8_isvalid(),
- * modified to return the index of the bad character (byte index not utf).
- * http://svn.swish-e.org/libswish3/trunk/src/libswish3/utf8.c r3044 - campbell */
-
-/* based on the valid_utf8 routine from the PCRE library by Philip Hazel
- *
- * length is in bytes, since without knowing whether the string is valid
- * it's hard to know how many characters there are! */
-
-static const char trailingBytesForUTF8[256] = {
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5
-};
-
-int BLI_utf8_invalid_byte(const char *str, int length)
-{
-	const unsigned char *p, *pend = (const unsigned char *)str + length;
-	unsigned char c;
-	int ab;
-
-	for (p = (const unsigned char *)str; p < pend; p++) {
-		c = *p;
-		if (c < 128)
-			continue;
-		if ((c & 0xc0) != 0xc0)
-			goto utf8_error;
-		ab = trailingBytesForUTF8[c];
-		if (length < ab)
-			goto utf8_error;
-		length -= ab;
-
-		p++;
-		/* Check top bits in the second byte */
-		if ((*p & 0xc0) != 0x80)
-			goto utf8_error;
-
-		/* Check for overlong sequences for each different length */
-		switch (ab) {
-			/* Check for xx00 000x */
-		case 1:
-			if ((c & 0x3e) == 0) goto utf8_error;
-			continue;   /* We know there aren't any more bytes to check */
-
-			/* Check for 1110 0000, xx0x xxxx */
-		case 2:
-			if (c == 0xe0 && (*p & 0x20) == 0) goto utf8_error;
-			break;
-
-			/* Check for 1111 0000, xx00 xxxx */
-		case 3:
-			if (c == 0xf0 && (*p & 0x30) == 0) goto utf8_error;
-			break;
-
-			/* Check for 1111 1000, xx00 0xxx */
-		case 4:
-			if (c == 0xf8 && (*p & 0x38) == 0) goto utf8_error;
-			break;
-
-			/* Check for leading 0xfe or 0xff,
-			 * and then for 1111 1100, xx00 00xx */
-		case 5:
-			if (c == 0xfe || c == 0xff ||
-			    (c == 0xfc && (*p & 0x3c) == 0)) goto utf8_error;
-			break;
-		}
-
-		/* Check for valid bytes after the 2nd, if any; all must start 10 */
-		while (--ab > 0) {
-			if ((*(p + 1) & 0xc0) != 0x80) goto utf8_error;
-			p++; /* do this after so we get usable offset - campbell */
-		}
-	}
-
-	return -1;
-
-utf8_error:
-
-	return (int)((const char *)p - (const char *)str) - 1;
-}
-
-int BLI_utf8_invalid_strip(char *str, int length)
-{
-	int bad_char, tot = 0;
-
-	BLI_assert(str[length] == '\0');
-
-	while ((bad_char = BLI_utf8_invalid_byte(str, length)) != -1) {
-		str += bad_char;
-		length -= bad_char;
-
-		if (length == 0) {
-			/* last character bad, strip it */
-			*str = '\0';
-			tot++;
-			break;
-		}
-		else {
-			/* strip, keep looking */
-			memmove(str, str + 1, (size_t)length);
-			tot++;
-		}
-	}
-
-	return tot;
-}
-
-
-/* compatible with BLI_strncpy, but esnure no partial utf8 chars */
-
-/* array copied from glib's gutf8.c,
- * note: this looks to be at odd's with 'trailingBytesForUTF8',
- * need to find out what gives here! - campbell */
+/* array copied from glib's gutf8.c, */
+/* Note: last two values (0xfe and 0xff) are forbidden in utf-8, so they are considered 1 byte length too. */
 static const size_t utf8_skip_data[256] = {
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -176,17 +60,156 @@ static const size_t utf8_skip_data[256] = {
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 1, 1
 };
 
+/* from libswish3, originally called u8_isvalid(),
+ * modified to return the index of the bad character (byte index not utf).
+ * http://svn.swish-e.org/libswish3/trunk/src/libswish3/utf8.c r3044 - campbell */
+
+/* based on the valid_utf8 routine from the PCRE library by Philip Hazel
+ *
+ * length is in bytes, since without knowing whether the string is valid
+ * it's hard to know how many characters there are! */
+
+/**
+ * Find first utf-8 invalid byte in given \a str, of \a length bytes.
+ *
+ * \return the offset of the first invalid byte.
+ */
+ptrdiff_t BLI_utf8_invalid_byte(const char *str, size_t length)
+{
+	const unsigned char *p, *perr, *pend = (const unsigned char *)str + length;
+	unsigned char c;
+	int ab;
+
+	for (p = (const unsigned char *)str; p < pend; p++, length--) {
+		c = *p;
+		perr = p;  /* Erroneous char is always the first of an invalid utf8 sequence... */
+		if (ELEM(c, 0xfe, 0xff, 0x00))  /* Those three values are not allowed in utf8 string. */
+			goto utf8_error;
+		if (c < 128)
+			continue;
+		if ((c & 0xc0) != 0xc0)
+			goto utf8_error;
+
+		/* Note that since we always increase p (and decrease length) by one byte in main loop, we only add/subtract
+		 * extra utf8 bytes in code below
+		 * (ab number, aka number of bytes remaining in the utf8 sequence after the initial one). */
+		ab = (int)utf8_skip_data[c] - 1;
+		if (length <= ab) {
+			goto utf8_error;
+		}
+
+		/* Check top bits in the second byte */
+		p++;
+		length--;
+		if ((*p & 0xc0) != 0x80)
+			goto utf8_error;
+
+		/* Check for overlong sequences for each different length */
+		switch (ab) {
+			case 1:
+				/* Check for xx00 000x */
+				if ((c & 0x3e) == 0) goto utf8_error;
+				continue;   /* We know there aren't any more bytes to check */
+
+			case 2:
+				/* Check for 1110 0000, xx0x xxxx */
+				if (c == 0xe0 && (*p & 0x20) == 0) goto utf8_error;
+				/* Some special cases, see section 5 of utf-8 decoder stress-test by Markus Kuhn
+				 * (https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt). */
+				/* From section 5.1 (and 5.2) */
+				if (c == 0xed) {
+					if (*p == 0xa0 && *(p + 1) == 0x80) goto utf8_error;
+					if (*p == 0xad && *(p + 1) == 0xbf) goto utf8_error;
+					if (*p == 0xae && *(p + 1) == 0x80) goto utf8_error;
+					if (*p == 0xaf && *(p + 1) == 0xbf) goto utf8_error;
+					if (*p == 0xb0 && *(p + 1) == 0x80) goto utf8_error;
+					if (*p == 0xbe && *(p + 1) == 0x80) goto utf8_error;
+					if (*p == 0xbf && *(p + 1) == 0xbf) goto utf8_error;
+				}
+				/* From section 5.3 */
+				if (c == 0xef) {
+					if (*p == 0xbf && *(p + 1) == 0xbe) goto utf8_error;
+					if (*p == 0xbf && *(p + 1) == 0xbf) goto utf8_error;
+				}
+				break;
+
+			case 3:
+				/* Check for 1111 0000, xx00 xxxx */
+				if (c == 0xf0 && (*p & 0x30) == 0) goto utf8_error;
+				break;
+
+			case 4:
+				/* Check for 1111 1000, xx00 0xxx */
+				if (c == 0xf8 && (*p & 0x38) == 0) goto utf8_error;
+				break;
+
+			case 5:
+				/* Check for 1111 1100, xx00 00xx */
+				if (c == 0xfc && (*p & 0x3c) == 0) goto utf8_error;
+				break;
+		}
+
+		/* Check for valid bytes after the 2nd, if any; all must start 10 */
+		while (--ab > 0) {
+			p++;
+			length--;
+			if ((*p & 0xc0) != 0x80) goto utf8_error;
+		}
+	}
+
+	return -1;
+
+utf8_error:
+
+	return ((const char *)perr - (const char *)str);
+}
+
+/**
+ * Remove any invalid utf-8 byte (taking into account multi-bytes sequence of course).
+ *
+ * \return number of stripped bytes.
+ */
+int BLI_utf8_invalid_strip(char *str, size_t length)
+{
+	ptrdiff_t bad_char;
+	int tot = 0;
+
+	BLI_assert(str[length] == '\0');
+
+	while ((bad_char = BLI_utf8_invalid_byte(str, length)) != -1) {
+		str += bad_char;
+		length -= (size_t)(bad_char + 1);
+
+		if (length == 0) {
+			/* last character bad, strip it */
+			*str = '\0';
+			tot++;
+			break;
+		}
+		else {
+			/* strip, keep looking */
+			memmove(str, str + 1, length + 1);  /* +1 for NULL char! */
+			tot++;
+		}
+	}
+
+	return tot;
+}
+
+
+/* compatible with BLI_strncpy, but esnure no partial utf8 chars */
+
 #define BLI_STR_UTF8_CPY(dst, src, maxncpy)                                   \
 	{                                                                         \
 		size_t utf8_size;                                                     \
 		while (*src != '\0' && (utf8_size = utf8_skip_data[*src]) < maxncpy) {\
 			maxncpy -= utf8_size;                                             \
 			switch (utf8_size) {                                              \
-				case 6: *dst ++ = *src ++;                                    \
-				case 5: *dst ++ = *src ++;                                    \
-				case 4: *dst ++ = *src ++;                                    \
-				case 3: *dst ++ = *src ++;                                    \
-				case 2: *dst ++ = *src ++;                                    \
+				case 6: *dst ++ = *src ++; ATTR_FALLTHROUGH;                  \
+				case 5: *dst ++ = *src ++; ATTR_FALLTHROUGH;                  \
+				case 4: *dst ++ = *src ++; ATTR_FALLTHROUGH;                  \
+				case 3: *dst ++ = *src ++; ATTR_FALLTHROUGH;                  \
+				case 2: *dst ++ = *src ++; ATTR_FALLTHROUGH;                  \
 				case 1: *dst ++ = *src ++;                                    \
 			}                                                                 \
 		}                                                                     \
@@ -329,8 +352,8 @@ size_t BLI_strnlen_utf8_ex(const char *strc, const size_t maxlen, size_t *r_len_
 }
 
 /**
- * \param start the string to measure the length.
- * \param maxlen the string length (in bytes)
+ * \param strc: the string to measure the length.
+ * \param maxlen: the string length (in bytes)
  * \return the unicode length (not in bytes!)
  */
 size_t BLI_strnlen_utf8(const char *strc, const size_t maxlen)
@@ -599,14 +622,14 @@ unsigned int BLI_str_utf8_as_unicode_step(const char *__restrict p, size_t *__re
 /* was g_unichar_to_utf8 */
 /**
  * BLI_str_utf8_from_unicode:
- * @c a Unicode character code
- * \param outbuf output buffer, must have at least 6 bytes of space.
+ * \param c: a Unicode character code
+ * \param outbuf: output buffer, must have at least 6 bytes of space.
  *       If %NULL, the length will be computed and returned
  *       and nothing will be written to outbuf.
  *
  * Converts a single character to UTF-8.
  *
- * Return value: number of bytes written
+ * \return number of bytes written
  **/
 size_t BLI_str_utf8_from_unicode(unsigned int c, char *outbuf)
 {
@@ -734,28 +757,31 @@ char *BLI_str_prev_char_utf8(const char *p)
 }
 /* end glib copy */
 
-size_t BLI_str_partition_utf8(const char *str, const unsigned int delim[], char **sep, char **suf)
+size_t BLI_str_partition_utf8(const char *str, const unsigned int delim[], const char **sep, const char **suf)
 {
-	return BLI_str_partition_ex_utf8(str, delim, sep, suf, false);
+	return BLI_str_partition_ex_utf8(str, NULL, delim, sep, suf, false);
 }
 
-size_t BLI_str_rpartition_utf8(const char *str, const unsigned int delim[], char **sep, char **suf)
+size_t BLI_str_rpartition_utf8(const char *str, const unsigned int delim[], const char **sep, const char **suf)
 {
-	return BLI_str_partition_ex_utf8(str, delim, sep, suf, true);
+	return BLI_str_partition_ex_utf8(str, NULL, delim, sep, suf, true);
 }
 
-size_t BLI_str_partition_ex_utf8(const char *str, const unsigned int delim[], char **sep, char **suf,
-                                 const bool from_right)
+size_t BLI_str_partition_ex_utf8(
+        const char *str, const char *end, const unsigned int delim[], const char **sep, const char **suf, const bool from_right)
 {
 	const unsigned int *d;
-	const size_t str_len = strlen(str);
+	const size_t str_len = end ? (size_t)(end - str) : strlen(str);
 	size_t index;
+
+	/* Note that here, we assume end points to a valid utf8 char! */
+	BLI_assert(end == NULL || (end >= str && (BLI_str_utf8_as_unicode(end) != BLI_UTF8_ERR)));
 
 	*suf = (char *)(str + str_len);
 
 	for (*sep = (char *)(from_right ? BLI_str_find_prev_char_utf8(str, str + str_len) : str), index = 0;
-	     *sep != NULL && **sep != '\0';
-	     *sep = (char *)(from_right ? (char *)BLI_str_find_prev_char_utf8(str, *sep) : str + index))
+	     *sep >= str && (!end || *sep < end) && **sep != '\0';
+	     *sep = (char *)(from_right ? BLI_str_find_prev_char_utf8(str, *sep) : str + index))
 	{
 		const unsigned int c = BLI_str_utf8_as_unicode_and_size(*sep, &index);
 

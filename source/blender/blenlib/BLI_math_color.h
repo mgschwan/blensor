@@ -129,6 +129,9 @@ void rgba_float_to_uchar(unsigned char r_col[4], const float col_f[4]);
 
 void xyz_to_lab(float x, float y, float z, float *l, float *a, float *b);
 
+MINLINE float rgb_to_grayscale(const float rgb[3]);
+MINLINE unsigned char rgb_to_grayscale_byte(const unsigned char rgb[3]);
+
 MINLINE int compare_rgb_uchar(const unsigned char a[3], const unsigned char b[3], const int limit);
 
 MINLINE float dither_random_value(float s, float t);
@@ -141,6 +144,8 @@ MINLINE void float_to_byte_dither_v3(unsigned char b[3], const float f[3], float
 MINLINE void rgba_char_args_set(char col[4], const char r, const char g, const char b, const char a);
 MINLINE void rgba_char_args_test_set(char col[4], const char r, const char g, const char b, const char a);
 MINLINE void cpack_cpy_3ub(unsigned char r_col[3], const unsigned int pack);
+
+void blackbody_temperature_to_rgb_table(float *r_table, int width, float min, float max);
 
 /********* lift/gamma/gain / ASC-CDL conversion ***********/
 

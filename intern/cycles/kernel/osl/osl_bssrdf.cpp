@@ -30,46 +30,106 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <OpenImageIO/fmath.h>
-
 #include <OSL/genclosure.h>
 
-#include "osl_bssrdf.h"
-#include "osl_closures.h"
+#include "kernel/kernel_compat_cpu.h"
+#include "kernel/osl/osl_closures.h"
 
-#include "kernel_types.h"
-#include "kernel_montecarlo.h"
+#include "kernel/kernel_types.h"
+#include "kernel/kernel_montecarlo.h"
 
-#include "closure/bsdf_diffuse.h"
-#include "closure/bssrdf.h"
+#include "kernel/closure/alloc.h"
+#include "kernel/closure/bsdf_util.h"
+#include "kernel/closure/bsdf_diffuse.h"
+#include "kernel/closure/bsdf_principled_diffuse.h"
+#include "kernel/closure/bssrdf.h"
 
 CCL_NAMESPACE_BEGIN
 
 using namespace OSL;
 
+class CBSSRDFClosure : public CClosurePrimitive {
+public:
+	Bssrdf params;
+	float3 radius;
+	float3 albedo;
+
+	void alloc(ShaderData *sd, int path_flag, float3 weight, ClosureType type)
+	{
+		float sample_weight = fabsf(average(weight));
+
+		/* disable in case of diffuse ancestor, can't see it well then and
+		 * adds considerably noise due to probabilities of continuing path
+		 * getting lower and lower */
+		if(path_flag & PATH_RAY_DIFFUSE_ANCESTOR) {
+			radius = make_float3(0.0f, 0.0f, 0.0f);
+		}
+
+		if(sample_weight > CLOSURE_WEIGHT_CUTOFF) {
+			/* sharpness */
+			float sharpness = params.sharpness;
+			/* texture color blur */
+			float texture_blur = params.texture_blur;
+
+			/* create one closure per color channel */
+			Bssrdf *bssrdf = bssrdf_alloc(sd, make_float3(weight.x, 0.0f, 0.0f));
+			if(bssrdf) {
+				bssrdf->sample_weight = sample_weight;
+				bssrdf->radius = radius.x;
+				bssrdf->texture_blur = texture_blur;
+				bssrdf->albedo = albedo.x;
+				bssrdf->sharpness = sharpness;
+				bssrdf->N = params.N;
+				bssrdf->roughness = params.roughness;
+				sd->flag |= bssrdf_setup(bssrdf, (ClosureType)type);
+			}
+
+			bssrdf = bssrdf_alloc(sd, make_float3(0.0f, weight.y, 0.0f));
+			if(bssrdf) {
+				bssrdf->sample_weight = sample_weight;
+				bssrdf->radius = radius.y;
+				bssrdf->texture_blur = texture_blur;
+				bssrdf->albedo = albedo.y;
+				bssrdf->sharpness = sharpness;
+				bssrdf->N = params.N;
+				bssrdf->roughness = params.roughness;
+				sd->flag |= bssrdf_setup(bssrdf, (ClosureType)type);
+			}
+
+			bssrdf = bssrdf_alloc(sd, make_float3(0.0f, 0.0f, weight.z));
+			if(bssrdf) {
+				bssrdf->sample_weight = sample_weight;
+				bssrdf->radius = radius.z;
+				bssrdf->texture_blur = texture_blur;
+				bssrdf->albedo = albedo.z;
+				bssrdf->sharpness = sharpness;
+				bssrdf->N = params.N;
+				bssrdf->roughness = params.roughness;
+				sd->flag |= bssrdf_setup(bssrdf, (ClosureType)type);
+			}
+		}
+	}
+};
+
 /* Cubic */
 
 class CubicBSSRDFClosure : public CBSSRDFClosure {
 public:
-	CubicBSSRDFClosure()
-	{}
-
-	void setup()
+	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
-		sc.type = CLOSURE_BSSRDF_CUBIC_ID;
-		sc.data0 = fabsf(average(radius));
+		alloc(sd, path_flag, weight, CLOSURE_BSSRDF_CUBIC_ID);
 	}
 };
 
 ClosureParam *closure_bssrdf_cubic_params()
 {
 	static ClosureParam params[] = {
-		CLOSURE_FLOAT3_PARAM(CubicBSSRDFClosure, sc.N),
+		CLOSURE_FLOAT3_PARAM(CubicBSSRDFClosure, params.N),
 		CLOSURE_FLOAT3_PARAM(CubicBSSRDFClosure, radius),
-		CLOSURE_FLOAT_PARAM(CubicBSSRDFClosure, sc.data1),
-		CLOSURE_FLOAT_PARAM(CubicBSSRDFClosure, sc.T.x),
-	    CLOSURE_STRING_KEYPARAM("label"),
-	    CLOSURE_FINISH_PARAM(CubicBSSRDFClosure)
+		CLOSURE_FLOAT_PARAM(CubicBSSRDFClosure, params.texture_blur),
+		CLOSURE_FLOAT_PARAM(CubicBSSRDFClosure, params.sharpness),
+		CLOSURE_STRING_KEYPARAM(CubicBSSRDFClosure, label, "label"),
+		CLOSURE_FINISH_PARAM(CubicBSSRDFClosure)
 	};
 	return params;
 }
@@ -80,29 +140,76 @@ CCLOSURE_PREPARE(closure_bssrdf_cubic_prepare, CubicBSSRDFClosure)
 
 class GaussianBSSRDFClosure : public CBSSRDFClosure {
 public:
-	GaussianBSSRDFClosure()
-	{}
-
-	void setup()
+	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
-		sc.type = CLOSURE_BSSRDF_GAUSSIAN_ID;
-		sc.data0 = fabsf(average(radius));
+		alloc(sd, path_flag, weight, CLOSURE_BSSRDF_GAUSSIAN_ID);
 	}
 };
 
 ClosureParam *closure_bssrdf_gaussian_params()
 {
 	static ClosureParam params[] = {
-		CLOSURE_FLOAT3_PARAM(GaussianBSSRDFClosure, sc.N),
+		CLOSURE_FLOAT3_PARAM(GaussianBSSRDFClosure, params.N),
 		CLOSURE_FLOAT3_PARAM(GaussianBSSRDFClosure, radius),
-		CLOSURE_FLOAT_PARAM(GaussianBSSRDFClosure, sc.data1),
-	    CLOSURE_STRING_KEYPARAM("label"),
-	    CLOSURE_FINISH_PARAM(GaussianBSSRDFClosure)
+		CLOSURE_FLOAT_PARAM(GaussianBSSRDFClosure, params.texture_blur),
+		CLOSURE_STRING_KEYPARAM(GaussianBSSRDFClosure, label, "label"),
+		CLOSURE_FINISH_PARAM(GaussianBSSRDFClosure)
 	};
 	return params;
 }
 
 CCLOSURE_PREPARE(closure_bssrdf_gaussian_prepare, GaussianBSSRDFClosure)
+
+/* Burley */
+
+class BurleyBSSRDFClosure : public CBSSRDFClosure {
+public:
+	void setup(ShaderData *sd, int path_flag, float3 weight)
+	{
+		alloc(sd, path_flag, weight, CLOSURE_BSSRDF_BURLEY_ID);
+	}
+};
+
+ClosureParam *closure_bssrdf_burley_params()
+{
+	static ClosureParam params[] = {
+		CLOSURE_FLOAT3_PARAM(BurleyBSSRDFClosure, params.N),
+		CLOSURE_FLOAT3_PARAM(BurleyBSSRDFClosure, radius),
+		CLOSURE_FLOAT_PARAM(BurleyBSSRDFClosure, params.texture_blur),
+		CLOSURE_FLOAT3_PARAM(BurleyBSSRDFClosure, albedo),
+		CLOSURE_STRING_KEYPARAM(BurleyBSSRDFClosure, label, "label"),
+		CLOSURE_FINISH_PARAM(BurleyBSSRDFClosure)
+	};
+	return params;
+}
+
+CCLOSURE_PREPARE(closure_bssrdf_burley_prepare, BurleyBSSRDFClosure)
+
+/* Disney principled */
+
+class PrincipledBSSRDFClosure : public CBSSRDFClosure {
+public:
+	void setup(ShaderData *sd, int path_flag, float3 weight)
+	{
+		alloc(sd, path_flag, weight, CLOSURE_BSSRDF_PRINCIPLED_ID);
+	}
+};
+
+ClosureParam *closure_bssrdf_principled_params()
+{
+	static ClosureParam params[] = {
+		CLOSURE_FLOAT3_PARAM(PrincipledBSSRDFClosure, params.N),
+		CLOSURE_FLOAT3_PARAM(PrincipledBSSRDFClosure, radius),
+		CLOSURE_FLOAT_PARAM(PrincipledBSSRDFClosure, params.texture_blur),
+		CLOSURE_FLOAT3_PARAM(PrincipledBSSRDFClosure, albedo),
+		CLOSURE_FLOAT_PARAM(PrincipledBSSRDFClosure, params.roughness),
+		CLOSURE_STRING_KEYPARAM(PrincipledBSSRDFClosure, label, "label"),
+		CLOSURE_FINISH_PARAM(PrincipledBSSRDFClosure)
+	};
+	return params;
+}
+
+CCLOSURE_PREPARE(closure_bssrdf_principled_prepare, PrincipledBSSRDFClosure)
 
 CCL_NAMESPACE_END
 

@@ -23,6 +23,7 @@ set(INC
 	../../blenfont
 	../../blenkernel
 	../../blenlib
+	../../blentranslation
 	../../imbuf
 	../../gpu
 	../../makesdna
@@ -39,7 +40,11 @@ set(INC_SYS
 set(SRC
 	drawgpencil.c
 	editaction_gpencil.c
+	gpencil_brush.c
+	gpencil_convert.c
+	gpencil_data.c
 	gpencil_edit.c
+	gpencil_interpolate.c
 	gpencil_ops.c
 	gpencil_paint.c
 	gpencil_select.c

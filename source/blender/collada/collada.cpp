@@ -46,16 +46,20 @@ int collada_import(bContext *C,
 				   const char *filepath,
 				   int import_units,
 				   int find_chains,
+				   int auto_connect,
 				   int fix_orientation,
-				   int min_chain_length)
+				   int min_chain_length,
+				   int keep_bind_info)
 {
 
 	ImportSettings import_settings;
 	import_settings.filepath         = (char *)filepath;
 	import_settings.import_units     = import_units != 0;
+	import_settings.auto_connect     = auto_connect != 0;
 	import_settings.find_chains      = find_chains != 0;
 	import_settings.fix_orientation  = fix_orientation != 0;
 	import_settings.min_chain_length = min_chain_length;
+	import_settings.keep_bind_info = keep_bind_info !=0;
 
 	DocumentImporter imp(C, &import_settings);
 	if (imp.import()) return 1;
@@ -76,15 +80,17 @@ int collada_export(Scene *sce,
                    int deform_bones_only,
 
 				   int active_uv_only,
-				   int include_uv_textures,
-				   int include_material_textures,
+				   BC_export_texture_type export_texture_type,
 				   int use_texture_copies,
 
                    int triangulate,
-                   int use_object_instantiation,
-                   int sort_by_name,
+				   int use_object_instantiation,
+				   int use_blender_profile,
+				   int sort_by_name,
 				   BC_export_transformation_type export_transformation_type,
-                   int open_sim)
+				   int open_sim,
+				   int limit_precision,
+				   int keep_bind_info)
 {
 	ExportSettings export_settings;
 
@@ -99,16 +105,17 @@ int collada_export(Scene *sce,
 	export_settings.deform_bones_only        = deform_bones_only != 0;
 
 	export_settings.active_uv_only           = active_uv_only != 0;
-	export_settings.include_uv_textures      = include_uv_textures != 0;
-	export_settings.include_material_textures= include_material_textures != 0;
+	export_settings.export_texture_type      = export_texture_type;
 	export_settings.use_texture_copies       = use_texture_copies != 0;
 
 	export_settings.triangulate                = triangulate != 0;
 	export_settings.use_object_instantiation   = use_object_instantiation != 0;
+	export_settings.use_blender_profile        = use_blender_profile != 0;
 	export_settings.sort_by_name               = sort_by_name != 0;
 	export_settings.export_transformation_type = export_transformation_type;
 	export_settings.open_sim                   = open_sim != 0;
-
+	export_settings.limit_precision = limit_precision != 0;
+	export_settings.keep_bind_info = keep_bind_info !=0;
 
 	int includeFilter = OB_REL_NONE;
 	if (export_settings.include_armatures) includeFilter |= OB_REL_MOD_ARMATURE;
@@ -116,14 +123,13 @@ int collada_export(Scene *sce,
 
 	eObjectSet objectSet = (export_settings.selected) ? OB_SET_SELECTED : OB_SET_ALL;
 	export_settings.export_set = BKE_object_relational_superset(sce, objectSet, (eObRelationTypes)includeFilter);
-	int export_count = BLI_linklist_length(export_settings.export_set);
+	int export_count = BLI_linklist_count(export_settings.export_set);
 
-	if (export_count==0)
-	{
+	if (export_count == 0) {
 		if (export_settings.selected) {
 			fprintf(stderr, "Collada: Found no objects to export.\nPlease ensure that all objects which shall be exported are also visible in the 3D Viewport.\n");
 		}
-		else{
+		else {
 			fprintf(stderr, "Collada: Your scene seems to be empty. No Objects will be exported.\n");
 		}
 	}
@@ -133,11 +139,11 @@ int collada_export(Scene *sce,
 	}
 
 	DocumentExporter exporter(&export_settings);
-	exporter.exportCurrentScene(sce);
+	int status = exporter.exportCurrentScene(sce);
 
 	BLI_linklist_free(export_settings.export_set, NULL);
 
-	return export_count;
+	return (status) ? -1:export_count;
 }
 
 /* end extern C */

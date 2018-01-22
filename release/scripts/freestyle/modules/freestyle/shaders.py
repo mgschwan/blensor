@@ -138,7 +138,8 @@ from freestyle.predicates import (
 
 from freestyle.utils import (
     bound,
-    bounding_box,
+    BoundingBox,
+    pairwise,
     phase_to_direction,
     )
 
@@ -567,7 +568,7 @@ class pyRandomColorShader(StrokeShader):
 
 class py2DCurvatureColorShader(StrokeShader):
     """
-    Assigns a color (greyscale) to the stroke based on the curvature.
+    Assigns a color (grayscale) to the stroke based on the curvature.
     A higher curvature will yield a brighter color.
     """
     def shade(self, stroke):
@@ -583,7 +584,7 @@ class py2DCurvatureColorShader(StrokeShader):
 
 class pyTimeColorShader(StrokeShader):
     """
-    Assigns a greyscale value that increases for every vertex.
+    Assigns a grayscale value that increases for every vertex.
     The brightness will increase along the stroke.
     """
     def __init__(self, step=0.01):
@@ -865,7 +866,7 @@ class pyBluePrintCirclesShader(StrokeShader):
 
     def shade(self, stroke):
         # get minimum and maximum coordinates
-        p_min, p_max = bounding_box(stroke)
+        p_min, p_max = BoundingBox.from_sequence(svert.point for svert in stroke).corners
 
         stroke.resample(32 * self.__turns)
         sv_nb = len(stroke) // self.__turns
@@ -917,7 +918,7 @@ class pyBluePrintEllipsesShader(StrokeShader):
         self.__random_radius = random_radius
 
     def shade(self, stroke):
-        p_min, p_max = bounding_box(stroke)
+        p_min, p_max = BoundingBox.from_sequence(svert.point for svert in stroke).corners
 
         stroke.resample(32 * self.__turns)
         sv_nb = len(stroke) // self.__turns
@@ -964,7 +965,7 @@ class pyBluePrintSquaresShader(StrokeShader):
             return
 
         # get minimum and maximum coordinates
-        p_min, p_max = bounding_box(stroke)
+        p_min, p_max = BoundingBox.from_sequence(svert.point for svert in stroke).corners
 
         stroke.resample(32 * self.__turns)
         num_segments = len(stroke) // self.__turns
@@ -1131,6 +1132,13 @@ class pyBluePrintDirectedSquaresShader(StrokeShader):
 # -- various (used in the parameter editor) -- #
 
 
+def iter_stroke_vertices(stroke, epsilon=1e-6):
+    yield stroke[0]
+    for prev, svert in pairwise(stroke):
+        if (prev.point - svert.point).length > epsilon:
+            yield svert
+
+
 class RoundCapShader(StrokeShader):
     def round_cap_thickness(self, x):
         x = max(0.0, min(x, 1.0))
@@ -1138,7 +1146,8 @@ class RoundCapShader(StrokeShader):
 
     def shade(self, stroke):
         # save the location and attribute of stroke vertices
-        buffer = tuple((Vector(sv.point), StrokeAttribute(sv.attribute)) for sv in stroke)
+        buffer = tuple((Vector(sv.point), StrokeAttribute(sv.attribute))
+                       for sv in iter_stroke_vertices(stroke))
         nverts = len(buffer)
         if nverts < 2:
             return
@@ -1186,7 +1195,8 @@ class RoundCapShader(StrokeShader):
 class SquareCapShader(StrokeShader):
     def shade(self, stroke):
         # save the location and attribute of stroke vertices
-        buffer = tuple((Vector(sv.point), StrokeAttribute(sv.attribute)) for sv in stroke)
+        buffer = tuple((Vector(sv.point), StrokeAttribute(sv.attribute))
+                       for sv in iter_stroke_vertices(stroke))
         nverts = len(buffer)
         if nverts < 2:
             return

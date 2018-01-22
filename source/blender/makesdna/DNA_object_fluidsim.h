@@ -88,11 +88,6 @@ typedef struct FluidsimSettings {
 	/* gravity strength */
 	float iniVelx, iniVely, iniVelz;
 
-	/* store pointer to original mesh (for replacing the current one) */
-	struct Mesh *orgMesh;
-	/* a mesh to display the bounding box used for simulation */
-	struct Mesh *meshBB;
-
 	/* store output path, and file prefix for baked fluid surface */
 	/* strlens; 256= FILE_MAXFILE, 768= FILE_MAXDIR */
 	char surfdataPath[1024];
@@ -184,6 +179,7 @@ typedef struct FluidsimSettings {
 #define OB_FLUIDSIM_ACTIVE			(1 << 1)
 #define OB_FLUIDSIM_OVERRIDE_TIME	(1 << 2)
 
+#define OB_FLUIDSIM_SURF_DIR_DEFAULT "cache_fluid"
 #define OB_FLUIDSIM_SURF_PREVIEW_OBJ_FNAME "fluidsurface_preview_####.bobj.gz"
 #define OB_FLUIDSIM_SURF_FINAL_OBJ_FNAME   "fluidsurface_final_####.bobj.gz"
 #define OB_FLUIDSIM_SURF_FINAL_VEL_FNAME   "fluidsurface_final_####.bvel.gz"

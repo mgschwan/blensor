@@ -54,6 +54,7 @@ void ARMATURE_OT_bone_primitive_add(struct wmOperatorType *ot);
 
 void ARMATURE_OT_align(struct wmOperatorType *ot);
 void ARMATURE_OT_calculate_roll(struct wmOperatorType *ot);
+void ARMATURE_OT_roll_clear(struct wmOperatorType *ot);
 void ARMATURE_OT_switch_direction(struct wmOperatorType *ot);
 
 void ARMATURE_OT_subdivide(struct wmOperatorType *ot);
@@ -71,6 +72,7 @@ void ARMATURE_OT_select_similar(struct wmOperatorType *ot);
 void ARMATURE_OT_shortest_path_pick(struct wmOperatorType *ot);
 
 void ARMATURE_OT_delete(struct wmOperatorType *ot);
+void ARMATURE_OT_dissolve(struct wmOperatorType *ot);
 void ARMATURE_OT_duplicate(struct wmOperatorType *ot);
 void ARMATURE_OT_symmetrize(struct wmOperatorType *ot);
 void ARMATURE_OT_extrude(struct wmOperatorType *ot);
@@ -168,6 +170,11 @@ typedef struct tPChanFCurveLink {
 	float oldangle;
 	float oldaxis[3];
 	
+	float roll1, roll2;             /* old bbone values (to be restored along with the transform properties) */
+	float curveInX, curveInY;       /* (NOTE: we haven't renamed these this time, as their names are already long enough) */
+	float curveOutX, curveOutY;
+	float scaleIn, scaleOut;
+	
 	struct IDProperty *oldprops;    /* copy of custom properties at start of operator (to be restored before each modal step) */
 } tPChanFCurveLink;
 
@@ -194,6 +201,7 @@ void POSELIB_OT_action_sanitize(struct wmOperatorType *ot);
 void POSELIB_OT_pose_add(struct wmOperatorType *ot);
 void POSELIB_OT_pose_remove(struct wmOperatorType *ot);
 void POSELIB_OT_pose_rename(struct wmOperatorType *ot);
+void POSELIB_OT_pose_move(struct wmOperatorType *ot);
 
 void POSELIB_OT_browse_interactive(struct wmOperatorType *ot);
 void POSELIB_OT_apply_pose(struct wmOperatorType *ot);
@@ -220,6 +228,7 @@ bool BIF_sk_selectStroke(struct bContext *C, const int mval[2], const bool exten
 
 /* duplicate method */
 void preEditBoneDuplicate(struct ListBase *editbones);
+void postEditBoneDuplicate(struct ListBase *editbones, struct Object *ob);
 struct EditBone *duplicateEditBone(struct EditBone *curBone, const char *name, struct ListBase *editbones, struct Object *ob);
 void updateDuplicateSubtarget(struct EditBone *dupBone, struct ListBase *editbones, struct Object *ob);
 
@@ -234,11 +243,14 @@ EditBone *add_points_bone(struct Object *obedit, float head[3], float tail[3]);
 void bone_free(struct bArmature *arm, struct EditBone *bone);
 
 void armature_tag_select_mirrored(struct bArmature *arm);
+void armature_select_mirrored_ex(struct bArmature *arm, const int flag);
 void armature_select_mirrored(struct bArmature *arm);
 void armature_tag_unselect(struct bArmature *arm);
 
-void *get_nearest_bone(struct bContext *C, short findunsel, int x, int y);
-void *get_bone_from_selectbuffer(struct Scene *scene, struct Base *base, unsigned int *buffer, short hits, short findunsel, bool do_nearest);
+void *get_nearest_bone(struct bContext *C, const int xy[2], bool findunsel);
+void *get_bone_from_selectbuffer(
+        struct Scene *scene, struct Base *base, const unsigned int *buffer, short hits,
+        bool findunsel, bool do_nearest);
 
 int bone_looper(struct Object *ob, struct Bone *bone, void *data,
                 int (*bone_func)(struct Object *, struct Bone *, void *));

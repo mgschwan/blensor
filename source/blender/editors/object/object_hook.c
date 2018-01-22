@@ -254,7 +254,7 @@ static int return_editcurve_indexar(
 	}
 	if (totvert == 0) return 0;
 	
-	*r_indexar = index = MEM_mallocN(4 * totvert, "hook indexar");
+	*r_indexar = index = MEM_mallocN(sizeof(*index) * totvert, "hook indexar");
 	*r_tot = totvert;
 	nr = 0;
 	zero_v3(r_cent);
@@ -316,7 +316,9 @@ static bool object_hook_index_array(Scene *scene, Object *obedit,
 			BMEditMesh *em;
 
 			EDBM_mesh_load(obedit);
-			EDBM_mesh_make(scene->toolsettings, obedit);
+			EDBM_mesh_make(scene->toolsettings, obedit, true);
+
+			DAG_id_tag_update(obedit->data, 0);
 
 			em = me->edit_btmesh;
 
@@ -331,8 +333,8 @@ static bool object_hook_index_array(Scene *scene, Object *obedit,
 		}
 		case OB_CURVE:
 		case OB_SURF:
-			load_editNurb(obedit);
-			make_editNurb(obedit);
+			ED_curve_editnurb_load(obedit);
+			ED_curve_editnurb_make(obedit);
 			return return_editcurve_indexar(obedit, r_tot, r_indexar, r_cent);
 		case OB_LATTICE:
 		{
@@ -448,11 +450,12 @@ static Object *add_hook_object_new(Main *bmain, Scene *scene, Object *obedit)
 	Base *base, *basedit;
 	Object *ob;
 
-	ob = BKE_object_add(bmain, scene, OB_EMPTY);
+	ob = BKE_object_add(bmain, scene, OB_EMPTY, NULL);
 	
 	basedit = BKE_scene_base_find(scene, obedit);
-	base = BKE_scene_base_find(scene, ob);
+	base = scene->basact;
 	base->lay = ob->lay = obedit->lay;
+	BLI_assert(scene->basact->object == ob);
 	
 	/* icky, BKE_object_add sets new base as active.
 	 * so set it back to the original edit object */

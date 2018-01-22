@@ -40,19 +40,24 @@ class FILEBROWSER_HT_header(Header):
         row.operator("file.parent", text="", icon='FILE_PARENT')
         row.operator("file.refresh", text="", icon='FILE_REFRESH')
 
-        row = layout.row()
-        row.separator()
+        layout.separator()
+        layout.operator_context = 'EXEC_DEFAULT'
+        layout.operator("file.directory_new", icon='NEWFOLDER', text="")
+        layout.separator()
 
-        row = layout.row(align=True)
-        layout.operator_context = "EXEC_DEFAULT"
-        row.operator("file.directory_new", icon='NEWFOLDER')
-
-        layout.operator_context = "INVOKE_DEFAULT"
+        layout.operator_context = 'INVOKE_DEFAULT'
         params = st.params
 
         # can be None when save/reload with a file selector open
         if params:
+            is_lib_browser = params.use_library_browsing
+
+            layout.prop(params, "recursion_level", text="")
+
             layout.prop(params, "display_type", expand=True, text="")
+
+            layout.prop(params, "display_size", text="")
+
             layout.prop(params, "sort_method", expand=True, text="")
 
             layout.prop(params, "show_hidden", text="", icon='FILE_HIDDEN')
@@ -64,8 +69,8 @@ class FILEBROWSER_HT_header(Header):
             row.prop(params, "use_filter_folder", text="")
 
             if params.filter_glob:
-                #if st.active_operator and hasattr(st.active_operator, "filter_glob"):
-                #    row.prop(params, "filter_glob", text="")
+                # if st.active_operator and hasattr(st.active_operator, "filter_glob"):
+                #     row.prop(params, "filter_glob", text="")
                 row.label(params.filter_glob)
             else:
                 row.prop(params, "use_filter_blender", text="")
@@ -77,14 +82,22 @@ class FILEBROWSER_HT_header(Header):
                 row.prop(params, "use_filter_sound", text="")
                 row.prop(params, "use_filter_text", text="")
 
+            if is_lib_browser:
+                row.prop(params, "use_filter_blendid", text="")
+                if params.use_filter_blendid:
+                    row.separator()
+                    row.prop(params, "filter_id_category", text="")
+
             row.separator()
             row.prop(params, "filter_search", text="", icon='VIEWZOOM')
+
+        layout.template_running_jobs()
 
 
 class FILEBROWSER_UL_dir(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         direntry = item
-        space = context.space_data
+        # space = context.space_data
         icon = 'NONE'
         if active_propname == "system_folders_active":
             icon = 'DISK_DRIVE'
@@ -99,12 +112,12 @@ class FILEBROWSER_UL_dir(bpy.types.UIList):
             row = layout.row(align=True)
             row.enabled = direntry.is_valid
             # Non-editable entries would show grayed-out, which is bad in this specific case, so switch to mere label.
-            if direntry.is_property_readonly('name'):
+            if direntry.is_property_readonly("name"):
                 row.label(text=direntry.name, icon=icon)
             else:
                 row.prop(direntry, "name", text="", emboss=False, icon=icon)
 
-        elif self.layout_type in {'GRID'}:
+        elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.prop(direntry, "path", text="")
 
@@ -123,6 +136,7 @@ class FILEBROWSER_PT_system_folders(Panel):
             row = layout.row()
             row.template_list("FILEBROWSER_UL_dir", "system_folders", space, "system_folders",
                               space, "system_folders_active", item_dyntip_propname="path", rows=1, maxrows=10)
+
 
 class FILEBROWSER_PT_system_bookmarks(Panel):
     bl_space_type = 'FILE_BROWSER'
@@ -209,5 +223,42 @@ class FILEBROWSER_PT_recent_folders(Panel):
             col.operator("file.reset_recent", icon='X', text="")
 
 
+class FILEBROWSER_PT_advanced_filter(Panel):
+    bl_space_type = 'FILE_BROWSER'
+    bl_region_type = 'TOOLS'
+    bl_category = "Filter"
+    bl_label = "Advanced Filter"
+
+    @classmethod
+    def poll(cls, context):
+        # only useful in append/link (library) context currently...
+        return context.space_data.params.use_library_browsing
+
+    def draw(self, context):
+        layout = self.layout
+        space = context.space_data
+        params = space.params
+
+        if params and params.use_library_browsing:
+            layout.prop(params, "use_filter_blendid")
+            if params.use_filter_blendid:
+                layout.separator()
+                col = layout.column()
+                col.prop(params, "filter_id")
+
+
+classes = (
+    FILEBROWSER_HT_header,
+    FILEBROWSER_UL_dir,
+    FILEBROWSER_PT_system_folders,
+    FILEBROWSER_PT_system_bookmarks,
+    FILEBROWSER_MT_bookmarks_specials,
+    FILEBROWSER_PT_bookmarks,
+    FILEBROWSER_PT_recent_folders,
+    FILEBROWSER_PT_advanced_filter,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

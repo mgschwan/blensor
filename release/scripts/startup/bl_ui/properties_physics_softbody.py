@@ -26,6 +26,9 @@ from bl_ui.properties_physics_common import (
         )
 
 
+COMPAT_OB_TYPES = {'MESH', 'LATTICE', 'CURVE', 'SURFACE', 'FONT'}
+
+
 def softbody_panel_enabled(md):
     return (md.point_cache.is_baked is False)
 
@@ -39,11 +42,12 @@ class PhysicButtonsPanel:
     def poll(cls, context):
         ob = context.object
         rd = context.scene.render
-        return (ob and (ob.type == 'MESH' or ob.type == 'LATTICE'or ob.type == 'CURVE')) and (not rd.use_game_engine) and (context.soft_body)
+        return ob and ob.type in COMPAT_OB_TYPES and rd.engine in cls.COMPAT_ENGINES and context.soft_body
 
 
 class PHYSICS_PT_softbody(PhysicButtonsPanel, Panel):
     bl_label = "Soft Body"
+    COMPAT_ENGINES = {'BLENDER_RENDER'}
 
     def draw(self, context):
         layout = self.layout
@@ -67,10 +71,13 @@ class PHYSICS_PT_softbody(PhysicButtonsPanel, Panel):
         col.label(text="Simulation:")
         col.prop(softbody, "speed")
 
+        layout.prop(softbody, "collision_group")
+
 
 class PHYSICS_PT_softbody_cache(PhysicButtonsPanel, Panel):
     bl_label = "Soft Body Cache"
     bl_options = {'DEFAULT_CLOSED'}
+    COMPAT_ENGINES = {'BLENDER_RENDER'}
 
     def draw(self, context):
         md = context.soft_body
@@ -80,6 +87,7 @@ class PHYSICS_PT_softbody_cache(PhysicButtonsPanel, Panel):
 class PHYSICS_PT_softbody_goal(PhysicButtonsPanel, Panel):
     bl_label = "Soft Body Goal"
     bl_options = {'DEFAULT_CLOSED'}
+    COMPAT_ENGINES = {'BLENDER_RENDER'}
 
     def draw_header(self, context):
         softbody = context.soft_body.settings
@@ -119,6 +127,7 @@ class PHYSICS_PT_softbody_goal(PhysicButtonsPanel, Panel):
 class PHYSICS_PT_softbody_edge(PhysicButtonsPanel, Panel):
     bl_label = "Soft Body Edges"
     bl_options = {'DEFAULT_CLOSED'}
+    COMPAT_ENGINES = {'BLENDER_RENDER'}
 
     def draw_header(self, context):
         softbody = context.soft_body.settings
@@ -168,6 +177,7 @@ class PHYSICS_PT_softbody_edge(PhysicButtonsPanel, Panel):
 class PHYSICS_PT_softbody_collision(PhysicButtonsPanel, Panel):
     bl_label = "Soft Body Self Collision"
     bl_options = {'DEFAULT_CLOSED'}
+    COMPAT_ENGINES = {'BLENDER_RENDER'}
 
     def draw_header(self, context):
         softbody = context.soft_body.settings
@@ -184,7 +194,7 @@ class PHYSICS_PT_softbody_collision(PhysicButtonsPanel, Panel):
         layout.active = softbody.use_self_collision and softbody_panel_enabled(md)
 
         layout.label(text="Collision Ball Size Calculation:")
-        layout.prop(softbody, "collision_type", expand=True)
+        layout.row().prop(softbody, "collision_type", expand=True)
 
         col = layout.column(align=True)
         col.label(text="Ball:")
@@ -196,6 +206,7 @@ class PHYSICS_PT_softbody_collision(PhysicButtonsPanel, Panel):
 class PHYSICS_PT_softbody_solver(PhysicButtonsPanel, Panel):
     bl_label = "Soft Body Solver"
     bl_options = {'DEFAULT_CLOSED'}
+    COMPAT_ENGINES = {'BLENDER_RENDER'}
 
     def draw(self, context):
         layout = self.layout
@@ -228,6 +239,7 @@ class PHYSICS_PT_softbody_solver(PhysicButtonsPanel, Panel):
 class PHYSICS_PT_softbody_field_weights(PhysicButtonsPanel, Panel):
     bl_label = "Soft Body Field Weights"
     bl_options = {'DEFAULT_CLOSED'}
+    COMPAT_ENGINES = {'BLENDER_RENDER'}
 
     def draw(self, context):
         md = context.soft_body
@@ -235,5 +247,18 @@ class PHYSICS_PT_softbody_field_weights(PhysicButtonsPanel, Panel):
 
         effector_weights_ui(self, context, softbody.effector_weights, 'SOFTBODY')
 
+
+classes = (
+    PHYSICS_PT_softbody,
+    PHYSICS_PT_softbody_cache,
+    PHYSICS_PT_softbody_goal,
+    PHYSICS_PT_softbody_edge,
+    PHYSICS_PT_softbody_collision,
+    PHYSICS_PT_softbody_solver,
+    PHYSICS_PT_softbody_field_weights,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

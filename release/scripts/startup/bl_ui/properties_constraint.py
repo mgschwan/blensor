@@ -38,7 +38,8 @@ class ConstraintButtonsPanel:
             if con.type not in {'RIGID_BODY_JOINT', 'NULL'}:
                 box.prop(con, "influence")
 
-    def space_template(self, layout, con, target=True, owner=True):
+    @staticmethod
+    def space_template(layout, con, target=True, owner=True):
         if target or owner:
 
             split = layout.split(percentage=0.2)
@@ -55,7 +56,8 @@ class ConstraintButtonsPanel:
             if owner:
                 row.prop(con, "owner_space", text="")
 
-    def target_template(self, layout, con, subtargets=True):
+    @staticmethod
+    def target_template(layout, con, subtargets=True):
         layout.prop(con, "target")  # XXX limiting settings for only 'curves' or some type of object
 
         if con.target and subtargets:
@@ -63,13 +65,15 @@ class ConstraintButtonsPanel:
                 layout.prop_search(con, "subtarget", con.target.data, "bones", text="Bone")
 
                 if hasattr(con, "head_tail"):
-                    row = layout.row()
+                    row = layout.row(align=True)
                     row.label(text="Head/Tail:")
                     row.prop(con, "head_tail", text="")
+                    row.prop(con, "use_bbone_shape", text="", icon='IPO_BEZIER')  # XXX icon, and only when bone has segments?
             elif con.target.type in {'MESH', 'LATTICE'}:
                 layout.prop_search(con, "subtarget", con.target, "vertex_groups", text="Vertex Group")
 
-    def ik_template(self, layout, con):
+    @staticmethod
+    def ik_template(layout, con):
         # only used for iTaSC
         layout.prop(con, "pole_target")
 
@@ -437,7 +441,7 @@ class ConstraintButtonsPanel:
 
         self.space_template(layout, con)
 
-    #def SCRIPT(self, context, layout, con):
+    # def SCRIPT(self, context, layout, con):
 
     def ACTION(self, context, layout, con):
         self.target_template(layout, con)
@@ -876,6 +880,19 @@ class ConstraintButtonsPanel:
 
         layout.operator("clip.constraint_to_fcurve")
 
+    def TRANSFORM_CACHE(self, context, layout, con):
+        layout.label(text="Cache File Properties:")
+        box = layout.box()
+        box.template_cache_file(con, "cache_file")
+
+        cache_file = con.cache_file
+
+        layout.label(text="Constraint Properties:")
+        box = layout.box()
+
+        if cache_file is not None:
+            box.prop_search(con, "object_path", cache_file, "object_paths")
+
     def SCRIPT(self, context, layout, con):
         layout.label("Blender 2.6 doesn't support python constraints yet")
 
@@ -894,7 +911,7 @@ class OBJECT_PT_constraints(ConstraintButtonsPanel, Panel):
 
         obj = context.object
 
-        if obj.type == 'ARMATURE' and obj.mode in {'POSE'}:
+        if obj.type == 'ARMATURE' and obj.mode == 'POSE':
             box = layout.box()
             box.alert = True  # XXX: this should apply to the box background
             box.label(icon='INFO', text="Constraints for active bone do not live here")
@@ -924,5 +941,12 @@ class BONE_PT_constraints(ConstraintButtonsPanel, Panel):
         for con in context.pose_bone.constraints:
             self.draw_constraint(context, con)
 
+classes = (
+    OBJECT_PT_constraints,
+    BONE_PT_constraints,
+)
+
 if __name__ == "__main__":  # only for live edit.
-    bpy.utils.register_module(__name__)
+    from bpy.utils import register_class
+    for cls in classes:
+        register_class(cls)

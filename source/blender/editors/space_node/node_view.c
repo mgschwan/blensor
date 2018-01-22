@@ -292,7 +292,7 @@ void NODE_OT_backimage_move(wmOperatorType *ot)
 	ot->cancel = snode_bg_viewmove_cancel;
 
 	/* flags */
-	ot->flag = OPTYPE_BLOCKING | OPTYPE_GRAB_POINTER;
+	ot->flag = OPTYPE_BLOCKING | OPTYPE_GRAB_CURSOR;
 }
 
 static int backimage_zoom_exec(bContext *C, wmOperator *op)
@@ -345,7 +345,7 @@ static int backimage_fit_exec(bContext *C, wmOperator *UNUSED(op))
 	ima = BKE_image_verify_viewer(IMA_TYPE_COMPOSITE, "Viewer Node");
 	ibuf = BKE_image_acquire_ibuf(ima, NULL, &lock);
 
-	if (ibuf == NULL) {
+	if ((ibuf == NULL) || (ibuf->x == 0) || (ibuf->y == 0)) {
 		BKE_image_release_ibuf(ima, ibuf, lock);
 		return OPERATOR_CANCELLED;
 	}
@@ -417,20 +417,18 @@ static void sample_draw(const bContext *C, ARegion *ar, void *arg_info)
 	}
 }
 
-/* Returns color in the display space, matching ED_space_image_color_sample().
+/* Returns color in linear space, matching ED_space_image_color_sample().
  * And here we've got recursion in the comments tips...
  */
-bool ED_space_node_color_sample(Scene *scene, SpaceNode *snode, ARegion *ar, int mval[2], float r_col[3])
+bool ED_space_node_color_sample(SpaceNode *snode, ARegion *ar, int mval[2], float r_col[3])
 {
-	const char *display_device = scene->display_settings.display_device;
-	struct ColorManagedDisplay *display = IMB_colormanagement_display_get_named(display_device);
 	void *lock;
 	Image *ima;
 	ImBuf *ibuf;
 	float fx, fy, bufx, bufy;
 	bool ret = false;
 
-	if (STREQ(snode->tree_idname, ntreeType_Composite->idname) || (snode->flag & SNODE_BACKDRAW) == 0) {
+	if (!ED_node_is_compositor(snode) || (snode->flag & SNODE_BACKDRAW) == 0) {
 		/* use viewer image for color sampling only if we're in compositor tree
 		 * with backdrop enabled
 		 */
@@ -469,10 +467,6 @@ bool ED_space_node_color_sample(Scene *scene, SpaceNode *snode, ARegion *ar, int
 			IMB_colormanagement_colorspace_to_scene_linear_v3(r_col, ibuf->rect_colorspace);
 			ret = true;
 		}
-	}
-
-	if (ret) {
-		IMB_colormanagement_scene_linear_to_display_v3(r_col, display);
 	}
 
 	BKE_image_release_ibuf(ima, ibuf, lock);
@@ -609,8 +603,11 @@ static int sample_modal(bContext *C, wmOperator *op, const wmEvent *event)
 	switch (event->type) {
 		case LEFTMOUSE:
 		case RIGHTMOUSE: // XXX hardcoded
-			sample_exit(C, op);
-			return OPERATOR_CANCELLED;
+			if (event->val == KM_RELEASE) {
+				sample_exit(C, op);
+				return OPERATOR_CANCELLED;
+			}
+			break;
 		case MOUSEMOVE:
 			sample_apply(C, op, event);
 			break;

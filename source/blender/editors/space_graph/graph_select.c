@@ -83,7 +83,7 @@
  *		2 = invert
  *	- do_channels: whether to affect selection status of channels
  */
-static void deselect_graph_keys(bAnimContext *ac, short test, short sel, short do_channels)
+void deselect_graph_keys(bAnimContext *ac, bool test, short sel, bool do_channels)
 {
 	ListBase anim_data = {NULL, NULL};
 	bAnimListElem *ale;
@@ -198,7 +198,7 @@ void GRAPH_OT_select_all_toggle(wmOperatorType *ot)
 	ot->poll = graphop_visible_keyframes_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER /*|OPTYPE_UNDO*/;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* props */
 	ot->prop = RNA_def_boolean(ot->srna, "invert", 0, "Invert", "");
@@ -210,6 +210,8 @@ void GRAPH_OT_select_all_toggle(wmOperatorType *ot)
  *	-> ALT-BKEY - depending on which axis of the region was larger...
  *		-> 2) x-axis, so select all frames within frame range (validation with BEZT_OK_FRAMERANGE)
  *		-> 3) y-axis, so select all frames within channels that region included (validation with BEZT_OK_VALUERANGE)
+ *
+ * The selection backend is also reused for the Lasso and Circle select operators.
  */
 
 /* Borderselect only selects keyframes now, as overshooting handles often get caught too,
@@ -245,12 +247,12 @@ static void borderselect_graphkeys(
 	/* init editing data */
 	memset(&ked, 0, sizeof(KeyframeEditData));
 	if (mode == BEZT_OK_REGION_LASSO) {
-		struct KeyframeEdit_LassoData *data_lasso = data;
+		KeyframeEdit_LassoData *data_lasso = data;
 		data_lasso->rectf_scaled = &scaled_rectf;
 		ked.data = data_lasso;
 	}
 	else if (mode == BEZT_OK_REGION_CIRCLE) {
-		struct KeyframeEdit_CircleData *data_circle = data;
+		KeyframeEdit_CircleData *data_circle = data;
 		data_circle->rectf_scaled = &scaled_rectf;
 		ked.data = data;
 	}
@@ -265,26 +267,27 @@ static void borderselect_graphkeys(
 	}
 	else
 		mapping_flag = ANIM_UNITCONV_ONLYKEYS;
-
+	
 	mapping_flag |= ANIM_get_normalization_flags(ac);
-
+	
 	/* loop over data, doing border select */
 	for (ale = anim_data.first; ale; ale = ale->next) {
 		AnimData *adt = ANIM_nla_mapping_get(ac, ale);
 		FCurve *fcu = (FCurve *)ale->key_data;
-		float unit_scale = ANIM_unit_mapping_get_factor(ac->scene, ale->id, fcu, mapping_flag);
-
+		float offset;
+		float unit_scale = ANIM_unit_mapping_get_factor(ac->scene, ale->id, fcu, mapping_flag, &offset);
+		
 		/* apply NLA mapping to all the keyframes, since it's easier than trying to
 		 * guess when a callback might use something different
 		 */
 		if (adt)
 			ANIM_nla_mapping_apply_fcurve(adt, ale->key_data, 0, incl_handles == 0);
-
+		
 		scaled_rectf.xmin = rectf.xmin;
 		scaled_rectf.xmax = rectf.xmax;
-		scaled_rectf.ymin = rectf.ymin / unit_scale;
-		scaled_rectf.ymax = rectf.ymax / unit_scale;
-
+		scaled_rectf.ymin = rectf.ymin / unit_scale - offset;
+		scaled_rectf.ymax = rectf.ymax / unit_scale - offset;
+		
 		/* set horizontal range (if applicable) 
 		 * NOTE: these values are only used for x-range and y-range but not region 
 		 *      (which uses ked.data, i.e. rectf)
@@ -396,7 +399,7 @@ void GRAPH_OT_select_border(wmOperatorType *ot)
 	ot->poll = graphop_visible_keyframes_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER /*|OPTYPE_UNDO*/;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* rna */
 	WM_operator_properties_gesture_border(ot, true);
@@ -405,37 +408,41 @@ void GRAPH_OT_select_border(wmOperatorType *ot)
 	RNA_def_boolean(ot->srna, "include_handles", 0, "Include Handles", "Are handles tested individually against the selection criteria");
 }
 
+
+/* ------------------- */
+
 static int graphkeys_lassoselect_exec(bContext *C, wmOperator *op)
 {
 	bAnimContext ac;
+	
+	KeyframeEdit_LassoData data_lasso = {0};
 	rcti rect;
 	rctf rect_fl;
+	
 	short selectmode;
 	bool incl_handles;
 	bool extend;
-
-	struct KeyframeEdit_LassoData data_lasso;
-
+	
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-
+	
 	data_lasso.rectf_view = &rect_fl;
 	data_lasso.mcords = WM_gesture_lasso_path_to_array(C, op, &data_lasso.mcords_tot);
 	if (data_lasso.mcords == NULL)
 		return OPERATOR_CANCELLED;
-
+	
 	/* clear all selection if not extending selection */
 	extend = RNA_boolean_get(op->ptr, "extend");
 	if (!extend)
 		deselect_graph_keys(&ac, 1, SELECT_SUBTRACT, true);
-
+	
 	if (!RNA_boolean_get(op->ptr, "deselect"))
 		selectmode = SELECT_ADD;
 	else
 		selectmode = SELECT_SUBTRACT;
-
-	if (ac.spacetype == SPACE_IPO) {
+	
+	{
 		SpaceIpo *sipo = (SpaceIpo *)ac.sl;
 		if (selectmode == SELECT_ADD) {
 			incl_handles = ((sipo->flag & SIPO_SELVHANDLESONLY) ||
@@ -445,28 +452,21 @@ static int graphkeys_lassoselect_exec(bContext *C, wmOperator *op)
 			incl_handles = (sipo->flag & SIPO_NOHANDLES) == 0;
 		}
 	}
-	else {
-		incl_handles = false;
-	}
-
-
+	
 	/* get settings from operator */
 	BLI_lasso_boundbox(&rect, data_lasso.mcords, data_lasso.mcords_tot);
-
 	BLI_rctf_rcti_copy(&rect_fl, &rect);
-
+	
 	/* apply borderselect action */
 	borderselect_graphkeys(&ac, &rect_fl, BEZT_OK_REGION_LASSO, selectmode, incl_handles, &data_lasso);
-
+	
 	MEM_freeN((void *)data_lasso.mcords);
-
-
+	
 	/* send notifier that keyframe selection has changed */
 	WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_SELECTED, NULL);
-
+	
 	return OPERATOR_FINISHED;
 }
-
 
 void GRAPH_OT_select_lasso(wmOperatorType *ot)
 {
@@ -474,31 +474,35 @@ void GRAPH_OT_select_lasso(wmOperatorType *ot)
 	ot->name = "Lasso Select";
 	ot->description = "Select keyframe points using lasso selection";
 	ot->idname = "GRAPH_OT_select_lasso";
-
+	
 	/* api callbacks */
 	ot->invoke = WM_gesture_lasso_invoke;
 	ot->modal = WM_gesture_lasso_modal;
 	ot->exec = graphkeys_lassoselect_exec;
 	ot->poll = graphop_visible_keyframes_poll;
 	ot->cancel = WM_gesture_lasso_cancel;
-
+	
 	/* flags */
 	ot->flag = OPTYPE_UNDO;
-
+	
 	/* properties */
 	RNA_def_collection_runtime(ot->srna, "path", &RNA_OperatorMousePath, "Path", "");
 	RNA_def_boolean(ot->srna, "deselect", false, "Deselect", "Deselect rather than select items");
 	RNA_def_boolean(ot->srna, "extend", true, "Extend", "Extend selection instead of deselecting everything first");
 }
 
+/* ------------------- */
+
 static int graph_circle_select_exec(bContext *C, wmOperator *op)
 {
 	bAnimContext ac;
 	const int gesture_mode = RNA_int_get(op->ptr, "gesture_mode");
-	short selectmode;
-	bool incl_handles;
+	const short selectmode = (gesture_mode == GESTURE_MODAL_SELECT) ? SELECT_ADD : SELECT_SUBTRACT;
+	bool incl_handles = false;
+	
+	KeyframeEdit_CircleData data = {0};
 	rctf rect_fl;
-	struct KeyframeEdit_CircleData data;
+	
 	float x = RNA_int_get(op->ptr, "x");
 	float y = RNA_int_get(op->ptr, "y");
 	float radius = RNA_int_get(op->ptr, "radius");
@@ -506,23 +510,18 @@ static int graph_circle_select_exec(bContext *C, wmOperator *op)
 	/* get editor data */
 	if (ANIM_animdata_get_context(C, &ac) == 0)
 		return OPERATOR_CANCELLED;
-
+	
 	data.mval[0] = x;
 	data.mval[1] = y;
 	data.radius_squared = radius * radius;
 	data.rectf_view = &rect_fl;
 	
-	if (gesture_mode == GESTURE_MODAL_SELECT)
-		selectmode = SELECT_ADD;
-	else
-		selectmode = SELECT_SUBTRACT;
-
 	rect_fl.xmin = x - radius;
 	rect_fl.xmax = x + radius;
 	rect_fl.ymin = y - radius;
 	rect_fl.ymax = y + radius;
 	
-	if (ac.spacetype == SPACE_IPO) {
+	{
 		SpaceIpo *sipo = (SpaceIpo *)ac.sl;
 		if (selectmode == SELECT_ADD) {
 			incl_handles = ((sipo->flag & SIPO_SELVHANDLESONLY) ||
@@ -532,10 +531,7 @@ static int graph_circle_select_exec(bContext *C, wmOperator *op)
 			incl_handles = (sipo->flag & SIPO_NOHANDLES) == 0;
 		}
 	}
-	else {
-		incl_handles = false;
-	}
-
+	
 	/* apply borderselect action */
 	borderselect_graphkeys(&ac, &rect_fl, BEZT_OK_REGION_CIRCLE, selectmode, incl_handles, &data);
 	
@@ -743,7 +739,7 @@ void GRAPH_OT_select_column(wmOperatorType *ot)
 	ot->poll = graphop_visible_keyframes_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER /*|OPTYPE_UNDO*/;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 	
 	/* props */
 	ot->prop = RNA_def_enum(ot->srna, "mode", prop_column_select_types, 0, "Mode", "");
@@ -801,7 +797,7 @@ void GRAPH_OT_select_linked(wmOperatorType *ot)
 	ot->poll = graphop_visible_keyframes_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER /*|OPTYPE_UNDO*/;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
 /* ******************** Select More/Less Operators *********************** */
@@ -879,7 +875,7 @@ void GRAPH_OT_select_more(wmOperatorType *ot)
 	ot->poll = graphop_visible_keyframes_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER /*|OPTYPE_UNDO*/;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
 /* ----------------- */
@@ -913,7 +909,7 @@ void GRAPH_OT_select_less(wmOperatorType *ot)
 	ot->poll = graphop_visible_keyframes_poll;
 	
 	/* flags */
-	ot->flag = OPTYPE_REGISTER /*|OPTYPE_UNDO*/;
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 }
 
 /* ******************** Select Left/Right Operator ************************* */
@@ -1089,6 +1085,8 @@ typedef struct tNearestVertInfo {
 	short hpoint;       /* the handle index that we hit (eHandleIndex) */
 	short sel;          /* whether the handle is selected or not */
 	int dist;           /* distance from mouse to vert */
+	
+	eAnim_ChannelType ctype; /* type of animation channel this FCurve comes from */
 } tNearestVertInfo;
 
 /* Tags for the type of graph vert that we have */
@@ -1109,15 +1107,15 @@ typedef enum eGraphVertIndex {
 static bool fcurve_handle_sel_check(SpaceIpo *sipo, BezTriple *bezt)
 {
 	if (sipo->flag & SIPO_NOHANDLES) return 0;
-	if ((sipo->flag & SIPO_SELVHANDLESONLY) && BEZSELECTED(bezt) == 0) return 0;
+	if ((sipo->flag & SIPO_SELVHANDLESONLY) && BEZT_ISSEL_ANY(bezt) == 0) return 0;
 	return 1;
 }
 
 /* check if the given vertex is within bounds or not */
 // TODO: should we return if we hit something?
 static void nearest_fcurve_vert_store(
-        ListBase *matches, View2D *v2d, FCurve *fcu,
-        BezTriple *bezt, FPoint *fpt, short hpoint, const int mval[2], float unit_scale)
+        ListBase *matches, View2D *v2d, FCurve *fcu, eAnim_ChannelType ctype,
+        BezTriple *bezt, FPoint *fpt, short hpoint, const int mval[2], float unit_scale, float offset)
 {
 	/* Keyframes or Samples? */
 	if (bezt) {
@@ -1129,7 +1127,7 @@ static void nearest_fcurve_vert_store(
 		 *  'vec' matrix
 		 */
 		if (UI_view2d_view_to_region_clip(v2d,
-		                                  bezt->vec[hpoint + 1][0], bezt->vec[hpoint + 1][1] * unit_scale,
+		                                  bezt->vec[hpoint + 1][0], (bezt->vec[hpoint + 1][1] + offset) * unit_scale,
 		                                  &screen_co[0], &screen_co[1]) &&
 		    /* check if distance from mouse cursor to vert in screen space is within tolerance */
 		    ((dist = len_v2v2_int(mval, screen_co)) <= GVERTSEL_TOL))
@@ -1140,7 +1138,7 @@ static void nearest_fcurve_vert_store(
 			/* if there is already a point for the F-Curve, check if this point is closer than that was */
 			if ((nvi) && (nvi->fcu == fcu)) {
 				/* replace if we are closer, or if equal and that one wasn't selected but we are... */
-				if ((nvi->dist > dist) || ((nvi->sel == 0) && BEZSELECTED(bezt)))
+				if ((nvi->dist > dist) || ((nvi->sel == 0) && BEZT_ISSEL_ANY(bezt)))
 					replace = 1;
 			}
 			/* add new if not replacing... */
@@ -1149,11 +1147,13 @@ static void nearest_fcurve_vert_store(
 			
 			/* store values */
 			nvi->fcu = fcu;
+			nvi->ctype = ctype;
+			
 			nvi->bezt = bezt;
 			nvi->hpoint = hpoint;
 			nvi->dist = dist;
 			
-			nvi->sel = BEZSELECTED(bezt); // XXX... should this use the individual verts instead?
+			nvi->sel = BEZT_ISSEL_ANY(bezt); // XXX... should this use the individual verts instead?
 			
 			/* add to list of matches if appropriate... */
 			if (replace == 0)
@@ -1189,30 +1189,31 @@ static void get_nearest_fcurve_verts_list(bAnimContext *ac, const int mval[2], L
 	for (ale = anim_data.first; ale; ale = ale->next) {
 		FCurve *fcu = (FCurve *)ale->key_data;
 		AnimData *adt = ANIM_nla_mapping_get(ac, ale);
-		float unit_scale = ANIM_unit_mapping_get_factor(ac->scene, ale->id, fcu, mapping_flag);
-
+		float offset;
+		float unit_scale = ANIM_unit_mapping_get_factor(ac->scene, ale->id, fcu, mapping_flag, &offset);
+		
 		/* apply NLA mapping to all the keyframes */
 		if (adt)
 			ANIM_nla_mapping_apply_fcurve(adt, ale->key_data, 0, 0);
-
+		
 		if (fcu->bezt) {
 			BezTriple *bezt1 = fcu->bezt, *prevbezt = NULL;
 			int i;
 			
 			for (i = 0; i < fcu->totvert; i++, prevbezt = bezt1, bezt1++) {
 				/* keyframe */
-				nearest_fcurve_vert_store(matches, v2d, fcu, bezt1, NULL, NEAREST_HANDLE_KEY, mval, unit_scale);
+				nearest_fcurve_vert_store(matches, v2d, fcu, ale->type, bezt1, NULL, NEAREST_HANDLE_KEY, mval, unit_scale, offset);
 				
 				/* handles - only do them if they're visible */
 				if (fcurve_handle_sel_check(sipo, bezt1) && (fcu->totvert > 1)) {
 					/* first handle only visible if previous segment had handles */
 					if ((!prevbezt && (bezt1->ipo == BEZT_IPO_BEZ)) || (prevbezt && (prevbezt->ipo == BEZT_IPO_BEZ))) {
-						nearest_fcurve_vert_store(matches, v2d, fcu, bezt1, NULL, NEAREST_HANDLE_LEFT, mval, unit_scale);
+						nearest_fcurve_vert_store(matches, v2d, fcu, ale->type, bezt1, NULL, NEAREST_HANDLE_LEFT, mval, unit_scale, offset);
 					}
 					
 					/* second handle only visible if this segment is bezier */
 					if (bezt1->ipo == BEZT_IPO_BEZ) {
-						nearest_fcurve_vert_store(matches, v2d, fcu, bezt1, NULL, NEAREST_HANDLE_RIGHT, mval, unit_scale);
+						nearest_fcurve_vert_store(matches, v2d, fcu, ale->type, bezt1, NULL, NEAREST_HANDLE_RIGHT, mval, unit_scale, offset);
 					}
 				}
 			}
@@ -1332,11 +1333,11 @@ static void mouse_graph_keys(bAnimContext *ac, const int mval[2], short select_m
 			if (select_mode == SELECT_INVERT) {
 				/* keyframe - invert select of all */
 				if (nvi->hpoint == NEAREST_HANDLE_KEY) {
-					if (BEZSELECTED(bezt)) {
-						BEZ_DESEL(bezt);
+					if (BEZT_ISSEL_ANY(bezt)) {
+						BEZT_DESEL_ALL(bezt);
 					}
 					else {
-						BEZ_SEL(bezt);
+						BEZT_SEL_ALL(bezt);
 					}
 				}
 				
@@ -1353,7 +1354,7 @@ static void mouse_graph_keys(bAnimContext *ac, const int mval[2], short select_m
 			else {
 				/* if the keyframe was clicked on, select all verts of given beztriple */
 				if (nvi->hpoint == NEAREST_HANDLE_KEY) {
-					BEZ_SEL(bezt);
+					BEZT_SEL_ALL(bezt);
 				}
 				/* otherwise, select the handle that applied */
 				else if (nvi->hpoint == NEAREST_HANDLE_LEFT) 
@@ -1387,7 +1388,7 @@ static void mouse_graph_keys(bAnimContext *ac, const int mval[2], short select_m
 			/* take selection status from item that got hit, to prevent flip/flop on channel 
 			 * selection status when shift-selecting (i.e. "SELECT_INVERT") points
 			 */
-			if (BEZSELECTED(bezt))
+			if (BEZT_ISSEL_ANY(bezt))
 				nvi->fcu->flag |= FCURVE_SELECTED;
 			else
 				nvi->fcu->flag &= ~FCURVE_SELECTED;
@@ -1405,7 +1406,7 @@ static void mouse_graph_keys(bAnimContext *ac, const int mval[2], short select_m
 	/* needs to be called with (sipo->flag & SIPO_SELCUVERTSONLY) otherwise the active flag won't be set [#26452] */
 	if (nvi->fcu->flag & FCURVE_SELECTED) {
 		int filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_CURVE_VISIBLE | ANIMFILTER_NODUPLIS);
-		ANIM_set_active_channel(ac, ac->data, ac->datatype, filter, nvi->fcu, ANIMTYPE_FCURVE);
+		ANIM_set_active_channel(ac, ac->data, ac->datatype, filter, nvi->fcu, nvi->ctype);
 	}
 
 	/* free temp sample data for filtering */

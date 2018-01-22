@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "BLI_utildefines.h"
 #include "BLI_system.h"
 
 #include "MEM_guardedalloc.h"
@@ -34,7 +35,7 @@
 #  include <execinfo.h>
 #elif defined(WIN32)
 #  include <windows.h>
-#  include <DbgHelp.h>
+#  include <dbghelp.h>
 #endif
 
 int BLI_cpu_support_sse2(void)
@@ -99,8 +100,7 @@ void BLI_system_backtrace(FILE *fp)
 	/* Windows  */
 #elif defined(_MSC_VER)
 
-	(void)fp;
-#if defined WIN32
+#ifndef NDEBUG
 #define MAXSYMBOL 256
 #define SIZE 100
 	unsigned short i;
@@ -127,11 +127,12 @@ void BLI_system_backtrace(FILE *fp)
 	MEM_freeN(symbolinfo);
 #undef MAXSYMBOL
 #undef SIZE
-#endif
-
+#else
+	fprintf(fp, "Crash backtrace not supported on release builds\n");
+#endif /* NDEBUG */
+#else /* _MSC_VER */
 	/* ------------------ */
 	/* non msvc/osx/linux */
-#else
 	(void)fp;
 #endif
 

@@ -125,6 +125,9 @@ static int  RE_rayobject_instance_intersect(RayObject *o, Isect *isec)
 		isec->bv_index[2 * i + 1] = i + 3 * isec->bv_index[2 * i + 1];
 	}
 
+	// Pre-calculate orientation for watertight intersection checks.
+	isect_ray_tri_watertight_v3_precalc(&isec->isect_precalc, isec->dir);
+
 	// raycast
 	res = RE_rayobject_intersect(obj->target, isec);
 
@@ -168,6 +171,9 @@ static int  RE_rayobject_instance_intersect(RayObject *o, Isect *isec)
 		isec->bv_index[2 * i + 1] = i + 3 * isec->bv_index[2 * i + 1];
 	}
 
+	// Pre-calculate orientation for watertight intersection checks.
+	isect_ray_tri_watertight_v3_precalc(&isec->isect_precalc, isec->dir);
+
 	return res;
 }
 
@@ -197,7 +203,7 @@ static void RE_rayobject_instance_bb(RayObject *o, float *min, float *max)
 
 	//There must be a faster way than rotating all the 8 vertexs of the BB
 	for (i = 0; i < 8; i++) {
-		for (j = 0; j < 3; j++) t[j] = i & (1 << j) ? M[j] : m[j];
+		for (j = 0; j < 3; j++) t[j] = (i & (1 << j)) ? M[j] : m[j];
 		mul_m4_v3(obj->target2global, t);
 		DO_MINMAX(t, min, max);
 	}

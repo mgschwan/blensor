@@ -46,8 +46,6 @@ struct bItasc;
 struct bPoseChannel;
 struct Main;
 struct Object;
-struct Scene;
-struct ID;
 
 /* Kernel prototypes */
 #ifdef __cplusplus
@@ -60,13 +58,12 @@ extern "C" {
 struct bAction *add_empty_action(struct Main *bmain, const char name[]);
 
 /* Allocate a copy of the given Action and all its data */	
-struct bAction *BKE_action_copy(struct bAction *src);
+struct bAction *BKE_action_copy(struct Main *bmain, const struct bAction *src);
 
 /* Deallocate all of the Action's data, but not the Action itself */
 void BKE_action_free(struct bAction *act);
 
-// XXX is this needed?
-void BKE_action_make_local(struct bAction *act);
+void BKE_action_make_local(struct Main *bmain, struct bAction *act, const bool lib_local);
 
 
 /* Action API ----------------- */
@@ -81,12 +78,15 @@ typedef enum eAction_TransformFlags {
 	ACT_TRANS_ROT   = (1 << 1),
 	/* scaling */
 	ACT_TRANS_SCALE = (1 << 2),
-
+	
+	/* bbone shape - for all the parameters, provided one is set */
+	ACT_TRANS_BBONE = (1 << 3),
+	
 	/* strictly not a transform, but custom properties are also
 	 * quite often used in modern rigs
 	 */
-	ACT_TRANS_PROP  = (1 << 3),
-
+	ACT_TRANS_PROP  = (1 << 4),
+	
 	/* all flags */
 	ACT_TRANS_ONLY  = (ACT_TRANS_LOC | ACT_TRANS_ROT | ACT_TRANS_SCALE),
 	ACT_TRANS_ALL   = (ACT_TRANS_ONLY | ACT_TRANS_PROP)
@@ -142,9 +142,15 @@ void                 BKE_pose_channels_free_ex(struct bPose *pose, bool do_id_us
 void                 BKE_pose_channels_hash_make(struct bPose *pose);
 void                 BKE_pose_channels_hash_free(struct bPose *pose);
 
+void BKE_pose_channels_remove(
+        struct Object *ob,
+        bool (*filter_fn)(const char *bone_name, void *user_data), void *user_data);
+
+void                 BKE_pose_free_data_ex(struct bPose *pose, bool do_id_user);
+void                 BKE_pose_free_data(struct bPose *pose);
 void                 BKE_pose_free(struct bPose *pose);
 void                 BKE_pose_free_ex(struct bPose *pose, bool do_id_user);
-void                 BKE_pose_copy_data(struct bPose **dst, struct bPose *src, const bool copy_constraints);
+void                 BKE_pose_copy_data(struct bPose **dst, const struct bPose *src, const bool copy_constraints);
 void                 BKE_pose_channel_copy_data(struct bPoseChannel *pchan, const struct bPoseChannel *pchan_from);
 struct bPoseChannel *BKE_pose_channel_find_name(const struct bPose *pose, const char *name);
 struct bPoseChannel *BKE_pose_channel_active(struct Object *ob);
@@ -199,6 +205,9 @@ void what_does_obaction(struct Object *ob, struct Object *workob, struct bPose *
 bool BKE_pose_copy_result(struct bPose *to, struct bPose *from);
 /* clear all transforms */
 void BKE_pose_rest(struct bPose *pose);
+
+/* Tag pose for recalc. Also tag all related data to be recalc. */
+void BKE_pose_tag_recalc(struct Main *bmain, struct bPose *pose);
 
 #ifdef __cplusplus
 };

@@ -22,13 +22,14 @@ set(INC
 	../include
 	../../blenkernel
 	../../blenlib
-	../../blenfont
+	../../blentranslation
 	../../bmesh
 	../../gpu
 	../../makesdna
 	../../makesrna
 	../../windowmanager
 	../../../../intern/guardedalloc
+	../../../../intern/eigen
 	../../../../intern/glew-mx
 )
 
@@ -50,13 +51,6 @@ set(SRC
 
 if(WITH_INTERNATIONAL)
 	add_definitions(-DWITH_INTERNATIONAL)
-endif()
-
-if(WITH_OPENNL)
-	add_definitions(-DWITH_OPENNL)
-	list(APPEND INC_SYS
-		../../../../intern/opennl/extern
-	)
 endif()
 
 add_definitions(${GL_DEFINITIONS})

@@ -32,11 +32,11 @@
 
 #include "MEM_guardedalloc.h"
 
-#include "BLI_array.h"
+#include "BLI_stack.h"
 #include "BLI_string.h"
 #include "BLI_math.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_context.h"
 #include "BKE_modifier.h"
@@ -46,6 +46,8 @@
 #include "BKE_unit.h"
 
 #include "BIF_gl.h"
+
+#include "UI_interface.h"
 
 #include "ED_screen.h"
 #include "ED_space_api.h"
@@ -87,6 +89,9 @@ typedef struct RingSelOpData {
 
 	bool extend;
 	bool do_cut;
+
+	float cuts;         /* cuts as float so smooth mouse pan works in small increments */
+	float smoothness;
 } RingSelOpData;
 
 /* modal loop selection drawing callback */
@@ -117,8 +122,6 @@ static void ringsel_draw(const bContext *C, ARegion *UNUSED(ar), void *arg)
 			glVertexPointer(3, GL_FLOAT, 0, lcd->points);
 			glDrawArrays(GL_POINTS, 0, lcd->totpoint);
 			glDisableClientState(GL_VERTEX_ARRAY);
-
-			glPointSize(1.0f);
 		}
 
 		glPopMatrix();
@@ -224,7 +227,8 @@ static void edgering_preview_calc_edges(RingSelOpData *lcd, DerivedMesh *dm, con
 	BMEdge *eed, *eed_last;
 	BMVert *v[2][2] = {{NULL}}, *v_last;
 	float (*edges)[2][3] = NULL;
-	BLI_array_declare(edges);
+	BLI_Stack *edge_stack;
+
 	int i, tot = 0;
 
 	BMW_init(&walker, bm, BMW_EDGERING,
@@ -232,10 +236,27 @@ static void edgering_preview_calc_edges(RingSelOpData *lcd, DerivedMesh *dm, con
 	         BMW_FLAG_TEST_HIDDEN,
 	         BMW_NIL_LAY);
 
+
+	edge_stack = BLI_stack_new(sizeof(BMEdge *), __func__);
+
+	eed_last = NULL;
+	for (eed = eed_last = BMW_begin(&walker, lcd->eed); eed; eed = BMW_step(&walker)) {
+		BLI_stack_push(edge_stack, &eed);
+	}
+	BMW_end(&walker);
+
+
+	eed_start = *(BMEdge **)BLI_stack_peek(edge_stack);
+
+	edges = MEM_mallocN(
+	        (sizeof(*edges) * (BLI_stack_count(edge_stack) + (eed_last != eed_start))) * previewlines, __func__);
+
 	v_last   = NULL;
 	eed_last = NULL;
 
-	for (eed = eed_start = BMW_begin(&walker, eed_start); eed; eed = BMW_step(&walker)) {
+	while (!BLI_stack_is_empty(edge_stack)) {
+		BLI_stack_pop(edge_stack, &eed);
+
 		if (eed_last) {
 			if (v_last) {
 				v[1][0] = v[0][0];
@@ -249,8 +270,6 @@ static void edgering_preview_calc_edges(RingSelOpData *lcd, DerivedMesh *dm, con
 
 			edgering_find_order(eed_last, eed, v_last, v);
 			v_last = v[0][0];
-
-			BLI_array_grow_items(edges, previewlines);
 
 			for (i = 1; i <= previewlines; i++) {
 				const float fac = (i / ((float)previewlines + 1));
@@ -279,8 +298,6 @@ static void edgering_preview_calc_edges(RingSelOpData *lcd, DerivedMesh *dm, con
 
 		edgering_find_order(eed_last, eed_start, v_last, v);
 
-		BLI_array_grow_items(edges, previewlines);
-
 		for (i = 1; i <= previewlines; i++) {
 			const float fac = (i / ((float)previewlines + 1));
 			float v_cos[2][2][3];
@@ -297,7 +314,8 @@ static void edgering_preview_calc_edges(RingSelOpData *lcd, DerivedMesh *dm, con
 		}
 	}
 
-	BMW_end(&walker);
+	BLI_stack_free(edge_stack);
+
 	lcd->edges = edges;
 	lcd->totedge = tot;
 }
@@ -386,7 +404,7 @@ static void ringsel_finish(bContext *C, wmOperator *op)
 {
 	RingSelOpData *lcd = op->customdata;
 	const int cuts = RNA_int_get(op->ptr, "number_cuts");
-	const float smoothness = 0.292f * RNA_float_get(op->ptr, "smoothness");
+	const float smoothness = RNA_float_get(op->ptr, "smoothness");
 	const int smooth_falloff = RNA_enum_get(op->ptr, "falloff");
 #ifdef BMW_EDGERING_NGON
 	const bool use_only_quads = false;
@@ -415,8 +433,9 @@ static void ringsel_finish(bContext *C, wmOperator *op)
 			                   cuts, seltype, SUBD_CORNER_PATH, 0, true,
 			                   use_only_quads, 0);
 
-			/* when used in a macro tessface is already re-recalculated */
-			EDBM_update_generic(em, (is_macro == false), true);
+			/* when used in a macro the tessfaces will be recalculated anyway,
+			 * this is needed here because modifiers depend on updated tessellation, see T45920 */
+			EDBM_update_generic(em, true, true);
 
 			if (is_single) {
 				/* de-select endpoints */
@@ -487,6 +506,8 @@ static int ringsel_init(bContext *C, wmOperator *op, bool do_cut)
 	lcd->em = BKE_editmesh_from_object(lcd->ob);
 	lcd->extend = do_cut ? false : RNA_boolean_get(op->ptr, "extend");
 	lcd->do_cut = do_cut;
+	lcd->cuts = RNA_int_get(op->ptr, "number_cuts");
+	lcd->smoothness = RNA_float_get(op->ptr, "smoothness");
 	
 	initNumInput(&lcd->num);
 	lcd->num.idx_max = 1;
@@ -553,6 +574,7 @@ static int loopcut_init(bContext *C, wmOperator *op, const wmEvent *event)
 
 	/* add a modal handler for this operator - handles loop selection */
 	if (is_interactive) {
+		op->flag |= OP_IS_MODAL_CURSOR_REGION;
 		WM_event_add_modal_handler(C, op);
 	}
 
@@ -633,31 +655,24 @@ static int loopcut_finish(RingSelOpData *lcd, bContext *C, wmOperator *op)
 
 static int loopcut_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
-	float smoothness = RNA_float_get(op->ptr, "smoothness");
-	int cuts = RNA_int_get(op->ptr, "number_cuts");
 	RingSelOpData *lcd = op->customdata;
+	float cuts = lcd->cuts;
+	float smoothness = lcd->smoothness;
 	bool show_cuts = false;
 	const bool has_numinput = hasNumInput(&lcd->num);
+
+	em_setup_viewcontext(C, &lcd->vc);
+	lcd->ar = lcd->vc.ar;
 
 	view3d_operator_needs_opengl(C);
 
 	/* using the keyboard to input the number of cuts */
 	/* Modal numinput active, try to handle numeric inputs first... */
 	if (event->val == KM_PRESS && has_numinput && handleNumInput(C, &lcd->num, event)) {
-		float values[2] = {(float)cuts, smoothness};
+		float values[2] = {cuts, smoothness};
 		applyNumInput(&lcd->num, values);
-
-		/* allow zero so you can backspace and type in a value
-		 * otherwise 1 as minimum would make more sense */
-		cuts = CLAMPIS(values[0], 0, SUBD_CUTS_MAX);
-		smoothness = CLAMPIS(values[1], -SUBD_SMOOTH_MAX, SUBD_SMOOTH_MAX);
-
-		RNA_int_set(op->ptr, "number_cuts", cuts);
-		ringsel_find_edge(lcd, cuts);
-		show_cuts = true;
-		RNA_float_set(op->ptr, "smoothness", smoothness);
-
-		ED_region_tag_redraw(lcd->ar);
+		cuts = values[0];
+		smoothness = values[1];
 	}
 	else {
 		bool handled = false;
@@ -690,25 +705,28 @@ static int loopcut_modal(bContext *C, wmOperator *op, const wmEvent *event)
 				ED_region_tag_redraw(lcd->ar);
 				handled = true;
 				break;
+			case MOUSEPAN:
+				if (event->alt == 0) {
+					cuts += 0.02f * (event->y - event->prevy);
+					if (cuts < 1 && lcd->cuts >= 1)
+						cuts = 1;
+				}
+				else {
+					smoothness += 0.002f * (event->y - event->prevy);
+				}
+				handled = true;
+				break;
 			case PADPLUSKEY:
 			case PAGEUPKEY:
 			case WHEELUPMOUSE:  /* change number of cuts */
 				if (event->val == KM_RELEASE)
 					break;
 				if (event->alt == 0) {
-					cuts++;
-					cuts = CLAMPIS(cuts, 0, SUBD_CUTS_MAX);
-					RNA_int_set(op->ptr, "number_cuts", cuts);
-					ringsel_find_edge(lcd, cuts);
-					show_cuts = true;
+					cuts += 1;
 				}
 				else {
-					smoothness = min_ff(smoothness + 0.05f, SUBD_SMOOTH_MAX);
-					RNA_float_set(op->ptr, "smoothness", smoothness);
-					show_cuts = true;
+					smoothness += 0.05f;
 				}
-				
-				ED_region_tag_redraw(lcd->ar);
 				handled = true;
 				break;
 			case PADMINUS:
@@ -716,27 +734,19 @@ static int loopcut_modal(bContext *C, wmOperator *op, const wmEvent *event)
 			case WHEELDOWNMOUSE:  /* change number of cuts */
 				if (event->val == KM_RELEASE)
 					break;
-
 				if (event->alt == 0) {
-					cuts = max_ii(cuts - 1, 1);
-					RNA_int_set(op->ptr, "number_cuts", cuts);
-					ringsel_find_edge(lcd, cuts);
-					show_cuts = true;
+					cuts = max_ff(cuts - 1, 1);
 				}
 				else {
-					smoothness = max_ff(smoothness - 0.05f, -SUBD_SMOOTH_MAX);
-					RNA_float_set(op->ptr, "smoothness", smoothness);
-					show_cuts = true;
+					smoothness -= 0.05f;
 				}
-				
-				ED_region_tag_redraw(lcd->ar);
 				handled = true;
 				break;
 			case MOUSEMOVE:  /* mouse moved somewhere to select another loop */
 				if (!has_numinput) {
 					lcd->vc.mval[0] = event->mval[0];
 					lcd->vc.mval[1] = event->mval[1];
-					loopcut_mouse_move(lcd, cuts);
+					loopcut_mouse_move(lcd, (int)lcd->cuts);
 
 					ED_region_tag_redraw(lcd->ar);
 					handled = true;
@@ -746,32 +756,39 @@ static int loopcut_modal(bContext *C, wmOperator *op, const wmEvent *event)
 
 		/* Modal numinput inactive, try to handle numeric inputs last... */
 		if (!handled && event->val == KM_PRESS && handleNumInput(C, &lcd->num, event)) {
-			float values[2] = {(float)cuts, smoothness};
+			float values[2] = {cuts, smoothness};
 			applyNumInput(&lcd->num, values);
-
-			/* allow zero so you can backspace and type in a value
-			 * otherwise 1 as minimum would make more sense */
-			cuts = CLAMPIS(values[0], 0, SUBD_CUTS_MAX);
-			smoothness = CLAMPIS(values[1], -SUBD_SMOOTH_MAX, SUBD_SMOOTH_MAX);
-
-			RNA_int_set(op->ptr, "number_cuts", cuts);
-			ringsel_find_edge(lcd, cuts);
-			show_cuts = true;
-			RNA_float_set(op->ptr, "smoothness", smoothness);
-
-			ED_region_tag_redraw(lcd->ar);
+			cuts = values[0];
+			smoothness = values[1];
 		}
+	}
+
+	if (cuts != lcd->cuts) {
+		/* allow zero so you can backspace and type in a value
+		 * otherwise 1 as minimum would make more sense */
+		lcd->cuts = CLAMPIS(cuts, 0, SUBD_CUTS_MAX);
+		RNA_int_set(op->ptr, "number_cuts", (int)lcd->cuts);
+		ringsel_find_edge(lcd, (int)lcd->cuts);
+		show_cuts = true;
+		ED_region_tag_redraw(lcd->ar);
+	}
+
+	if (smoothness != lcd->smoothness) {
+		lcd->smoothness = CLAMPIS(smoothness, -SUBD_SMOOTH_MAX, SUBD_SMOOTH_MAX);
+		RNA_float_set(op->ptr, "smoothness", lcd->smoothness);
+		show_cuts = true;
+		ED_region_tag_redraw(lcd->ar);
 	}
 
 	if (show_cuts) {
 		Scene *sce = CTX_data_scene(C);
-		char buf[64 + NUM_STR_REP_LEN * 2];
+		char buf[UI_MAX_DRAW_STR];
 		char str_rep[NUM_STR_REP_LEN * 2];
 		if (hasNumInput(&lcd->num)) {
 			outputNumInput(&lcd->num, str_rep, &sce->unit);
 		}
 		else {
-			BLI_snprintf(str_rep, NUM_STR_REP_LEN, "%d", cuts);
+			BLI_snprintf(str_rep, NUM_STR_REP_LEN, "%d", (int)lcd->cuts);
 			BLI_snprintf(str_rep + NUM_STR_REP_LEN, NUM_STR_REP_LEN, "%.2f", smoothness);
 		}
 		BLI_snprintf(buf, sizeof(buf), IFACE_("Number of Cuts: %s, Smooth: %s (Alt)"),
@@ -825,21 +842,21 @@ void MESH_OT_loopcut(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_BLOCKING;
 
 	/* properties */
-	prop = RNA_def_int(ot->srna, "number_cuts", 1, 1, INT_MAX, "Number of Cuts", "", 1, 100);
+	prop = RNA_def_int(ot->srna, "number_cuts", 1, 1, 1000000, "Number of Cuts", "", 1, 100);
 	/* avoid re-using last var because it can cause _very_ high poly meshes and annoy users (or worse crash) */
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
-	prop = RNA_def_float(ot->srna, "smoothness", 0.0f, -FLT_MAX, FLT_MAX,
+	prop = RNA_def_float(ot->srna, "smoothness", 0.0f, -1e3f, 1e3f,
 	                     "Smoothness", "Smoothness factor", -SUBD_SMOOTH_MAX, SUBD_SMOOTH_MAX);
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
 	prop = RNA_def_property(ot->srna, "falloff", PROP_ENUM, PROP_NONE);
-	RNA_def_property_enum_items(prop, proportional_falloff_curve_only_items);
-	RNA_def_property_enum_default(prop, PROP_ROOT);
+	RNA_def_property_enum_items(prop, rna_enum_proportional_falloff_curve_only_items);
+	RNA_def_property_enum_default(prop, PROP_INVSQUARE);
 	RNA_def_property_ui_text(prop, "Falloff", "Falloff type the feather");
-	RNA_def_property_translation_context(prop, BLF_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
+	RNA_def_property_translation_context(prop, BLT_I18NCONTEXT_ID_CURVE); /* Abusing id_curve :/ */
 
-	prop = RNA_def_int(ot->srna, "edge_index", -1, -1, INT_MAX, "Number of Cuts", "", 0, INT_MAX);
+	prop = RNA_def_int(ot->srna, "edge_index", -1, -1, INT_MAX, "Edge Index", "", 0, INT_MAX);
 	RNA_def_property_flag(prop, PROP_HIDDEN);
 
 #ifdef USE_LOOPSLIDE_HACK

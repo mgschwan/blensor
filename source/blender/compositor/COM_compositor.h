@@ -38,7 +38,7 @@ extern "C" {
  * @defgroup Node All nodes of the compositor
  * @defgroup Operation All operations of the compositor
  *
- * @mainpage Introduction of the Blender Compositor
+ * @page Introduction of the Blender Compositor
  *
  * @section bcomp Blender compositor
  * This project redesigns the internals of Blender's compositor. The project has been executed in 2011 by At Mind.
@@ -316,7 +316,8 @@ extern "C" {
  *            generation in display space
  */
 void COM_execute(RenderData *rd, Scene *scene, bNodeTree *editingtree, int rendering,
-                 const ColorManagedViewSettings *viewSettings, const ColorManagedDisplaySettings *displaySettings);
+                 const ColorManagedViewSettings *viewSettings, const ColorManagedDisplaySettings *displaySettings,
+                 const char *viewName);
 
 /**
  * @brief Deinitialize the compositor caches and allocated memory.
@@ -329,19 +330,6 @@ void COM_deinitialize(void);
  * To deinitialize the compositor use the COM_deinitialize method.
  */
 // void COM_clearCaches(void); // NOT YET WRITTEN
-
-/**
- * @brief Return a list of highlighted bnodes pointers.
- * @return 
- */
-void COM_startReadHighlights(void);
-
-/**
- * @brief check if a bnode is highlighted
- * @param bnode
- * @return 
- */
-int COM_isHighlightedbNode(bNode *bnode);
 
 #ifdef __cplusplus
 }

@@ -32,7 +32,7 @@ GaussianBokehBlurOperation::GaussianBokehBlurOperation() : BlurBaseOperation(COM
 	this->m_gausstab = NULL;
 }
 
-void *GaussianBokehBlurOperation::initializeTileData(rcti *rect)
+void *GaussianBokehBlurOperation::initializeTileData(rcti * /*rect*/)
 {
 	lockMutex();
 	if (!this->m_sizeavailable) {
@@ -205,7 +205,7 @@ GaussianBlurReferenceOperation::GaussianBlurReferenceOperation() : BlurBaseOpera
 	this->m_maintabs = NULL;
 }
 
-void *GaussianBlurReferenceOperation::initializeTileData(rcti *rect)
+void *GaussianBlurReferenceOperation::initializeTileData(rcti * /*rect*/)
 {
 	void *buffer = getInputOperation(0)->initializeTileData(NULL);
 	return buffer;
@@ -273,7 +273,7 @@ void GaussianBlurReferenceOperation::executePixel(float output[4], int x, int y,
 	float *gausstaby, *gausstabcentx;
 	int i, j;
 	float *src;
-	register float sum, val;
+	float sum, val;
 	float rval, gval, bval, aval;
 	int imgx = getWidth();
 	int imgy = getHeight();

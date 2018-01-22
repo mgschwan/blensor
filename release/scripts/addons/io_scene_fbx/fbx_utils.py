@@ -22,6 +22,7 @@
 
 
 import math
+import time
 
 from collections import namedtuple, OrderedDict
 from collections.abc import Iterable
@@ -70,8 +71,8 @@ FBX_ANIM_PROPSGROUP_NAME = "d"
 FBX_KTIME = 46186158000  # This is the number of "ktimes" in one second (yep, precision over the nanosecond...)
 
 
-MAT_CONVERT_LAMP = Matrix.Rotation(math.pi / -2.0, 4, 'X')  # Blender is -Z, FBX is +Y.
-MAT_CONVERT_CAMERA = Matrix.Rotation(math.pi / -2.0, 4, 'Y')  # Blender is -Z, FBX is -X.
+MAT_CONVERT_LAMP = Matrix.Rotation(math.pi / 2.0, 4, 'X')  # Blender is -Z, FBX is -Y.
+MAT_CONVERT_CAMERA = Matrix.Rotation(math.pi / 2.0, 4, 'Y')  # Blender is -Z, FBX is +X.
 # XXX I can't get this working :(
 # MAT_CONVERT_BONE = Matrix.Rotation(math.pi / 2.0, 4, 'Z')  # Blender is +Y, FBX is -X.
 MAT_CONVERT_BONE = Matrix()
@@ -146,6 +147,64 @@ FBX_FRAMERATES = (
 
 
 # ##### Misc utilities #####
+
+DO_PERFMON = True
+
+if DO_PERFMON:
+    class PerfMon():
+        def __init__(self):
+            self.level = -1
+            self.ref_time = []
+
+        def level_up(self, message=""):
+            self.level += 1
+            self.ref_time.append(None)
+            if message:
+                print("\t" * self.level, message, sep="")
+
+        def level_down(self, message=""):
+            if not self.ref_time:
+                if message:
+                    print(message)
+                return
+            ref_time = self.ref_time[self.level]
+            print("\t" * self.level,
+                  "\tDone (%f sec)\n" % ((time.process_time() - ref_time) if ref_time is not None else 0.0),
+                  sep="")
+            if message:
+                print("\t" * self.level, message, sep="")
+            del self.ref_time[self.level]
+            self.level -= 1
+
+        def step(self, message=""):
+            ref_time = self.ref_time[self.level]
+            curr_time = time.process_time()
+            if ref_time is not None:
+                print("\t" * self.level, "\tDone (%f sec)\n" % (curr_time - ref_time), sep="")
+            self.ref_time[self.level] = curr_time
+            print("\t" * self.level, message, sep="")
+else:
+    class PerfMon():
+        def __init__(self):
+            pass
+
+        def level_up(self, message=""):
+            pass
+
+        def level_down(self, message=""):
+            pass
+
+        def step(self, message=""):
+            pass
+
+
+# Scale/unit mess. FBX can store the 'reference' unit of a file in its UnitScaleFactor property
+# (1.0 meaning centimeter, afaik). We use that to reflect user's default unit as set in Blender with scale_length.
+# However, we always get values in BU (i.e. meters), so we have to reverse-apply that scale in global matrix...
+# Note that when no default unit is available, we assume 'meters' (and hence scale by 100).
+def units_blender_to_fbx_factor(scene):
+    return 100.0 if (scene.unit_settings.system == 'NONE') else (100.0 * scene.unit_settings.scale_length)
+
 
 # Note: this could be in a utility (math.units e.g.)...
 
@@ -518,25 +577,33 @@ def _elem_props_set(elem, ptype, name, value, flags):
             getattr(p, callback)(val)
 
 
-def _elem_props_flags(animatable, custom):
-    if animatable and custom:
-        return b"AU"
-    elif animatable:
+def _elem_props_flags(animatable, animated, custom):
+    # XXX: There are way more flags, see
+    #      http://help.autodesk.com/view/FBX/2015/ENU/?guid=__cpp_ref_class_fbx_property_flags_html
+    #      Unfortunately, as usual, no doc at all about their 'translation' in actual FBX file format.
+    #      Curse you-know-who.
+    if animatable:
+        if animated:
+            if custom:
+                return b"A+U"
+            return b"A+"
+        if custom:
+            return b"AU"
         return b"A"
-    elif custom:
+    if custom:
         return b"U"
     return b""
 
 
-def elem_props_set(elem, ptype, name, value=None, animatable=False, custom=False):
+def elem_props_set(elem, ptype, name, value=None, animatable=False, animated=False, custom=False):
     ptype = FBX_PROPERTIES_DEFINITIONS[ptype]
-    _elem_props_set(elem, ptype, name, value, _elem_props_flags(animatable, custom))
+    _elem_props_set(elem, ptype, name, value, _elem_props_flags(animatable, animated, custom))
 
 
 def elem_props_compound(elem, cmpd_name, custom=False):
-    def _setter(ptype, name, value, animatable=False, custom=False):
+    def _setter(ptype, name, value, animatable=False, animated=False, custom=False):
         name = cmpd_name + b"|" + name
-        elem_props_set(elem, ptype, name, value, animatable=animatable, custom=custom)
+        elem_props_set(elem, ptype, name, value, animatable=animatable, animated=animated, custom=custom)
 
     elem_props_set(elem, "p_compound", cmpd_name, custom=custom)
     return _setter
@@ -555,7 +622,7 @@ def elem_props_template_init(templates, template_type):
     return ret
 
 
-def elem_props_template_set(template, elem, ptype_name, name, value, animatable=False):
+def elem_props_template_set(template, elem, ptype_name, name, value, animatable=False, animated=False):
     """
     Only add a prop if the same value is not already defined in given template.
     Note it is important to not give iterators as value, here!
@@ -565,15 +632,16 @@ def elem_props_template_set(template, elem, ptype_name, name, value, animatable=
         value = tuple(value)
     tmpl_val, tmpl_ptype, tmpl_animatable, tmpl_written = template.get(name, (None, None, False, False))
     # Note animatable flag from template takes precedence over given one, if applicable.
-    if tmpl_ptype is not None:
+    # However, animated properties are always written, since they cannot match their template!
+    if tmpl_ptype is not None and not animated:
         if (tmpl_written and
             ((len(ptype) == 3 and (tmpl_val, tmpl_ptype) == (value, ptype_name)) or
              (len(ptype) > 3 and (tuple(tmpl_val), tmpl_ptype) == (value, ptype_name)))):
             return  # Already in template and same value.
-        _elem_props_set(elem, ptype, name, value, _elem_props_flags(tmpl_animatable, False))
+        _elem_props_set(elem, ptype, name, value, _elem_props_flags(tmpl_animatable, animated, False))
         template[name][3] = True
     else:
-        _elem_props_set(elem, ptype, name, value, _elem_props_flags(animatable, False))
+        _elem_props_set(elem, ptype, name, value, _elem_props_flags(animatable, animated, False))
 
 
 def elem_props_template_finalize(template, elem):
@@ -588,7 +656,7 @@ def elem_props_template_finalize(template, elem):
         if written:
             continue
         ptype = FBX_PROPERTIES_DEFINITIONS[ptype_name]
-        _elem_props_set(elem, ptype, name, value, _elem_props_flags(animatable, False))
+        _elem_props_set(elem, ptype, name, value, _elem_props_flags(animatable, False, False))
 
 
 # ##### Templates #####
@@ -651,7 +719,9 @@ class AnimationCurveNodeWrapper:
     This class provides a same common interface for all (FBX-wise) AnimationCurveNode and AnimationCurve elements,
     and easy API to handle those.
     """
-    __slots__ = ('elem_keys', '_keys', 'default_values', 'fbx_group', 'fbx_gname', 'fbx_props')
+    __slots__ = (
+        'elem_keys', '_keys', 'default_values', 'fbx_group', 'fbx_gname', 'fbx_props',
+        'force_keying', 'force_startend_keying')
 
     kinds = {
         'LCL_TRANSLATION': ("Lcl Translation", "T", ("X", "Y", "Z")),
@@ -660,16 +730,14 @@ class AnimationCurveNodeWrapper:
         'SHAPE_KEY': ("DeformPercent", "DeformPercent", ("DeformPercent",)),
     }
 
-    def __init__(self, elem_key, kind, default_values=...):
-        """
-        bdata might be an Object, DupliObject, Bone or PoseBone.
-        If Bone or PoseBone, armature Object must be provided.
-        """
+    def __init__(self, elem_key, kind, force_keying, force_startend_keying, default_values=...):
         self.elem_keys = [elem_key]
         assert(kind in self.kinds)
         self.fbx_group = [self.kinds[kind][0]]
         self.fbx_gname = [self.kinds[kind][1]]
         self.fbx_props = [self.kinds[kind][2]]
+        self.force_keying = force_keying
+        self.force_startend_keying = force_startend_keying
         self._keys = []  # (frame, values, write_flags)
         if default_values is not ...:
             assert(len(default_values) == len(self.fbx_props[0]))
@@ -702,60 +770,62 @@ class AnimationCurveNodeWrapper:
     def simplify(self, fac, step, force_keep=False):
         """
         Simplifies sampled curves by only enabling samples when:
-            * their values differ significantly from the previous sample ones, or
-            * their values differ significantly from the previous validated sample ones, or
-            * the previous validated samples are far enough from current ones in time.
+            * their values relatively differ from the previous sample ones.
         """
         if not self._keys:
             return
 
+        if fac == 0.0:
+            return
+
         # So that, with default factor and step values (1), we get:
-        max_frame_diff = step * fac * 10  # max step of 10 frames.
-        value_diff_fac = fac / 1000  # min value evolution: 0.1% of whole range.
-        min_significant_diff = 1.0e-6
+        min_reldiff_fac = fac * 1.0e-3  # min relative value evolution: 0.1% of current 'order of magnitude'.
+        min_absdiff_fac = 0.1  # A tenth of reldiff...
         keys = self._keys
 
-        extremums = tuple((min(values), max(values)) for values in zip(*(k[1] for k in keys)))
-        min_diffs = tuple(max((mx - mn) * value_diff_fac, min_significant_diff) for mn, mx in extremums)
-
         p_currframe, p_key, p_key_write = keys[0]
-        p_keyed = [(p_currframe - max_frame_diff, val) for val in p_key]
+        p_keyed = list(p_key)
         are_keyed = [False] * len(p_key)
         for currframe, key, key_write in keys:
             for idx, (val, p_val) in enumerate(zip(key, p_key)):
                 key_write[idx] = False
-                p_keyedframe, p_keyedval = p_keyed[idx]
+                p_keyedval = p_keyed[idx]
                 if val == p_val:
                     # Never write keyframe when value is exactly the same as prev one!
                     continue
-                if abs(val - p_val) >= min_diffs[idx]:
+                # This is contracted form of relative + absolute-near-zero difference:
+                #     absdiff = abs(a - b)
+                #     if absdiff < min_reldiff_fac * min_absdiff_fac:
+                #         return False
+                #     return (absdiff / ((abs(a) + abs(b)) / 2)) > min_reldiff_fac
+                # Note that we ignore the '/ 2' part here, since it's not much significant for us.
+                if abs(val - p_val) > (min_reldiff_fac * max(abs(val) + abs(p_val), min_absdiff_fac)):
                     # If enough difference from previous sampled value, key this value *and* the previous one!
                     key_write[idx] = True
                     p_key_write[idx] = True
-                    p_keyed[idx] = (currframe, val)
+                    p_keyed[idx] = val
                     are_keyed[idx] = True
-                else:
-                    frame_diff = currframe - p_keyedframe
-                    val_diff = abs(val - p_keyedval)
-                    if ((val_diff >= min_diffs[idx]) or
-                        ((val_diff >= min_significant_diff) and (frame_diff >= max_frame_diff))):
-                        # Else, if enough difference from previous keyed value
-                        # (or any significant difference and max gap between keys is reached),
-                        # key this value only!
-                        key_write[idx] = True
-                        p_keyed[idx] = (currframe, val)
-                        are_keyed[idx] = True
+                elif abs(val - p_keyedval) > (min_reldiff_fac * max((abs(val) + abs(p_keyedval)), min_absdiff_fac)):
+                    # Else, if enough difference from previous keyed value, key this value only!
+                    key_write[idx] = True
+                    p_keyed[idx] = val
+                    are_keyed[idx] = True
             p_currframe, p_key, p_key_write = currframe, key, key_write
 
         # If we write nothing (action doing nothing) and are in 'force_keep' mode, we key everything! :P
         # See T41766.
-        if (force_keep and not self):
+        # Also, it seems some importers (e.g. UE4) do not handle correctly armatures where some bones
+        # are not animated, but are children of animated ones, so added an option to systematically force writing
+        # one key in this case.
+        # See T41719, T41605, T41254...
+        if self.force_keying or (force_keep and not self):
             are_keyed[:] = [True] * len(are_keyed)
 
         # If we did key something, ensure first and last sampled values are keyed as well.
-        for idx, is_keyed in enumerate(are_keyed):
-            if is_keyed:
-                keys[0][2][idx] = keys[-1][2][idx] = True
+        if self.force_startend_keying:
+            for idx, is_keyed in enumerate(are_keyed):
+                if is_keyed:
+                    keys[0][2][idx] = keys[-1][2][idx] = True
 
     def get_final_data(self, scene, ref_id, force_keep=False):
         """
@@ -768,6 +838,7 @@ class AnimationCurveNodeWrapper:
                 if wrt:
                     curve.append((currframe, val))
 
+        force_keep = force_keep or self.force_keying
         for elem_key, fbx_group, fbx_gname, fbx_props in \
             zip(self.elem_keys, self.fbx_group, self.fbx_gname, self.fbx_props):
             group_key = get_blender_anim_curve_node_key(scene, ref_id, elem_key, fbx_group)
@@ -1087,24 +1158,20 @@ class ObjectWrapper(metaclass=MetaObjectWrapper):
         if self.parent == arm_obj and self.bdata.parent_type == 'ARMATURE':
             return True
         for mod in self.bdata.modifiers:
-            if mod.type == 'ARMATURE' and mod.object == arm_obj.bdata:
+            if mod.type == 'ARMATURE' and mod.object in {arm_obj.bdata, arm_obj.bdata.proxy}:
                 return True
 
     # #### Duplis...
     def dupli_list_create(self, scene, settings='PREVIEW'):
-        if self._tag == 'OB':
-            # Sigh, why raise exception here? :/
-            try:
-                self.bdata.dupli_list_create(scene, settings)
-            except:
-                pass
+        if self._tag == 'OB' and self.bdata.is_duplicator:
+            self.bdata.dupli_list_create(scene, settings)
 
     def dupli_list_clear(self):
-        if self._tag == 'OB':
+        if self._tag == 'OB'and self.bdata.is_duplicator:
             self.bdata.dupli_list_clear()
 
     def get_dupli_list(self):
-        if self._tag == 'OB':
+        if self._tag == 'OB'and self.bdata.is_duplicator:
             return (ObjectWrapper(dup) for dup in self.bdata.dupli_list)
         return ()
     dupli_list = property(get_dupli_list)
@@ -1119,17 +1186,19 @@ def fbx_name_class(name, cls):
 # Helper sub-container gathering all exporter settings related to media (texture files).
 FBXExportSettingsMedia = namedtuple("FBXExportSettingsMedia", (
     "path_mode", "base_src", "base_dst", "subdir",
-    "embed_textures", "copy_set",
+    "embed_textures", "copy_set", "embedded_set",
 ))
 
 # Helper container gathering all exporter settings.
 FBXExportSettings = namedtuple("FBXExportSettings", (
-    "report", "to_axes", "global_matrix", "global_scale",
+    "report", "to_axes", "global_matrix", "global_scale", "apply_unit_scale", "unit_scale",
     "bake_space_transform", "global_matrix_inv", "global_matrix_inv_transposed",
-    "context_objects", "object_types", "use_mesh_modifiers",
+    "context_objects", "object_types", "use_mesh_modifiers", "use_mesh_modifiers_render",
     "mesh_smooth_type", "use_mesh_edges", "use_tspace",
-    "use_armature_deform_only", "add_leaf_bones", "bone_correction_matrix", "bone_correction_matrix_inv",
-    "bake_anim", "bake_anim_use_nla_strips", "bake_anim_use_all_actions", "bake_anim_step", "bake_anim_simplify_factor",
+    "armature_nodetype", "use_armature_deform_only", "add_leaf_bones",
+    "bone_correction_matrix", "bone_correction_matrix_inv",
+    "bake_anim", "bake_anim_use_all_bones", "bake_anim_use_nla_strips", "bake_anim_use_all_actions",
+    "bake_anim_step", "bake_anim_simplify_factor", "bake_anim_force_startend_keying",
     "use_metadata", "media_settings", "use_custom_props",
 ))
 
@@ -1142,7 +1211,7 @@ FBXExportSettings = namedtuple("FBXExportSettings", (
 #     * animations.
 FBXExportData = namedtuple("FBXExportData", (
     "templates", "templates_users", "connections",
-    "settings", "scene", "objects", "animations", "frame_start", "frame_end",
+    "settings", "scene", "objects", "animations", "animated", "frame_start", "frame_end",
     "data_empties", "data_lamps", "data_cameras", "data_meshes", "mesh_mat_indices",
     "data_bones", "data_leaf_bones", "data_deformers_skin", "data_deformers_shape",
     "data_world", "data_materials", "data_textures", "data_videos",
@@ -1152,9 +1221,11 @@ FBXExportData = namedtuple("FBXExportData", (
 FBXImportSettings = namedtuple("FBXImportSettings", (
     "report", "to_axes", "global_matrix", "global_scale",
     "bake_space_transform", "global_matrix_inv", "global_matrix_inv_transposed",
-    "use_cycles", "use_image_search",
+    "use_custom_normals", "use_cycles", "use_image_search",
     "use_alpha_decals", "decal_offset",
+    "use_anim", "anim_offset",
     "use_custom_props", "use_custom_props_enum_as_string",
     "cycles_material_wrap_map", "image_cache",
-    "ignore_leaf_bones", "automatic_bone_orientation", "bone_correction_matrix", "use_prepost_rot",
+    "ignore_leaf_bones", "force_connect_children", "automatic_bone_orientation", "bone_correction_matrix",
+    "use_prepost_rot",
 ))

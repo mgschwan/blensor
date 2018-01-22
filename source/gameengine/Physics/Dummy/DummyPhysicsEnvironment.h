@@ -68,7 +68,7 @@ public:
 			float axis2X=0,float axis2Y=0,float axis2Z=0,int flag=0
 			);
 
-	virtual void		RemoveConstraint(int	constraintid);
+	virtual void RemoveConstraintById(int constraintid);
 
 		//complex constraint for vehicles
 	virtual PHY_IVehicle*	GetVehicleConstraint(int constraintId)
@@ -83,7 +83,7 @@ public:
 	}
 
 	virtual PHY_IPhysicsController* RayTest(PHY_IRayCastFilterCallback &filterCallback, float fromX,float fromY,float fromZ, float toX,float toY,float toZ);
-	virtual bool CullingTest(PHY_CullingCallback callback, void* userData, class MT_Vector4* planes, int nplanes, int occlusionRes, const int *viewport, double modelview[16], double projection[16]) { return false; }
+	virtual bool CullingTest(PHY_CullingCallback callback, void* userData, class MT_Vector4* planes, int nplanes, int occlusionRes, const int *viewport, float modelview[16], float projection[16]) { return false; }
 
 
 	//gamelogic callbacks

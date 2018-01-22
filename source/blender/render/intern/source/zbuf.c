@@ -330,8 +330,8 @@ static void zbuffillAc4(ZSpan *zspan, int obi, int zvlnr,
 	/* clipped */
 	if (zspan->minp2==NULL || zspan->maxp2==NULL) return;
 
-	if (zspan->miny1 < zspan->miny2) my0= zspan->miny2; else my0= zspan->miny1;
-	if (zspan->maxy1 > zspan->maxy2) my2= zspan->maxy2; else my2= zspan->maxy1;
+	my0 = max_ii(zspan->miny1, zspan->miny2);
+	my2 = min_ii(zspan->maxy1, zspan->maxy2);
 	
 	if (my2<my0) return;
 	
@@ -1073,8 +1073,8 @@ static void zbuffillGLinv4(ZSpan *zspan, int obi, int zvlnr,
 	/* clipped */
 	if (zspan->minp2==NULL || zspan->maxp2==NULL) return;
 
-	if (zspan->miny1 < zspan->miny2) my0= zspan->miny2; else my0= zspan->miny1;
-	if (zspan->maxy1 > zspan->maxy2) my2= zspan->maxy2; else my2= zspan->maxy1;
+	my0 = max_ii(zspan->miny1, zspan->miny2);
+	my2 = min_ii(zspan->maxy1, zspan->maxy2);
 
 	//	printf("my %d %d\n", my0, my2);
 	if (my2<my0) return;
@@ -1196,8 +1196,8 @@ static void zbuffillGL4(ZSpan *zspan, int obi, int zvlnr,
 	/* clipped */
 	if (zspan->minp2==NULL || zspan->maxp2==NULL) return;
 
-	if (zspan->miny1 < zspan->miny2) my0= zspan->miny2; else my0= zspan->miny1;
-	if (zspan->maxy1 > zspan->maxy2) my2= zspan->maxy2; else my2= zspan->maxy1;
+	my0 = max_ii(zspan->miny1, zspan->miny2);
+	my2 = min_ii(zspan->maxy1, zspan->maxy2);
 
 	//	printf("my %d %d\n", my0, my2);
 	if (my2<my0) return;
@@ -1324,8 +1324,8 @@ static void zbuffillGL_onlyZ(ZSpan *zspan, int UNUSED(obi), int UNUSED(zvlnr),
 	/* clipped */
 	if (zspan->minp2==NULL || zspan->maxp2==NULL) return;
 	
-	if (zspan->miny1 < zspan->miny2) my0= zspan->miny2; else my0= zspan->miny1;
-	if (zspan->maxy1 > zspan->maxy2) my2= zspan->maxy2; else my2= zspan->maxy1;
+	my0 = max_ii(zspan->miny1, zspan->miny2);
+	my2 = min_ii(zspan->maxy1, zspan->maxy2);
 	
 	//	printf("my %d %d\n", my0, my2);
 	if (my2<my0) return;
@@ -1426,8 +1426,8 @@ void zspan_scanconvert_strand(ZSpan *zspan, void *handle, float *v1, float *v2, 
 	/* clipped */
 	if (zspan->minp2==NULL || zspan->maxp2==NULL) return;
 	
-	if (zspan->miny1 < zspan->miny2) my0= zspan->miny2; else my0= zspan->miny1;
-	if (zspan->maxy1 > zspan->maxy2) my2= zspan->maxy2; else my2= zspan->maxy1;
+	my0 = max_ii(zspan->miny1, zspan->miny2);
+	my2 = min_ii(zspan->maxy1, zspan->maxy2);
 	
 	//	printf("my %d %d\n", my0, my2);
 	if (my2<my0) return;
@@ -1513,7 +1513,7 @@ void zspan_scanconvert(ZSpan *zspan, void *handle, float *v1, float *v2, float *
 	float x0, y0, x1, y1, x2, y2, z0, z1, z2;
 	float u, v, uxd, uyd, vxd, vyd, uy0, vy0, xx1;
 	const float *span1, *span2;
-	int x, y, sn1, sn2, rectx= zspan->rectx, my0, my2;
+	int i, j, x, y, sn1, sn2, rectx = zspan->rectx, my0, my2;
 	
 	/* init */
 	zbuf_init_span(zspan);
@@ -1526,8 +1526,8 @@ void zspan_scanconvert(ZSpan *zspan, void *handle, float *v1, float *v2, float *
 	/* clipped */
 	if (zspan->minp2==NULL || zspan->maxp2==NULL) return;
 	
-	if (zspan->miny1 < zspan->miny2) my0= zspan->miny2; else my0= zspan->miny1;
-	if (zspan->maxy1 > zspan->maxy2) my2= zspan->maxy2; else my2= zspan->maxy1;
+	my0 = max_ii(zspan->miny1, zspan->miny2);
+	my2 = min_ii(zspan->maxy1, zspan->maxy2);
 	
 	//	printf("my %d %d\n", my0, my2);
 	if (my2<my0) return;
@@ -1574,7 +1574,7 @@ void zspan_scanconvert(ZSpan *zspan, void *handle, float *v1, float *v2, float *
 		span2= zspan->span1+my2;
 	}
 	
-	for (y=my2; y>=my0; y--, span1--, span2--) {
+	for (i = 0, y = my2; y >= my0; i++, y--, span1--, span2--) {
 		
 		sn1= floor(*span1);
 		sn2= floor(*span2);
@@ -1583,14 +1583,12 @@ void zspan_scanconvert(ZSpan *zspan, void *handle, float *v1, float *v2, float *
 		if (sn2>=rectx) sn2= rectx-1;
 		if (sn1<0) sn1= 0;
 		
-		u= (double)sn1*uxd + uy0;
-		v= (double)sn1*vxd + vy0;
+		u = (((double)sn1 * uxd) + uy0) - (i * uyd);
+		v = (((double)sn1 * vxd) + vy0) - (i * vyd);
 		
-		for (x= sn1; x<=sn2; x++, u+=uxd, v+=vxd)
-			func(handle, x, y, u, v);
-		
-		uy0 -= uyd;
-		vy0 -= vyd;
+		for (j = 0, x = sn1; x <= sn2; j++, x++) {
+			func(handle, x, y, u + (j * uxd), v + (j * vxd));
+		}
 	}
 }
 
@@ -1603,7 +1601,6 @@ void zspan_scanconvert(ZSpan *zspan, void *handle, float *v1, float *v2, float *
  * Note: uses globals.
  * \param v1 start coordinate s
  * \param v2 target coordinate t
- * \param b1 
  * \param b2 
  * \param b3
  * \param a index for coordinate (x, y, or z)
@@ -2079,8 +2076,8 @@ void zbuffer_solid(RenderPart *pa, RenderLayer *rl, void(*fillfunc)(RenderPart *
 	unsigned int lay= rl->lay, lay_zmask= rl->lay_zmask;
 	int i, v, zvlnr, zsample, samples, c1, c2, c3, c4=0;
 	short nofill=0, env=0, wire=0, zmaskpass=0;
-	short all_z= (rl->layflag & SCE_LAY_ALL_Z) && !(rl->layflag & SCE_LAY_ZMASK);
-	short neg_zmask= (rl->layflag & SCE_LAY_ZMASK) && (rl->layflag & SCE_LAY_NEG_ZMASK);
+	const bool all_z = (rl->layflag & SCE_LAY_ALL_Z) && !(rl->layflag & SCE_LAY_ZMASK);
+	const bool neg_zmask = (rl->layflag & SCE_LAY_ZMASK) && (rl->layflag & SCE_LAY_NEG_ZMASK);
 
 	zbuf_make_winmat(&R, winmat);
 	
@@ -2482,8 +2479,8 @@ static void zbuffill_sss(ZSpan *zspan, int obi, int zvlnr,
 	/* clipped */
 	if (zspan->minp2==NULL || zspan->maxp2==NULL) return;
 	
-	if (zspan->miny1 < zspan->miny2) my0= zspan->miny2; else my0= zspan->miny1;
-	if (zspan->maxy1 > zspan->maxy2) my2= zspan->maxy2; else my2= zspan->maxy1;
+	my0 = max_ii(zspan->miny1, zspan->miny2);
+	my2 = min_ii(zspan->maxy1, zspan->maxy2);
 	
 	if (my2<my0) return;
 	
@@ -2683,8 +2680,8 @@ static void zbuf_fill_in_rgba(ZSpan *zspan, DrawBufPixel *col, float *v1, float 
 	/* clipped */
 	if (zspan->minp2==NULL || zspan->maxp2==NULL) return;
 	
-	if (zspan->miny1 < zspan->miny2) my0= zspan->miny2; else my0= zspan->miny1;
-	if (zspan->maxy1 > zspan->maxy2) my2= zspan->maxy2; else my2= zspan->maxy1;
+	my0 = max_ii(zspan->miny1, zspan->miny2);
+	my2 = min_ii(zspan->maxy1, zspan->maxy2);
 	
 	//	printf("my %d %d\n", my0, my2);
 	if (my2<my0) return;
@@ -2885,14 +2882,17 @@ static void set_quad_bezier_ipo(float fac, float *data)
 	data[2]= fac*fac;
 }
 
-void RE_zbuf_accumulate_vecblur(NodeBlurData *nbd, int xsize, int ysize, float *newrect, float *imgrect, float *vecbufrect, float *zbufrect)
+void RE_zbuf_accumulate_vecblur(
+        NodeBlurData *nbd, int xsize, int ysize, float *newrect,
+        const float *imgrect, float *vecbufrect, const float *zbufrect)
 {
 	ZSpan zspan;
 	DrawBufPixel *rectdraw, *dr;
 	static float jit[256][2];
 	float v1[3], v2[3], v3[3], v4[3], fx, fy;
-	float *rectvz, *dvz, *dimg, *dvec1, *dvec2, *dz, *dz1, *dz2, *rectz;
-	float *minvecbufrect= NULL, *rectweight, *rw, *rectmax, *rm, *ro;
+	const float *dimg, *dz, *ro;
+	float *rectvz, *dvz, *dvec1, *dvec2, *dz1, *dz2, *rectz;
+	float *minvecbufrect= NULL, *rectweight, *rw, *rectmax, *rm;
 	float maxspeedsq= (float)nbd->maxspeed*nbd->maxspeed;
 	int y, x, step, maxspeed=nbd->maxspeed, samples= nbd->samples;
 	int tsktsk= 0;
@@ -3252,7 +3252,9 @@ static void copyto_abufz(RenderPart *pa, int *arectz, int *rectmask, int sample)
 				}
 			}
 			
-			rd++; rza++, rma++;
+			rza++;
+			rma++;
+			rd++;
 		}
 	}
 }
@@ -3491,7 +3493,7 @@ static void add_transp_speed(RenderLayer *rl, int offset, float speed[4], float 
 	RenderPass *rpass;
 	
 	for (rpass= rl->passes.first; rpass; rpass= rpass->next) {
-		if (rpass->passtype==SCE_PASS_VECTOR) {
+		if (STREQ(rpass->name, RE_PASSNAME_VECTOR)) {
 			float *fp= rpass->rect + 4*offset;
 			
 			if (speed==NULL) {
@@ -3525,7 +3527,7 @@ static void add_transp_obindex(RenderLayer *rl, int offset, Object *ob)
 	RenderPass *rpass;
 	
 	for (rpass= rl->passes.first; rpass; rpass= rpass->next) {
-		if (rpass->passtype == SCE_PASS_INDEXOB) {
+		if (STREQ(rpass->name, RE_PASSNAME_INDEXOB)) {
 			float *fp= rpass->rect + offset;
 			*fp= (float)ob->index;
 			break;
@@ -3538,7 +3540,7 @@ static void add_transp_material_index(RenderLayer *rl, int offset, Material *mat
 	RenderPass *rpass;
 	
 	for (rpass= rl->passes.first; rpass; rpass= rpass->next) {
-		if (rpass->passtype == SCE_PASS_INDEXMA) {
+		if (STREQ(rpass->name, RE_PASSNAME_INDEXMA)) {
 			float *fp= rpass->rect + offset;
 			*fp= (float)mat->index;
 			break;
@@ -3555,78 +3557,74 @@ static void merge_transp_passes(RenderLayer *rl, ShadeResult *shr)
 	int delta= sizeof(ShadeResult)/4;
 	
 	for (rpass= rl->passes.first; rpass; rpass= rpass->next) {
-		float *col= NULL;
-		int pixsize= 3;
+		float *col = NULL;
+		int pixsize = 3;
 		
-		switch (rpass->passtype) {
-			case SCE_PASS_RGBA:
-				col= shr->col;
-				pixsize= 4;
-				break;
-			case SCE_PASS_EMIT:
-				col= shr->emit;
-				break;
-			case SCE_PASS_DIFFUSE:
-				col= shr->diff;
-				break;
-			case SCE_PASS_SPEC:
-				col= shr->spec;
-				break;
-			case SCE_PASS_SHADOW:
-				col= shr->shad;
-				break;
-			case SCE_PASS_AO:
-				col= shr->ao;
-				break;
-			case SCE_PASS_ENVIRONMENT:
-				col= shr->env;
-				break;
-			case SCE_PASS_INDIRECT:
-				col= shr->indirect;
-				break;
-			case SCE_PASS_REFLECT:
-				col= shr->refl;
-				break;
-			case SCE_PASS_REFRACT:
-				col= shr->refr;
-				break;
-			case SCE_PASS_NORMAL:
-				col= shr->nor;
-				break;
-			case SCE_PASS_MIST:
-				col= &shr->mist;
-				pixsize= 1;
-				break;
-			case SCE_PASS_Z:
-				col= &shr->z;
-				pixsize= 1;
-				break;
-			case SCE_PASS_VECTOR:
+		if (STREQ(rpass->name, RE_PASSNAME_RGBA)) {
+			col = shr->col;
+			pixsize = 4;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_EMIT)) {
+			col = shr->emit;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_DIFFUSE)) {
+			col = shr->diff;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_SPEC)) {
+			col = shr->spec;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_SHADOW)) {
+			col = shr->shad;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_AO)) {
+			col = shr->ao;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_ENVIRONMENT)) {
+			col = shr->env;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_INDIRECT)) {
+			col = shr->indirect;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_REFLECT)) {
+			col = shr->refl;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_REFRACT)) {
+			col = shr->refr;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_NORMAL)) {
+			col = shr->nor;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_MIST)) {
+			col = &shr->mist;
+			pixsize = 1;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_Z)) {
+			col = &shr->z;
+			pixsize = 1;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_VECTOR)) {
+			ShadeResult *shr_t = shr+1;
+			float *fp = shr->winspeed;	/* was initialized */
+			int samp;
+
+			/* add minimum speed in pixel */
+			for (samp = 1; samp<R.osa; samp++, shr_t++) {
 				
-				{
-					ShadeResult *shr_t= shr+1;
-					float *fp= shr->winspeed;	/* was initialized */
-					int samp;
+				if (shr_t->combined[3] > 0.0f) {
+					const float *speed = shr_t->winspeed;
 					
-					/* add minimum speed in pixel */
-					for (samp= 1; samp<R.osa; samp++, shr_t++) {
-						
-						if (shr_t->combined[3] > 0.0f) {
-							const float *speed= shr_t->winspeed;
-							
-							if ( (ABS(speed[0]) + ABS(speed[1]))< (ABS(fp[0]) + ABS(fp[1])) ) {
-								fp[0]= speed[0];
-								fp[1]= speed[1];
-							}
-							if ( (ABS(speed[2]) + ABS(speed[3]))< (ABS(fp[2]) + ABS(fp[3])) ) {
-								fp[2]= speed[2];
-								fp[3]= speed[3];
-							}
-						}
+					if ( (ABS(speed[0]) + ABS(speed[1]))< (ABS(fp[0]) + ABS(fp[1])) ) {
+						fp[0] = speed[0];
+						fp[1] = speed[1];
+					}
+					if ( (ABS(speed[2]) + ABS(speed[3]))< (ABS(fp[2]) + ABS(fp[3])) ) {
+						fp[2] = speed[2];
+						fp[3] = speed[3];
 					}
 				}
-				break;
+			}
 		}
+
 		if (col) {
 			const float *fp= col+delta;
 			int samp;
@@ -3658,53 +3656,51 @@ static void add_transp_passes(RenderLayer *rl, int offset, ShadeResult *shr, flo
 		float *fp, *col= NULL;
 		int pixsize= 3;
 		
-		switch (rpass->passtype) {
-			case SCE_PASS_Z:
-				fp= rpass->rect + offset;
-				if (shr->z < *fp)
-					*fp= shr->z;
-				break;
-			case SCE_PASS_RGBA:
-				fp= rpass->rect + 4*offset;
-				addAlphaOverFloat(fp, shr->col);
-				break;
-			case SCE_PASS_EMIT:
-				col= shr->emit;
-				break;
-			case SCE_PASS_DIFFUSE:
-				col= shr->diff;
-				break;
-			case SCE_PASS_SPEC:
-				col= shr->spec;
-				break;
-			case SCE_PASS_SHADOW:
-				col= shr->shad;
-				break;
-			case SCE_PASS_AO:
-				col= shr->ao;
-				break;
-			case SCE_PASS_ENVIRONMENT:
-				col= shr->env;
-				break;
-			case SCE_PASS_INDIRECT:
-				col= shr->indirect;
-				break;
-			case SCE_PASS_REFLECT:
-				col= shr->refl;
-				break;
-			case SCE_PASS_REFRACT:
-				col= shr->refr;
-				break;
-			case SCE_PASS_NORMAL:
-				col= shr->nor;
-				break;
-			case SCE_PASS_MIST:
-				col= &shr->mist;
-				pixsize= 1;
-				break;
+		if (STREQ(rpass->name, RE_PASSNAME_Z)) {
+			fp = rpass->rect + offset;
+			if (shr->z < *fp)
+				*fp = shr->z;
 		}
-		if (col) {
+		else if (STREQ(rpass->name, RE_PASSNAME_RGBA)) {
+			fp = rpass->rect + 4*offset;
+			addAlphaOverFloat(fp, shr->col);
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_EMIT)) {
+			col = shr->emit;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_DIFFUSE)) {
+			col = shr->diff;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_SPEC)) {
+			col = shr->spec;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_SHADOW)) {
+			col = shr->shad;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_AO)) {
+			col = shr->ao;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_ENVIRONMENT)) {
+			col = shr->env;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_INDIRECT)) {
+			col = shr->indirect;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_REFLECT)) {
+			col = shr->refl;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_REFRACT)) {
+			col = shr->refr;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_NORMAL)) {
+			col = shr->nor;
+		}
+		else if (STREQ(rpass->name, RE_PASSNAME_MIST)) {
+			col = &shr->mist;
+			pixsize = 1;
+		}
 
+		if (col) {
 			fp= rpass->rect + pixsize*offset;
 			fp[0]= col[0] + (1.0f-alpha)*fp[0];
 			if (pixsize==3) {
@@ -3961,7 +3957,7 @@ static void reset_sky_speedvectors(RenderPart *pa, RenderLayer *rl, float *rectf
 	float *fp, *col;
 	int a;
 	
-	fp= RE_RenderLayerGetPass(rl, SCE_PASS_VECTOR);
+	fp = RE_RenderLayerGetPass(rl, RE_PASSNAME_VECTOR, R.viewname);
 	if (fp==NULL) return;
 	col= rectf+3;
 	
@@ -4054,9 +4050,10 @@ unsigned short *zbuffer_transp_shade(RenderPart *pa, RenderLayer *rl, float *pas
 
 	/* zero alpha pixels get speed vector max again */
 	if (addpassflag & SCE_PASS_VECTOR)
-		if (rl->layflag & SCE_LAY_SOLID)
-			reset_sky_speedvectors(pa, rl, rl->acolrect?rl->acolrect:rl->rectf);	/* if acolrect is set we use it */
-
+		if (rl->layflag & SCE_LAY_SOLID) {
+			float *rect = RE_RenderLayerGetPass(rl, RE_PASSNAME_COMBINED, R.viewname);
+			reset_sky_speedvectors(pa, rl, rl->acolrect ? rl->acolrect : rect);	/* if acolrect is set we use it */
+		}
 	/* filtered render, for now we assume only 1 filter size */
 	if (pa->crop) {
 		crop= 1;
@@ -4239,14 +4236,15 @@ unsigned short *zbuffer_transp_shade(RenderPart *pa, RenderLayer *rl, float *pas
 					if (pa->fullresult.first) {
 						for (a=0; a<R.osa; a++) {
 							alpha= samp_shr[a].combined[3];
-							if (alpha!=0.0f) {
-								RenderLayer *rl= ssamp.rlpp[a];
-								
-								addAlphaOverFloat(rl->rectf + 4*od, samp_shr[a].combined);
+							if (alpha != 0.0f) {
+								RenderLayer *rl_other = ssamp.rlpp[a];
+
+								float *rect = RE_RenderLayerGetPass(rl_other , RE_PASSNAME_COMBINED, R.viewname);
+								addAlphaOverFloat(rect + 4 * od, samp_shr[a].combined);
 				
-								add_transp_passes(rl, od, &samp_shr[a], alpha);
+								add_transp_passes(rl_other , od, &samp_shr[a], alpha);
 								if (addpassflag & SCE_PASS_VECTOR)
-									add_transp_speed(rl, od, samp_shr[a].winspeed, alpha, rdrect);
+									add_transp_speed(rl_other , od, samp_shr[a].winspeed, alpha, rdrect);
 							}
 						}
 					}

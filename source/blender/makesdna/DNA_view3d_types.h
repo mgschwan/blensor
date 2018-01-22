@@ -35,9 +35,7 @@
 struct ViewDepths;
 struct Object;
 struct Image;
-struct Tex;
 struct SpaceLink;
-struct Base;
 struct BoundBox;
 struct MovieClip;
 struct MovieClipUser;
@@ -217,27 +215,48 @@ typedef struct View3D {
 	/* drawflags, denoting state */
 	char zbuf, transp, xray;
 
+	char multiview_eye;				/* multiview current eye - for internal use */
+
 	/* built-in shader effects (eGPUFXFlags) */
-	char pad3[5];
+	char pad3[4];
 
 	/* note, 'fx_settings.dof' is currently _not_ allocated,
 	 * instead set (temporarily) from camera */
 	struct GPUFXSettings fx_settings;
 
 	void *properties_storage;		/* Nkey panel stores stuff here (runtime only!) */
-	struct Material *defmaterial;	/* used by matcap now */
+	/* Allocated per view, not library data (used by matcap). */
+	struct Material *defmaterial;
 
 	/* XXX deprecated? */
 	struct bGPdata *gpd  DNA_DEPRECATED;		/* Grease-Pencil Data (annotation layers) */
 
+	 /* multiview - stereo 3d */
+	short stereo3d_flag;
+	char stereo3d_camera;
+	char pad4;
+	float stereo3d_convergence_factor;
+	float stereo3d_volume_alpha;
+	float stereo3d_convergence_alpha;
+
+	/* Previous viewport draw type.
+	 * Runtime-only, set in the rendered viewport toggle operator.
+	 */
+	short prev_drawtype;
+	short pad1;
+	float pad2;
 } View3D;
 
+
+/* View3D->stereo_flag (short) */
+#define V3D_S3D_DISPCAMERAS		(1 << 0)
+#define V3D_S3D_DISPPLANE		(1 << 1)
+#define V3D_S3D_DISPVOLUME		(1 << 2)
 
 /* View3D->flag (short) */
 /*#define V3D_DISPIMAGE		1*/ /*UNUSED*/
 #define V3D_DISPBGPICS		2
 #define V3D_HIDE_HELPLINES	4
-#define V3D_INVALID_BACKBUF	8
 #define V3D_INVALID_BACKBUF	8
 
 #define V3D_ALIGN			1024
@@ -256,6 +275,11 @@ typedef struct View3D {
 #define RV3D_NAVIGATING				8
 #define RV3D_GPULIGHT_UPDATE		16
 #define RV3D_IS_GAME_ENGINE			32  /* runtime flag, used to check if LoD's should be used */
+/**
+ * Disable zbuffer offset, skip calls to #ED_view3d_polygon_offset.
+ * Use when precise surface depth is needed and picking bias isn't, see T45434).
+ */
+#define RV3D_ZOFFSET_DISABLED		64
 
 /* RegionView3d->viewlock */
 #define RV3D_LOCKED			(1 << 0)
@@ -272,11 +296,10 @@ typedef struct View3D {
 #define RV3D_VIEW_RIGHT			 4
 #define RV3D_VIEW_TOP			 5
 #define RV3D_VIEW_BOTTOM		 6
-#define RV3D_VIEW_PERSPORTHO	 7
 #define RV3D_VIEW_CAMERA		 8
 
 #define RV3D_VIEW_IS_AXIS(view) \
-	((view >= RV3D_VIEW_FRONT) && (view <= RV3D_VIEW_BOTTOM))
+	(((view) >= RV3D_VIEW_FRONT) && ((view) <= RV3D_VIEW_BOTTOM))
 
 /* View3d->flag2 (short) */
 #define V3D_RENDER_OVERRIDE		(1 << 2)
@@ -299,11 +322,18 @@ typedef struct View3D {
 #define V3D_SHOW_WORLD			(1 << 0)
 
 /* View3D->around */
-#define V3D_CENTER		 0
-#define V3D_CENTROID	 3
-#define V3D_CURSOR		 1
-#define V3D_LOCAL		 2
-#define V3D_ACTIVE		 4
+enum {
+	/* center of the bounding box */
+	V3D_AROUND_CENTER_BOUNDS	= 0,
+	/* center from the sum of all points divided by the total */
+	V3D_AROUND_CENTER_MEAN		= 3,
+	/* pivot around the 2D/3D cursor */
+	V3D_AROUND_CURSOR			= 1,
+	/* pivot around each items own origin */
+	V3D_AROUND_LOCAL_ORIGINS	= 2,
+	/* pivot around the active items origin */
+	V3D_AROUND_ACTIVE			= 4,
+};
 
 /*View3D types (only used in tools, not actually saved)*/
 #define V3D_VIEW_STEPLEFT		 1
@@ -367,6 +397,9 @@ enum {
 #define RV3D_CAMZOOM_MIN -30
 #define RV3D_CAMZOOM_MAX 600
 
-#endif
+/* #BKE_screen_view3d_zoom_to_fac() values above */
+#define RV3D_CAMZOOM_MIN_FACTOR  0.1657359312880714853f
+#define RV3D_CAMZOOM_MAX_FACTOR 44.9852813742385702928f
 
+#endif
 

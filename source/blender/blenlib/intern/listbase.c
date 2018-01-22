@@ -42,6 +42,8 @@
 
 #include "BLI_listbase.h"
 
+#include "BLI_strict_flags.h"
+
 /* implementation */
 
 /**
@@ -205,53 +207,56 @@ void BLI_freelinkN(ListBase *listbase, void *vlink)
 	MEM_freeN(link);
 }
 
+/**
+ * Assigns all #Link.prev pointers from #Link.next
+ */
+static void listbase_double_from_single(Link *iter, ListBase *listbase)
+{
+	Link *prev = NULL;
+	listbase->first = iter;
+	do {
+		iter->prev = prev;
+		prev = iter;
+	} while ((iter = iter->next));
+	listbase->last = prev;
+}
+
+#define SORT_IMPL_LINKTYPE Link
+
+/* regular call */
+#define SORT_IMPL_FUNC listbase_sort_fn
+#include "list_sort_impl.h"
+#undef SORT_IMPL_FUNC
+
+/* reentrant call */
+#define SORT_IMPL_USE_THUNK
+#define SORT_IMPL_FUNC listbase_sort_fn_r
+#include "list_sort_impl.h"
+#undef SORT_IMPL_FUNC
+#undef SORT_IMPL_USE_THUNK
+
+#undef SORT_IMPL_LINKTYPE
 
 /**
  * Sorts the elements of listbase into the order defined by cmp
- * (which should return 1 iff its first arg should come after its second arg).
+ * (which should return 1 if its first arg should come after its second arg).
  * This uses insertion sort, so NOT ok for large list.
  */
 void BLI_listbase_sort(ListBase *listbase, int (*cmp)(const void *, const void *))
 {
-	Link *current = NULL;
-	Link *previous = NULL;
-	Link *next = NULL;
-
 	if (listbase->first != listbase->last) {
-		for (previous = listbase->first, current = previous->next; current; current = next) {
-			next = current->next;
-			previous = current->prev;
-			
-			BLI_remlink(listbase, current);
-			
-			while (previous && cmp(previous, current) == 1) {
-				previous = previous->prev;
-			}
-			
-			BLI_insertlinkafter(listbase, previous, current);
-		}
+		Link *head = listbase->first;
+		head = listbase_sort_fn(head, cmp);
+		listbase_double_from_single(head, listbase);
 	}
 }
 
-void BLI_listbase_sort_r(ListBase *listbase, void *thunk, int (*cmp)(void *, const void *, const void *))
+void BLI_listbase_sort_r(ListBase *listbase, int (*cmp)(void *, const void *, const void *), void *thunk)
 {
-	Link *current = NULL;
-	Link *previous = NULL;
-	Link *next = NULL;
-
 	if (listbase->first != listbase->last) {
-		for (previous = listbase->first, current = previous->next; current; current = next) {
-			next = current->next;
-			previous = current->prev;
-
-			BLI_remlink(listbase, current);
-
-			while (previous && cmp(thunk, previous, current) == 1) {
-				previous = previous->prev;
-			}
-
-			BLI_insertlinkafter(listbase, previous, current);
-		}
+		Link *head = listbase->first;
+		head = listbase_sort_fn_r(head, cmp, thunk);
+		listbase_double_from_single(head, listbase);
 	}
 }
 
@@ -335,6 +340,78 @@ void BLI_insertlinkbefore(ListBase *listbase, void *vnextlink, void *vnewlink)
 	if (newlink->prev) {
 		newlink->prev->next = newlink;
 	}
+}
+
+
+/**
+ * Insert a link in place of another, without changing it's position in the list.
+ *
+ * Puts `vnewlink` in the position of `vreplacelink`, removing `vreplacelink`.
+ * - `vreplacelink` *must* be in the list.
+ * - `vnewlink` *must not* be in the list.
+ */
+void BLI_insertlinkreplace(ListBase *listbase, void *vreplacelink, void *vnewlink)
+{
+	Link *l_old = vreplacelink;
+	Link *l_new = vnewlink;
+
+	/* update adjacent links */
+	if (l_old->next != NULL) {
+		l_old->next->prev = l_new;
+	}
+	if (l_old->prev != NULL) {
+		l_old->prev->next = l_new;
+	}
+
+	/* set direct links */
+	l_new->next = l_old->next;
+	l_new->prev = l_old->prev;
+
+	 /* update list */
+	if (listbase->first == l_old) {
+		listbase->first = l_new;
+	}
+	if (listbase->last == l_old) {
+		listbase->last = l_new;
+	}
+}
+
+/**
+ * Reinsert \a vlink relative to its current position but offset by \a step. Doesn't move
+ * item if new position would exceed list (could optionally move to head/tail).
+ *
+ * \param step: Absolute value defines step size, sign defines direction. E.g pass -1
+ *              to move \a vlink before previous, or 1 to move behind next.
+ * \return If position of \a vlink has changed.
+ */
+bool BLI_listbase_link_move(ListBase *listbase, void *vlink, int step)
+{
+	Link *link = vlink;
+	Link *hook = link;
+	const bool is_up = step < 0;
+
+	if (step == 0) {
+		return false;
+	}
+	BLI_assert(BLI_findindex(listbase, link) != -1);
+
+	/* find link to insert before/after */
+	for (int i = 0; i < ABS(step); i++) {
+		hook = is_up ? hook->prev : hook->next;
+		if (!hook) {
+			return false;
+		}
+	}
+
+	/* reinsert link */
+	BLI_remlink(listbase, vlink);
+	if (is_up) {
+		BLI_insertlinkbefore(listbase, hook, vlink);
+	}
+	else {
+		BLI_insertlinkafter(listbase, hook, vlink);
+	}
+	return true;
 }
 
 
@@ -587,7 +664,7 @@ void *BLI_rfindptr(const ListBase *listbase, const void *ptr, const int offset)
 }
 
 /**
- * Returns the 1-based index of the first element of listbase which contains the specified
+ * Returns the 0-based index of the first element of listbase which contains the specified
  * null-terminated string at the specified offset, or -1 if not found.
  */
 int BLI_findstringindex(const ListBase *listbase, const char *id, const int offset)

@@ -37,9 +37,10 @@
 #error WIN32 only!
 #endif // WIN32
 
-#ifndef __MINGW64__
-#define _WIN32_WINNT 0x501 // require Windows XP or newer
-#endif
+/* require Windows XP or newer */
+#undef _WIN32_WINNT
+#define _WIN32_WINNT 0x501
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <ole2.h> // for drag-n-drop
@@ -118,8 +119,8 @@ public:
 	 * \param	height	The height the window.
 	 * \param	state	The state of the window when opened.
 	 * \param	type	The type of drawing context installed in this window.
-	 * \param	stereoVisual	Stereo visual for quad buffered stereo.
-	 * \param	numOfAASamples	Number of samples used for AA (zero if no AA)
+	 * \param glSettings: Misc OpenGL settings.
+	 * \param exclusive: Use to show the window ontop and ignore others (used fullscreen).
 	 * \param	parentWindow    Parent (embedder) window
 	 * \return	The new window (or 0 if creation failed).
 	 */
@@ -182,7 +183,7 @@ public:
 	GHOST_TSuccess getButtons(GHOST_Buttons& buttons) const;
 
 	/**
-	 * Returns unsinged char from CUT_BUFFER0
+	 * Returns unsigned char from CUT_BUFFER0
 	 * \param selection		Used by X11 only
 	 * \return				Returns the Clipboard
 	 */
@@ -263,12 +264,12 @@ protected:
 	static GHOST_EventCursor *processCursorEvent(GHOST_TEventType type, GHOST_WindowWin32 *window);
 
 	/**
-	 * Creates a mouse wheel event.
+	 * Handles a mouse wheel event.
 	 * \param window	The window receiving the event (the active window).
 	 * \param wParam	The wParam from the wndproc
 	 * \param lParam	The lParam from the wndproc
 	 */
-	static GHOST_EventWheel *processWheelEvent(GHOST_WindowWin32 *window, WPARAM wParam, LPARAM lParam);
+	static void processWheelEvent(GHOST_WindowWin32 *window, WPARAM wParam, LPARAM lParam);
 
 	/**
 	 * Creates a key event and updates the key data stored locally (m_modifierKeys).
@@ -283,7 +284,7 @@ protected:
 	 * Process special keys (VK_OEM_*), to see if current key layout
 	 * gives us anything special, like ! on french AZERTY.
 	 * \param vKey		The virtual key from hardKey
-	 * \param ScanCode	The ScanCode of pressed key (simular to PS/2 Set 1)
+	 * \param scanCode	The ScanCode of pressed key (simular to PS/2 Set 1)
 	 */
 	GHOST_TKey processSpecialKey(short vKey, short scanCode) const;
 
@@ -375,6 +376,9 @@ protected:
 
 	/** Console status */
 	int m_consoleStatus;
+
+	/** Wheel delta accumulator **/
+	int m_wheelDeltaAccum;
 };
 
 inline void GHOST_SystemWin32::retrieveModifierKeys(GHOST_ModifierKeys& keys) const

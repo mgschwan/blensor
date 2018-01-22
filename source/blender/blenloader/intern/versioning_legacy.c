@@ -77,6 +77,7 @@
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
 
+#include "BKE_action.h"
 #include "BKE_armature.h"
 #include "BKE_colortools.h"
 #include "BKE_constraint.h"
@@ -588,7 +589,7 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 		/* tex->extend and tex->imageflag have changed: */
 		Tex *tex = main->tex.first;
 		while (tex) {
-			if (tex->id.flag & LIB_NEED_LINK) {
+			if (tex->id.tag & LIB_TAG_NEED_LINK) {
 
 				if (tex->extend == 0) {
 					if (tex->xrepeat || tex->yrepeat) {
@@ -647,7 +648,6 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 		while (ob) {
 			if (ob->transflag & 1) {
 				ob->transflag -= 1;
-				//ob->ipoflag |= OB_OFFS_OB;
 			}
 			ob = ob->id.next;
 		}
@@ -684,7 +684,6 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 		}
 		ob = main->object.first;
 		while (ob) {
-			//ob->ipoflag |= OB_OFFS_PARENT;
 			if (ob->dt == 0)
 				ob->dt = OB_SOLID;
 			ob = ob->id.next;
@@ -795,22 +794,14 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 				nr = me->totface;
 				tface = me->tface;
 				while (nr--) {
-					cp = (char *)&tface->col[0];
-					if (cp[1] > 126) cp[1] = 255; else cp[1] *= 2;
-					if (cp[2] > 126) cp[2] = 255; else cp[2] *= 2;
-					if (cp[3] > 126) cp[3] = 255; else cp[3] *= 2;
-					cp = (char *)&tface->col[1];
-					if (cp[1] > 126) cp[1] = 255; else cp[1] *= 2;
-					if (cp[2] > 126) cp[2] = 255; else cp[2] *= 2;
-					if (cp[3] > 126) cp[3] = 255; else cp[3] *= 2;
-					cp = (char *)&tface->col[2];
-					if (cp[1] > 126) cp[1] = 255; else cp[1] *= 2;
-					if (cp[2] > 126) cp[2] = 255; else cp[2] *= 2;
-					if (cp[3] > 126) cp[3] = 255; else cp[3] *= 2;
-					cp = (char *)&tface->col[3];
-					if (cp[1] > 126) cp[1] = 255; else cp[1] *= 2;
-					if (cp[2] > 126) cp[2] = 255; else cp[2] *= 2;
-					if (cp[3] > 126) cp[3] = 255; else cp[3] *= 2;
+					int j;
+					for (j = 0; j < 4; j++) {
+						int k;
+						cp = ((char *)&tface->col[j]) + 1;
+						for (k = 0; k < 3; k++) {
+							cp[k] = (cp[k] > 126) ? 255 : cp[k] * 2;
+						}
+					}
 
 					tface++;
 				}
@@ -1299,7 +1290,7 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 		Object *ob;
 
 		for (vf = main->vfont.first; vf; vf = vf->id.next) {
-			if (STREQ(vf->name + strlen(vf->name)-6, ".Bfont")) {
+			if (STREQ(vf->name + strlen(vf->name) - 6, ".Bfont")) {
 				strcpy(vf->name, FO_BUILTIN_NAME);
 			}
 		}
@@ -1427,7 +1418,7 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 		}
 
 		for (sce = main->scene.first; sce; sce = sce->id.next) {
-			sce->audio.mixrate = 44100;
+			sce->audio.mixrate = 48000;
 			sce->audio.flag |= AUDIO_SCRUB;
 			sce->r.mode |= R_ENVMAP;
 		}
@@ -1796,14 +1787,6 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 			ma = ma->id.next;
 		}
 
-		/* this should have been done loooong before! */
-#if 0   /* deprecated in 2.5+ */
-		while (ob) {
-			if (ob->ipowin == 0)
-				ob->ipowin = ID_OB;
-			ob = ob->id.next;
-		}
-#endif
 		for (sc = main->screen.first; sc; sc = sc->id.next) {
 			ScrArea *sa;
 			for (sa = sc->areabase.first; sa; sa = sa->next) {
@@ -1958,7 +1941,7 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 			/* btw. armature_rebuild_pose is further only called on leave editmode */
 			if (ob->type == OB_ARMATURE) {
 				if (ob->pose)
-					ob->pose->flag |= POSE_RECALC;
+					BKE_pose_tag_recalc(main, ob->pose);
 
 				/* cannot call stuff now (pointers!), done in setup_app_data */
 				ob->recalc |= OB_RECALC_OB|OB_RECALC_DATA|OB_RECALC_TIME;
@@ -2082,7 +2065,7 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 								data->rootbone = -1;
 
 								/* update_pose_etc handles rootbone == -1 */
-								ob->pose->flag |= POSE_RECALC;
+								BKE_pose_tag_recalc(main, ob->pose);
 							}
 						}
 					}
@@ -2228,7 +2211,7 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 		}
 		for (sce = main->scene.first; sce; sce = sce->id.next) {
 			if (sce->audio.mixrate == 0)
-				sce->audio.mixrate = 44100;
+				sce->audio.mixrate = 48000;
 
 			if (sce->r.xparts <2 )
 				sce->r.xparts = 4;
@@ -2313,11 +2296,12 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 		/* during 2.41 images with this name were used for viewer node output, lets fix that */
 		if (main->versionfile == 241) {
 			Image *ima;
-			for (ima = main->image.first; ima; ima = ima->id.next)
+			for (ima = main->image.first; ima; ima = ima->id.next) {
 				if (STREQ(ima->name, "Compositor")) {
 					strcpy(ima->id.name + 2, "Viewer Node");
 					strcpy(ima->name, "Viewer Node");
 				}
+			}
 		}
 	}
 
@@ -2408,8 +2392,9 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 								data->flag |= MINMAX_STICKY;
 							else
 								data->flag &= ~MINMAX_STICKY;
-						}
+
 							break;
+						}
 						case CONSTRAINT_TYPE_ROTLIKE:
 						{
 							bRotateLikeConstraint *data = curcon->data;
@@ -2417,8 +2402,9 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 							/* version patch from buttons_object.c */
 							if (data->flag == 0)
 								data->flag = ROTLIKE_X|ROTLIKE_Y|ROTLIKE_Z;
-						}
+
 							break;
+						}
 					}
 				}
 			}
@@ -2487,7 +2473,7 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 
 		for (group = main->group.first; group; group = group->id.next)
 			if (group->layer == 0)
-				group->layer = (1<<20)-1;
+				group->layer = (1 << 20) - 1;
 
 		/* now, subversion control! */
 		if (main->subversionfile < 3) {
@@ -3050,7 +3036,7 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 				part->id.lib = ob->id.lib;
 
 				part->id.us--;
-				part->id.flag |= (ob->id.flag & LIB_NEED_LINK);
+				part->id.tag |= (ob->id.tag & LIB_TAG_NEED_LINK);
 
 				psys->totpart = 0;
 				psys->flag = PSYS_CURRENT;
@@ -3253,7 +3239,6 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 		idproperties_fix_group_lengths(main->key);
 		idproperties_fix_group_lengths(main->world);
 		idproperties_fix_group_lengths(main->screen);
-		idproperties_fix_group_lengths(main->script);
 		idproperties_fix_group_lengths(main->vfont);
 		idproperties_fix_group_lengths(main->text);
 		idproperties_fix_group_lengths(main->sound);

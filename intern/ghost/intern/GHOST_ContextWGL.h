@@ -32,6 +32,8 @@
 #ifndef __GHOST_CONTEXTWGL_H__
 #define __GHOST_CONTEXTWGL_H__
 
+//#define WIN32_COMPOSITING
+
 #include "GHOST_Context.h"
 
 #ifdef WITH_GLEW_MX
@@ -65,6 +67,7 @@ public:
 	 */
 	GHOST_ContextWGL(
 	        bool stereoVisual,
+			bool alphaBackground,
 	        GHOST_TUns16 numOfAASamples,
 	        HWND hWnd,
 	        HDC hDC,
@@ -118,8 +121,6 @@ public:
 	 */
 	GHOST_TSuccess getSwapInterval(int &intervalOut);
 
-	static void unSetWarningOld(){s_warn_old = true;}
-
 protected:
 	inline void activateWGLEW() const {
 #ifdef WITH_GLEW_MX 
@@ -148,11 +149,10 @@ private:
 	        bool needAlpha,
 	        bool needStencil,
 	        bool sRGB,
-	        int &swapMethodOut);
+	        int *swapMethodOut);
 
-	int _choose_pixel_format_arb_2(
-	        bool stereoVisual,
-	        int numOfAASamples,
+	int _choose_pixel_format_arb_2(bool stereoVisual,
+	        int *numOfAASamples,
 	        bool needAlpha,
 	        bool needStencil,
 	        bool sRGB,
@@ -167,6 +167,7 @@ private:
 	const int m_contextMajorVersion;
 	const int m_contextMinorVersion;
 	const int m_contextFlags;
+	const bool m_alphaBackground;
 	const int m_contextResetNotificationStrategy;
 
 	HGLRC m_hGLRC;
@@ -185,7 +186,6 @@ private:
 	static int   s_sharedCount;
 
 	static bool s_singleContextMode;
-	static bool s_warn_old;
 };
 
 #endif  // __GHOST_CONTEXTWGL_H__

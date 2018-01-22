@@ -49,7 +49,6 @@ struct Object;
 struct bDopeSheet;
 
 struct bAction;
-struct bActionGroup;
 struct FCurve;
 struct FModifier;
 
@@ -75,6 +74,7 @@ typedef struct bAnimContext {
 	short mode;             /* editor->mode */
 	short spacetype;        /* sa->spacetype */
 	short regiontype;       /* active region -> type (channels or main) */
+	
 	struct ScrArea *sa;     /* editor host */
 	struct SpaceLink *sl;   /* editor data */
 	struct ARegion *ar;     /* region within editor */
@@ -86,6 +86,8 @@ typedef struct bAnimContext {
 	ListBase *markers;      /* active set of markers */
 	
 	struct ReportList *reports; /* pointer to current reports list */
+	
+	float yscale_fac;       /* scale factor for height of channels (i.e. based on the size of keyframes) */
 } bAnimContext;
 
 /* Main Data container types */
@@ -115,13 +117,17 @@ typedef struct bAnimListElem {
 	int     flag;           /* copy of elem's flags for quick access */
 	int     index;          /* for un-named data, the index of the data in its collection */
 	
-	short   update;         /* (eAnim_Update_Flags)  tag the element for updating */
+	char    update;         /* (eAnim_Update_Flags)  tag the element for updating */
+	char    tag;            /* tag the included data. Temporary always */
+
 	short   datatype;       /* (eAnim_KeyType) type of motion data to expect */
 	void   *key_data;       /* motion data - mostly F-Curves, but can be other types too */
 	
 	
 	struct ID *id;          /* ID block that channel is attached to */
 	struct AnimData *adt;   /* source of the animation data attached to ID block (for convenience) */
+	
+	void   *owner;          /* for per-element F-Curves (e.g. NLA Control Curves), the element that this represents (e.g. NlaStrip) */
 } bAnimListElem;
 
 
@@ -141,12 +147,16 @@ typedef enum eAnim_ChannelType {
 	ANIMTYPE_GROUP,
 	ANIMTYPE_FCURVE,
 	
+	ANIMTYPE_NLACONTROLS,
+	ANIMTYPE_NLACURVE,
+	
 	ANIMTYPE_FILLACTD,
 	ANIMTYPE_FILLDRIVERS,
 	
 	ANIMTYPE_DSMAT,
 	ANIMTYPE_DSLAM,
 	ANIMTYPE_DSCAM,
+	ANIMTYPE_DSCACHEFILE,
 	ANIMTYPE_DSCUR,
 	ANIMTYPE_DSSKEY,
 	ANIMTYPE_DSWOR,
@@ -160,6 +170,7 @@ typedef enum eAnim_ChannelType {
 	ANIMTYPE_DSLINESTYLE,
 	ANIMTYPE_DSSPK,
 	ANIMTYPE_DSGPENCIL,
+	ANIMTYPE_DSMCLIP,
 	
 	ANIMTYPE_SHAPEKEY,
 	
@@ -245,7 +256,7 @@ typedef enum eAnimFilter_Flags {
 	ANIMFILTER_TMP_PEEK       = (1 << 30),
 
 	/* ignore ONLYSEL flag from filterflag, (internal use only!) */
-	ANIMFILTER_TMP_IGNORE_ONLYSEL = (1 << 31)
+	ANIMFILTER_TMP_IGNORE_ONLYSEL = (1u << 31)
 } eAnimFilter_Flags;
 
 /* ---------- Flag Checking Macros ------------ */
@@ -266,6 +277,7 @@ typedef enum eAnimFilter_Flags {
 #define FILTER_MAT_OBJD(ma)     (CHECK_TYPE_INLINE(ma, Material *), ((ma->flag & MA_DS_EXPAND)))
 #define FILTER_LAM_OBJD(la)     (CHECK_TYPE_INLINE(la, Lamp *), ((la->flag & LA_DS_EXPAND)))
 #define FILTER_CAM_OBJD(ca)     (CHECK_TYPE_INLINE(ca, Camera *), ((ca->flag & CAM_DS_EXPAND)))
+#define FILTER_CACHEFILE_OBJD(cf)     (CHECK_TYPE_INLINE(cf, CacheFile *), ((cf->flag & CACHEFILE_DS_EXPAND)))
 #define FILTER_CUR_OBJD(cu)     (CHECK_TYPE_INLINE(cu, Curve *), ((cu->flag & CU_DS_EXPAND)))
 #define FILTER_PART_OBJD(part)  (CHECK_TYPE_INLINE(part, ParticleSettings *), ((part->flag & PART_DS_EXPAND)))
 #define FILTER_MBALL_OBJD(mb)   (CHECK_TYPE_INLINE(mb, MetaBall *), ((mb->flag2 & MB_DS_EXPAND)))
@@ -318,6 +330,8 @@ typedef enum eAnimFilter_Flags {
 #define SEL_NLT(nlt) (nlt->flag & NLATRACK_SELECTED)
 #define EDITABLE_NLT(nlt) ((nlt->flag & NLATRACK_PROTECTED) == 0)
 
+/* Movie clip only */
+#define EXPANDED_MCLIP(clip) (clip->flag & MCLIP_DATA_EXPAND)
 
 /* AnimData - NLA mostly... */
 #define SEL_ANIMDATA(adt) (adt->flag & ADT_UI_SELECTED)
@@ -325,11 +339,11 @@ typedef enum eAnimFilter_Flags {
 /* -------------- Channel Defines -------------- */
 
 /* channel heights */
-#define ACHANNEL_FIRST          (-0.8f * U.widget_unit)
-#define ACHANNEL_HEIGHT         (0.8f * U.widget_unit)
-#define ACHANNEL_HEIGHT_HALF    (0.4f * U.widget_unit)
-#define ACHANNEL_SKIP           (0.1f * U.widget_unit)
-#define ACHANNEL_STEP           (ACHANNEL_HEIGHT + ACHANNEL_SKIP)
+#define ACHANNEL_FIRST(ac)          (-0.8f * (ac)->yscale_fac * U.widget_unit)
+#define ACHANNEL_HEIGHT(ac)         (0.8f * (ac)->yscale_fac * U.widget_unit)
+#define ACHANNEL_HEIGHT_HALF(ac)    (0.4f * (ac)->yscale_fac * U.widget_unit)
+#define ACHANNEL_SKIP               (0.1f * U.widget_unit)
+#define ACHANNEL_STEP(ac)           (ACHANNEL_HEIGHT(ac) + ACHANNEL_SKIP)
 
 /* channel widths */
 #define ACHANNEL_NAMEWIDTH      (10 * U.widget_unit)
@@ -341,7 +355,6 @@ typedef enum eAnimFilter_Flags {
 /* -------------- NLA Channel Defines -------------- */
 
 /* NLA channel heights */
-// XXX: NLACHANNEL_FIRST isn't used?
 #define NLACHANNEL_FIRST                (-0.8f * U.widget_unit)
 #define NLACHANNEL_HEIGHT(snla)         ((snla && (snla->flag & SNLA_NOSTRIPCURVES)) ? (0.8f * U.widget_unit) : (1.2f * U.widget_unit))
 #define NLACHANNEL_HEIGHT_HALF(snla)    ((snla && (snla->flag & SNLA_NOSTRIPCURVES)) ? (0.4f * U.widget_unit) : (0.6f * U.widget_unit))
@@ -406,7 +419,9 @@ typedef enum eAnimChannel_Settings {
 	ACHANNEL_SETTING_EXPAND   = 3,
 	ACHANNEL_SETTING_VISIBLE  = 4,  /* only for Graph Editor */
 	ACHANNEL_SETTING_SOLO     = 5,  /* only for NLA Tracks */
-	ACHANNEL_SETTING_PINNED   = 6   /* only for NLA Actions */
+	ACHANNEL_SETTING_PINNED   = 6,  /* only for NLA Actions */
+	ACHANNEL_SETTING_MOD_OFF  = 7,
+	ACHANNEL_SETTING_ALWAYS_VISIBLE = 8,  /* channel is pinned and always visible */
 } eAnimChannel_Settings;
 
 
@@ -450,13 +465,13 @@ typedef struct bAnimChannelType {
 /* ------------------------ Drawing API -------------------------- */
 
 /* Get typeinfo for the given channel */
-bAnimChannelType *ANIM_channel_get_typeinfo(bAnimListElem *ale);
+const bAnimChannelType *ANIM_channel_get_typeinfo(bAnimListElem *ale);
 
 /* Print debugging info about a given channel */
 void ANIM_channel_debug_print_info(bAnimListElem *ale, short indent_level);
 
 /* Draw the given channel */
-void ANIM_channel_draw(bAnimContext *ac, bAnimListElem *ale, float yminc, float ymaxc);
+void ANIM_channel_draw(bAnimContext *ac, bAnimListElem *ale, float yminc, float ymaxc, size_t channel_index);
 /* Draw the widgets for the given channel */
 void ANIM_channel_draw_widgets(const struct bContext *C, bAnimContext *ac, bAnimListElem *ale, struct uiBlock *block, float yminc, float ymaxc, size_t channel_index);
 
@@ -537,10 +552,10 @@ void ANIM_uiTemplate_fmodifier_draw(struct uiLayout *layout, struct ID *id, List
 
 
 /* free the copy/paste buffer */
-void free_fmodifiers_copybuf(void);
+void ANIM_fmodifiers_copybuf_free(void);
 
 /* copy the given F-Modifiers to the buffer, returning whether anything was copied or not
- * assuming that the buffer has been cleared already with free_fmodifiers_copybuf()
+ * assuming that the buffer has been cleared already with ANIM_fmodifiers_copybuf_free()
  *	- active: only copy the active modifier
  */
 bool ANIM_fmodifiers_copy_to_buf(ListBase *modifiers, bool active);
@@ -601,7 +616,7 @@ typedef enum eAnimUnitConv_Flags {
 	ANIM_UNITCONV_SKIPKNOTS  = (1 << 4),
 	/* Scale FCurve i a way it fits to -1..1 space */
 	ANIM_UNITCONV_NORMALIZE  = (1 << 5),
-	/* Only whennormalization is used: use scale factor from previous run,
+	/* Only when normalization is used: use scale factor from previous run,
 	 * prevents curves from jumping all over the place when tweaking them.
 	 */
 	ANIM_UNITCONV_NORMALIZE_FREEZE  = (1 << 6),
@@ -611,7 +626,7 @@ typedef enum eAnimUnitConv_Flags {
 short ANIM_get_normalization_flags(bAnimContext *ac);
 
 /* Get unit conversion factor for given ID + F-Curve */
-float ANIM_unit_mapping_get_factor(struct Scene *scene, struct ID *id, struct FCurve *fcu, short flag);
+float ANIM_unit_mapping_get_factor(struct Scene *scene, struct ID *id, struct FCurve *fcu, short flag, float *r_offset);
 
 /* ------------- Utility macros ----------------------- */
 
@@ -653,6 +668,7 @@ void ANIM_list_elem_update(struct Scene *scene, bAnimListElem *ale);
 /* data -> channels syncing */
 void ANIM_sync_animchannels_to_data(const struct bContext *C);
 
+void ANIM_center_frame(struct bContext *C, int smooth_viewtx);
 /* ************************************************* */
 /* OPERATORS */
 	
@@ -668,6 +684,16 @@ void ED_keymap_anim(struct wmKeyConfig *keyconf);
 void ED_operatormacros_graph(void);
 /* space_action */
 void ED_operatormacros_action(void);
+
+/* ************************************************ */
+/* Animation Editor Exports */
+/* XXX: Should we be doing these here, or at all? */
+
+/* Action Editor - Action Management */
+struct AnimData *ED_actedit_animdata_from_context(struct bContext *C);
+void ED_animedit_unlink_action(struct bContext *C, struct ID *id, 
+                               struct AnimData *adt, struct bAction *act,
+                               struct ReportList *reports, bool force_delete);
 
 /* ************************************************ */
 

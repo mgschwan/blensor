@@ -28,11 +28,9 @@
  *  \ingroup bgevideotex
  */
 
-#include "PyObjectPlus.h"
+#include "EXP_PyObjectPlus.h"
 
 #include "KX_PythonInit.h"
-
-#include <RAS_GLExtensionManager.h>
 
 #include <RAS_IPolygonMaterial.h>
 
@@ -49,6 +47,12 @@
 #include "Texture.h"
 
 #include "Exception.h"
+
+// access to IMB_BLEND_* constants
+extern "C"
+{
+#include "IMB_imbuf.h"
+};
 
 
 // get material id
@@ -124,6 +128,10 @@ static PyMethodDef moduleMethods[] =
 extern PyTypeObject VideoFFmpegType;
 extern PyTypeObject ImageFFmpegType;
 #endif
+#ifdef WITH_GAMEENGINE_DECKLINK
+extern PyTypeObject VideoDeckLinkType;
+extern PyTypeObject DeckLinkType;
+#endif
 extern PyTypeObject FilterBlueScreenType;
 extern PyTypeObject FilterGrayType;
 extern PyTypeObject FilterColorType;
@@ -140,6 +148,9 @@ static void registerAllTypes(void)
 #ifdef WITH_FFMPEG
 	pyImageTypes.add(&VideoFFmpegType, "VideoFFmpeg");
 	pyImageTypes.add(&ImageFFmpegType, "ImageFFmpeg");
+#endif
+#ifdef WITH_GAMEENGINE_DECKLINK
+	pyImageTypes.add(&VideoDeckLinkType, "VideoDeckLink");
 #endif
 	pyImageTypes.add(&ImageBuffType, "ImageBuff");
 	pyImageTypes.add(&ImageMixType, "ImageMix");
@@ -190,6 +201,10 @@ PyMODINIT_FUNC initVideoTexturePythonBinding(void)
 		return NULL;
 	if (PyType_Ready(&TextureType) < 0) 
 		return NULL;
+#ifdef WITH_GAMEENGINE_DECKLINK
+	if (PyType_Ready(&DeckLinkType) < 0)
+		return NULL;
+#endif
 
 	m = PyModule_Create(&VideoTexture_module_def);
 	PyDict_SetItemString(PySys_GetObject("modules"), VideoTexture_module_def.m_name, m);
@@ -203,12 +218,45 @@ PyMODINIT_FUNC initVideoTexturePythonBinding(void)
 
 	Py_INCREF(&TextureType);
 	PyModule_AddObject(m, "Texture", (PyObject *)&TextureType);
+#ifdef WITH_GAMEENGINE_DECKLINK
+	Py_INCREF(&DeckLinkType);
+	PyModule_AddObject(m, "DeckLink", (PyObject *)&DeckLinkType);
+#endif
 	PyModule_AddIntConstant(m, "SOURCE_ERROR", SourceError);
 	PyModule_AddIntConstant(m, "SOURCE_EMPTY", SourceEmpty);
 	PyModule_AddIntConstant(m, "SOURCE_READY", SourceReady);
 	PyModule_AddIntConstant(m, "SOURCE_PLAYING", SourcePlaying);
 	PyModule_AddIntConstant(m, "SOURCE_STOPPED", SourceStopped);
-	
+
+	PyModule_AddIntConstant(m, "IMB_BLEND_MIX", IMB_BLEND_MIX);
+	PyModule_AddIntConstant(m, "IMB_BLEND_ADD", IMB_BLEND_ADD);
+	PyModule_AddIntConstant(m, "IMB_BLEND_SUB", IMB_BLEND_SUB);
+	PyModule_AddIntConstant(m, "IMB_BLEND_MUL", IMB_BLEND_MUL);
+	PyModule_AddIntConstant(m, "IMB_BLEND_LIGHTEN", IMB_BLEND_LIGHTEN);
+	PyModule_AddIntConstant(m, "IMB_BLEND_DARKEN", IMB_BLEND_DARKEN);
+	PyModule_AddIntConstant(m, "IMB_BLEND_ERASE_ALPHA", IMB_BLEND_ERASE_ALPHA);
+	PyModule_AddIntConstant(m, "IMB_BLEND_ADD_ALPHA", IMB_BLEND_ADD_ALPHA);
+	PyModule_AddIntConstant(m, "IMB_BLEND_OVERLAY", IMB_BLEND_OVERLAY);
+	PyModule_AddIntConstant(m, "IMB_BLEND_HARDLIGHT", IMB_BLEND_HARDLIGHT);
+	PyModule_AddIntConstant(m, "IMB_BLEND_COLORBURN", IMB_BLEND_COLORBURN);
+	PyModule_AddIntConstant(m, "IMB_BLEND_LINEARBURN", IMB_BLEND_LINEARBURN);
+	PyModule_AddIntConstant(m, "IMB_BLEND_COLORDODGE", IMB_BLEND_COLORDODGE);
+	PyModule_AddIntConstant(m, "IMB_BLEND_SCREEN", IMB_BLEND_SCREEN);
+	PyModule_AddIntConstant(m, "IMB_BLEND_SOFTLIGHT", IMB_BLEND_SOFTLIGHT);
+	PyModule_AddIntConstant(m, "IMB_BLEND_PINLIGHT", IMB_BLEND_PINLIGHT);
+	PyModule_AddIntConstant(m, "IMB_BLEND_VIVIDLIGHT", IMB_BLEND_VIVIDLIGHT);
+	PyModule_AddIntConstant(m, "IMB_BLEND_LINEARLIGHT", IMB_BLEND_LINEARLIGHT);
+	PyModule_AddIntConstant(m, "IMB_BLEND_DIFFERENCE", IMB_BLEND_DIFFERENCE);
+	PyModule_AddIntConstant(m, "IMB_BLEND_EXCLUSION", IMB_BLEND_EXCLUSION);
+	PyModule_AddIntConstant(m, "IMB_BLEND_HUE", IMB_BLEND_HUE);
+	PyModule_AddIntConstant(m, "IMB_BLEND_SATURATION", IMB_BLEND_SATURATION);
+	PyModule_AddIntConstant(m, "IMB_BLEND_LUMINOSITY", IMB_BLEND_LUMINOSITY);
+	PyModule_AddIntConstant(m, "IMB_BLEND_COLOR", IMB_BLEND_COLOR);
+
+	PyModule_AddIntConstant(m, "IMB_BLEND_COPY", IMB_BLEND_COPY);
+	PyModule_AddIntConstant(m, "IMB_BLEND_COPY_RGB", IMB_BLEND_COPY_RGB);
+	PyModule_AddIntConstant(m, "IMB_BLEND_COPY_ALPHA", IMB_BLEND_COPY_ALPHA);
+
 	// init last error description
 	Exception::m_lastError = "";
 	

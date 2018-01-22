@@ -30,8 +30,8 @@
 #ifndef __UTIL_MD5_H__
 #define __UTIL_MD5_H__
 
-#include "util_string.h"
-#include "util_types.h"
+#include "util/util_string.h"
+#include "util/util_types.h"
 
 CCL_NAMESPACE_BEGIN
 
@@ -52,6 +52,8 @@ protected:
 	uint32_t abcd[4]; /* digest buffer */
 	uint8_t buf[64]; /* accumulate block */
 };
+
+string util_md5_string(const string& str);
 
 CCL_NAMESPACE_END
 

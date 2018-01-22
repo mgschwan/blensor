@@ -38,7 +38,7 @@
 #include "BLI_string.h"
 #include "BLI_utildefines.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "BKE_node.h"
 
@@ -50,6 +50,10 @@
 #include "node_util.h"
 #include "NOD_common.h"
 
+enum {
+	REFINE_FORWARD  = 1 << 0,
+	REFINE_BACKWARD = 1 << 1,
+};
 
 /**** Group ****/
 
@@ -74,7 +78,7 @@ bNodeSocket *node_group_find_output_socket(bNode *groupnode, const char *identif
 /* groups display their internal tree name as label */
 void node_group_label(bNodeTree *UNUSED(ntree), bNode *node, char *label, int maxlen)
 {
-	BLI_strncpy(label, (node->id) ? node->id->name + 2 : IFACE_("Missing Datablock"), maxlen);
+	BLI_strncpy(label, (node->id) ? node->id->name + 2 : IFACE_("Missing Data-Block"), maxlen);
 }
 
 int node_group_poll_instance(bNode *node, bNodeTree *nodetree)
@@ -174,9 +178,14 @@ void node_group_verify(struct bNodeTree *ntree, struct bNode *node, struct ID *i
 {
 	/* check inputs and outputs, and remove or insert them */
 	if (id == node->id) {
-		bNodeTree *ngroup = (bNodeTree *)node->id;
-		group_verify_socket_list(ntree, node, &ngroup->inputs, &node->inputs, SOCK_IN);
-		group_verify_socket_list(ntree, node, &ngroup->outputs, &node->outputs, SOCK_OUT);
+		if (id == NULL) {
+			nodeRemoveAllSockets(ntree, node);
+		}
+		else {
+			bNodeTree *ngroup = (bNodeTree *)node->id;
+			group_verify_socket_list(ntree, node, &ngroup->inputs, &node->inputs, SOCK_IN);
+			group_verify_socket_list(ntree, node, &ngroup->outputs, &node->outputs, SOCK_OUT);
+		}
 	}
 }
 
@@ -251,7 +260,7 @@ void register_node_type_reroute(void)
 	nodeRegisterType(ntype);
 }
 
-static void node_reroute_inherit_type_recursive(bNodeTree *ntree, bNode *node)
+static void node_reroute_inherit_type_recursive(bNodeTree *ntree, bNode *node, int flag)
 {
 	bNodeSocket *input = node->inputs.first;
 	bNodeSocket *output = node->outputs.first;
@@ -275,11 +284,14 @@ static void node_reroute_inherit_type_recursive(bNodeTree *ntree, bNode *node)
 		if (nodeLinkIsHidden(link))
 			continue;
 		
-		if (tonode == node && fromnode->type == NODE_REROUTE && !fromnode->done)
-			node_reroute_inherit_type_recursive(ntree, fromnode);
-		
-		if (fromnode == node && tonode->type == NODE_REROUTE && !tonode->done)
-			node_reroute_inherit_type_recursive(ntree, tonode);
+		if (flag & REFINE_FORWARD) {
+			if (tonode == node && fromnode->type == NODE_REROUTE && !fromnode->done)
+				node_reroute_inherit_type_recursive(ntree, fromnode, REFINE_FORWARD);
+		}
+		if (flag & REFINE_BACKWARD) {
+			if (fromnode == node && tonode->type == NODE_REROUTE && !tonode->done)
+				node_reroute_inherit_type_recursive(ntree, tonode, REFINE_BACKWARD);
+		}
 	}
 	
 	/* determine socket type from unambiguous input/output connection if possible */
@@ -329,7 +341,7 @@ void ntree_update_reroute_nodes(bNodeTree *ntree)
 	
 	for (node = ntree->nodes.first; node; node = node->next)
 		if (node->type == NODE_REROUTE && !node->done)
-			node_reroute_inherit_type_recursive(ntree, node);
+			node_reroute_inherit_type_recursive(ntree, node, REFINE_FORWARD | REFINE_BACKWARD);
 }
 
 static bool node_is_connected_to_output_recursive(bNodeTree *ntree, bNode *node)

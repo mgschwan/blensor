@@ -103,7 +103,7 @@ struct wmJob {
 	unsigned int note, endnote;
 	
 	
-/* internal */
+	/* internal */
 	void *owner;
 	int flag;
 	short suspended, running, ready, do_update, stop, job_type;
@@ -111,7 +111,7 @@ struct wmJob {
 
 	/* for display in header, identification */
 	char name[128];
-	
+
 	/* once running, we store this separately */
 	void *run_customdata;
 	void (*run_free)(void *);
@@ -124,7 +124,6 @@ struct wmJob {
 	/* ticket mutex for main thread locking while some job accesses
 	 * data that the main thread might modify at the same time */
 	TicketMutex *main_thread_mutex;
-	bool main_thread_mutex_ending;
 };
 
 /* Main thread locking */
@@ -132,33 +131,23 @@ struct wmJob {
 void WM_job_main_thread_lock_acquire(wmJob *wm_job)
 {
 	BLI_ticket_mutex_lock(wm_job->main_thread_mutex);
-
-	/* if BLI_end_threads is being called to stop the job before it's finished,
-	 * we no longer need to lock to get access to the main thread as it's
-	 * waiting and can't respond */
-	if (wm_job->main_thread_mutex_ending)
-		BLI_ticket_mutex_unlock(wm_job->main_thread_mutex);
 }
 
 void WM_job_main_thread_lock_release(wmJob *wm_job)
 {
-	if (!wm_job->main_thread_mutex_ending)
-		BLI_ticket_mutex_unlock(wm_job->main_thread_mutex);
+	BLI_ticket_mutex_unlock(wm_job->main_thread_mutex);
 }
 
-static void wm_job_main_thread_yield(wmJob *wm_job, bool ending)
+static void wm_job_main_thread_yield(wmJob *wm_job)
 {
-	if (ending)
-		wm_job->main_thread_mutex_ending = true;
-
 	/* unlock and lock the ticket mutex. because it's a fair mutex any job that
 	 * is waiting to acquire the lock will get it first, before we can lock */
 	BLI_ticket_mutex_unlock(wm_job->main_thread_mutex);
 	BLI_ticket_mutex_lock(wm_job->main_thread_mutex);
 }
 
-/* finds:
- * if type or owner, compare for it, otherwise any matching job
+/**
+ * Finds if type or owner, compare for it, otherwise any matching job.
  */
 static wmJob *wm_job_find(wmWindowManager *wm, void *owner, const int job_type)
 {
@@ -185,9 +174,12 @@ static wmJob *wm_job_find(wmWindowManager *wm, void *owner, const int job_type)
 
 /* ******************* public API ***************** */
 
-/* returns current or adds new job, but doesnt run it */
-/* every owner only gets a single job, adding a new one will stop running job and 
- * when stopped it starts the new one */
+/**
+ * \return current job or adds new job, but doesnt run it.
+ *
+ * \note every owner only gets a single job,
+ * adding a new one will stop running job and when stopped it starts the new one.
+ */
 wmJob *WM_jobs_get(wmWindowManager *wm, wmWindow *win, void *owner, const char *name, int flag, int job_type)
 {
 	wmJob *wm_job = wm_job_find(wm, owner, job_type);
@@ -203,7 +195,7 @@ wmJob *WM_jobs_get(wmWindowManager *wm, wmWindow *win, void *owner, const char *
 		BLI_strncpy(wm_job->name, name, sizeof(wm_job->name));
 
 		wm_job->main_thread_mutex = BLI_ticket_mutex_alloc();
-		BLI_ticket_mutex_lock(wm_job->main_thread_mutex);
+		WM_job_main_thread_lock_acquire(wm_job);
 	}
 	/* else: a running job, be careful */
 	
@@ -242,6 +234,17 @@ float WM_jobs_progress(wmWindowManager *wm, void *owner)
 	return 0.0;
 }
 
+/* time that job started */
+double WM_jobs_starttime(wmWindowManager *wm, void *owner)
+{
+	wmJob *wm_job = wm_job_find(wm, owner, WM_JOB_TYPE_ANY);
+
+	if (wm_job && wm_job->flag & WM_JOB_PROGRESS)
+		return wm_job->start_time;
+
+	return 0;
+}
+
 char *WM_jobs_name(wmWindowManager *wm, void *owner)
 {
 	wmJob *wm_job = wm_job_find(wm, owner, WM_JOB_TYPE_ANY);
@@ -275,6 +278,12 @@ void *WM_jobs_customdata_from_type(wmWindowManager *wm, int job_type)
 bool WM_jobs_is_running(wmJob *wm_job)
 {
 	return wm_job->running;
+}
+
+bool WM_jobs_is_stopped(wmWindowManager *wm, void *owner)
+{
+	wmJob *wm_job = wm_job_find(wm, owner, WM_JOB_TYPE_ANY);
+	return wm_job ? wm_job->stop : true; /* XXX to be redesigned properly. */
 }
 
 void *WM_jobs_customdata_get(wmJob *wm_job)
@@ -375,8 +384,10 @@ static void wm_jobs_test_suspend_stop(wmWindowManager *wm, wmJob *test)
 	// if (suspend) printf("job suspended: %s\n", test->name);
 }
 
-/* if job running, the same owner gave it a new job */
-/* if different owner starts existing startjob, it suspends itself */
+/**
+ * if job running, the same owner gave it a new job.
+ * if different owner starts existing startjob, it suspends itself
+ */
 void WM_jobs_start(wmWindowManager *wm, wmJob *wm_job)
 {
 	if (wm_job->running) {
@@ -415,8 +426,7 @@ void WM_jobs_start(wmWindowManager *wm, wmJob *wm_job)
 			if (wm_job->wt == NULL)
 				wm_job->wt = WM_event_add_timer(wm, wm_job->win, TIMERJOBS, wm_job->timestep);
 
-			if (G.debug & G_DEBUG_JOBS)
-				wm_job->start_time = PIL_check_seconds_timer();
+			wm_job->start_time = PIL_check_seconds_timer();
 		}
 		else {
 			printf("job fails, not initialized\n");
@@ -427,7 +437,7 @@ void WM_jobs_start(wmWindowManager *wm, wmJob *wm_job)
 static void wm_job_free(wmWindowManager *wm, wmJob *wm_job)
 {
 	BLI_remlink(&wm->jobs, wm_job);
-	BLI_ticket_mutex_unlock(wm_job->main_thread_mutex);
+	WM_job_main_thread_lock_release(wm_job);
 	BLI_ticket_mutex_free(wm_job->main_thread_mutex);
 	MEM_freeN(wm_job);
 }
@@ -438,8 +448,10 @@ static void wm_jobs_kill_job(wmWindowManager *wm, wmJob *wm_job)
 	if (wm_job->running) {
 		/* signal job to end */
 		wm_job->stop = true;
-		wm_job_main_thread_yield(wm_job, true);
+
+		WM_job_main_thread_lock_release(wm_job);
 		BLI_end_threads(&wm_job->threads);
+		WM_job_main_thread_lock_acquire(wm_job);
 
 		if (wm_job->endjob)
 			wm_job->endjob(wm_job->run_customdata);
@@ -555,7 +567,7 @@ void wm_jobs_timer(const bContext *C, wmWindowManager *wm, wmTimer *wt)
 			if (wm_job->threads.first) {
 
 				/* let threads get temporary lock over main thread if needed */
-				wm_job_main_thread_yield(wm_job, false);
+				wm_job_main_thread_yield(wm_job);
 				
 				/* always call note and update when ready */
 				if (wm_job->do_update || wm_job->ready) {
@@ -587,9 +599,10 @@ void wm_jobs_timer(const bContext *C, wmWindowManager *wm, wmTimer *wt)
 					}
 
 					wm_job->running = false;
-					wm_job_main_thread_yield(wm_job, true);
+
+					WM_job_main_thread_lock_release(wm_job);
 					BLI_end_threads(&wm_job->threads);
-					wm_job->main_thread_mutex_ending = false;
+					WM_job_main_thread_lock_acquire(wm_job);
 					
 					if (wm_job->endnote)
 						WM_event_add_notifier(C, wm_job->endnote, NULL);

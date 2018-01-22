@@ -46,6 +46,7 @@ enum {
 	SUBD_FALLOFF_ROOT,
 	SUBD_FALLOFF_SHARP,
 	SUBD_FALLOFF_LIN,
+	SUBD_FALLOFF_INVSQUARE = 7,  /* matching PROP_INVSQUARE */
 };
 
 enum {
@@ -130,14 +131,30 @@ extern const BMOpDefine *bmo_opdefines[];
 extern const int         bmo_opdefines_total;
 
 /*------specific operator helper functions-------*/
-void BM_mesh_esubdivide(BMesh *bm, const char edge_hflag,
-                        const float smooth, const short smooth_falloff, const bool use_smooth_even,
-                        const float fractal, const float along_normal,
-                        const int numcuts,
-                        const int seltype, const int cornertype,
-                        const short use_single_edge, const short use_grid_fill,
-                        const short use_only_quads,
-                        const int seed);
+void BM_mesh_esubdivide(
+        BMesh *bm, const char edge_hflag,
+        const float smooth, const short smooth_falloff, const bool use_smooth_even,
+        const float fractal, const float along_normal,
+        const int numcuts,
+        const int seltype, const int cornertype,
+        const short use_single_edge, const short use_grid_fill,
+        const short use_only_quads,
+        const int seed);
+
+void BM_mesh_calc_uvs_grid(
+        BMesh *bm, const uint x_segments, const uint y_segments,
+        const short oflag, const int cd_loop_uv_offset);
+void BM_mesh_calc_uvs_sphere(
+        BMesh *bm,
+        const short oflag, const int cd_loop_uv_offset);
+void BM_mesh_calc_uvs_circle(
+        BMesh *bm, float mat[4][4], const float radius,
+        const short oflag, const int cd_loop_uv_offset);
+void BM_mesh_calc_uvs_cone(
+        BMesh *bm, float mat[4][4],
+        const float radius_top, const float radius_bottom, const int segments, const bool cap_ends,
+        const short oflag, const int cd_loop_uv_offset);
+void BM_mesh_calc_uvs_cube(BMesh *bm, const short oflag);
 
 #include "intern/bmesh_operator_api_inline.h"
 

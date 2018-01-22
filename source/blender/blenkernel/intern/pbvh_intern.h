@@ -76,19 +76,18 @@ struct PBVHNode {
 	 *
 	 * Used for leaf nodes in a mesh-based PBVH (not multires.)
 	 */
-	int *vert_indices;
+	const int *vert_indices;
 	unsigned int uniq_verts, face_verts;
 
 	/* An array mapping face corners into the vert_indices
 	 * array. The array is sized to match 'totprim', and each of
 	 * the face's corners gets an index into the vert_indices
 	 * array, in the same order as the corners in the original
-	 * MFace. The fourth value should not be used if the original
-	 * face is a triangle.
+	 * MLoopTri.
 	 *
 	 * Used for leaf nodes in a mesh-based PBVH (not multires.)
 	 */
-	int (*face_vert_indices)[4];
+	const int (*face_vert_indices)[3];
 
 	/* Indicates whether this node is a leaf or not; also used for
 	 * marking various updates that need to be applied. */
@@ -133,17 +132,23 @@ struct PBVH {
 
 	/* Mesh data */
 	MVert *verts;
-	MFace *faces;
+	const MPoly *mpoly;
+	const MLoop *mloop;
+	const MLoopTri *looptri;
 	CustomData *vdata;
 
 	/* Grid Data */
 	CCGKey gridkey;
 	CCGElem **grids;
-	DMGridAdjacency *gridadj;
 	void **gridfaces;
 	const DMFlagMat *grid_flag_mats;
 	int totgrid;
 	BLI_bitmap **grid_hidden;
+	/* index_buf of GPU_PBVH_Buffers can be the same for all 'fully drawn' nodes (same size).
+	 * Previously was stored in a static var in gpu_buffer.c, but this breaks in case we handle several different
+	 * objects in sculpt mode with different sizes at the same time, so now storing that common gpu buffer
+	 * in an opaque pointer per pbvh. See T47637. */
+	struct GridCommonGPUBuffer *grid_common_gpu_buffer;
 
 	/* Only used during BVH build and update,
 	 * don't need to remain valid after */
@@ -175,9 +180,14 @@ void BB_expand_with_bb(BB *bb, BB *bb2);
 void BBC_update_centroid(BBC *bbc);
 int BB_widest_axis(const BB *bb);
 void pbvh_grow_nodes(PBVH *bvh, int totnode);
-bool ray_face_intersection(const float ray_start[3], const float ray_normal[3],
-                           const float *t0, const float *t1, const float *t2,
-                           const float *t3, float *fdist);
+bool ray_face_intersection_quad(
+        const float ray_start[3], const float ray_normal[3],
+        const float *t0, const float *t1, const float *t2, const float *t3,
+        float *r_dist);
+bool ray_face_intersection_tri(
+        const float ray_start[3], const float ray_normal[3],
+        const float *t0, const float *t1, const float *t2,
+        float *r_dist);
 void pbvh_update_BB_redraw(PBVH *bvh, PBVHNode **nodes, int totnode, int flag);
 
 /* pbvh_bmesh.c */

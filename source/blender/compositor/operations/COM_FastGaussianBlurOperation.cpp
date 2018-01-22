@@ -37,7 +37,7 @@ void FastGaussianBlurOperation::executePixel(float output[4], int x, int y, void
 	newData->read(output, x, y);
 }
 
-bool FastGaussianBlurOperation::determineDependingAreaOfInterest(rcti *input, ReadBufferOperation *readOperation, rcti *output)
+bool FastGaussianBlurOperation::determineDependingAreaOfInterest(rcti * /*input*/, ReadBufferOperation *readOperation, rcti *output)
 {
 	rcti newInput;
 	rcti sizeInput;
@@ -91,7 +91,7 @@ void *FastGaussianBlurOperation::initializeTileData(rcti *rect)
 		this->m_sx = this->m_data.sizex * this->m_size / 2.0f;
 		this->m_sy = this->m_data.sizey * this->m_size / 2.0f;
 		
-		if ((this->m_sx == this->m_sy) && (this->m_sx > 0.f)) {
+		if ((this->m_sx == this->m_sy) && (this->m_sx > 0.0f)) {
 			for (c = 0; c < COM_NUM_CHANNELS_COLOR; ++c)
 				IIR_gauss(copy, this->m_sx, c, 3);
 		}
@@ -257,7 +257,7 @@ void FastGaussianBlurValueOperation::executePixel(float output[4], int x, int y,
 	newData->read(output, x, y);
 }
 
-bool FastGaussianBlurValueOperation::determineDependingAreaOfInterest(rcti *input, ReadBufferOperation *readOperation, rcti *output)
+bool FastGaussianBlurValueOperation::determineDependingAreaOfInterest(rcti * /*input*/, ReadBufferOperation *readOperation, rcti *output)
 {
 	rcti newInput;
 	

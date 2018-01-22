@@ -594,7 +594,7 @@ BLI_INLINE float hair_volume_density_divergence(float density, float target_dens
 		return 0.0f;
 }
 
-bool BPH_hair_volume_solve_divergence(HairGrid *grid, float dt, float target_density, float target_strength)
+bool BPH_hair_volume_solve_divergence(HairGrid *grid, float /*dt*/, float target_density, float target_strength)
 {
 	const float flowfac = grid->cellsize;
 	const float inv_flowfac = 1.0f / grid->cellsize;
@@ -710,7 +710,7 @@ bool BPH_hair_volume_solve_divergence(HairGrid *grid, float dt, float target_den
 	 *   div(grad(p)) = div(v)
 	 * 
 	 * The finite difference approximation yields the linear equation system described here:
-	 * http://en.wikipedia.org/wiki/Discrete_Poisson_equation
+	 * https://en.wikipedia.org/wiki/Discrete_Poisson_equation
 	 */
 	lMatrix A(num_cellsA, num_cellsA);
 	/* Reserve space for the base equation system (without boundary conditions).
@@ -888,7 +888,7 @@ bool BPH_hair_volume_solve_divergence(HairGrid *grid, float dt, float target_den
 
 #if 0 /* XXX weighting is incorrect, disabled for now */
 /* Velocity filter kernel
- * See http://en.wikipedia.org/wiki/Filter_%28large_eddy_simulation%29
+ * See https://en.wikipedia.org/wiki/Filter_%28large_eddy_simulation%29
  */
 
 BLI_INLINE void hair_volume_filter_box_convolute(HairVertexGrid *grid, float invD, const int kernel_size[3], int i, int j, int k)

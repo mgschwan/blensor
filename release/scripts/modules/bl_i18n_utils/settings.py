@@ -88,6 +88,8 @@ LANGUAGES = (
     (38, "Uzbek (Oʻzbek)", "uz_UZ"),
     (39, "Uzbek Cyrillic (Ўзбек)", "uz_UZ@cyrillic"),
     (40, "Hindi (मानक हिन्दी)", "hi_IN"),
+    (41, "Vietnamese (tiếng Việt)", "vi_VN"),
+    (42, "Basque (Euskara)", "eu_EU"),
 )
 
 # Default context, in py!
@@ -116,7 +118,7 @@ MSG_COMMENT_PREFIX = "#~ "
 MSG_CONTEXT_PREFIX = "MSGCTXT:"
 
 # The default comment prefix used in po's.
-PO_COMMENT_PREFIX= "# "
+PO_COMMENT_PREFIX = "# "
 
 # The comment prefix used to mark sources of msgids, in po's.
 PO_COMMENT_PREFIX_SOURCE = "#: "
@@ -128,7 +130,7 @@ PO_COMMENT_PREFIX_SOURCE_CUSTOM = "#. :src: "
 PO_COMMENT_PREFIX_GENERATED = "#. "
 
 # The comment prefix used to comment entries in po's.
-PO_COMMENT_PREFIX_MSG= "#~ "
+PO_COMMENT_PREFIX_MSG = "#~ "
 
 # The comment prefix used to mark fuzzy msgids, in po's.
 PO_COMMENT_FUZZY = "#, fuzzy"
@@ -183,15 +185,15 @@ DOMAIN = "blender"
 # File type (ext) to parse.
 PYGETTEXT_ALLOWED_EXTS = {".c", ".cpp", ".cxx", ".hpp", ".hxx", ".h"}
 
-# Max number of contexts into a BLF_I18N_MSGID_MULTI_CTXT macro...
+# Max number of contexts into a BLT_I18N_MSGID_MULTI_CTXT macro...
 PYGETTEXT_MAX_MULTI_CTXT = 16
 
 # Where to search contexts definitions, relative to SOURCE_DIR (defined below).
-PYGETTEXT_CONTEXTS_DEFSRC = os.path.join("source", "blender", "blenfont", "BLF_translation.h")
+PYGETTEXT_CONTEXTS_DEFSRC = os.path.join("source", "blender", "blentranslation", "BLT_translation.h")
 
-# Regex to extract contexts defined in BLF_translation.h
+# Regex to extract contexts defined in BLT_translation.h
 # XXX Not full-proof, but should be enough here!
-PYGETTEXT_CONTEXTS = "#define\\s+(BLF_I18NCONTEXT_[A-Z_0-9]+)\\s+\"([^\"]*)\""
+PYGETTEXT_CONTEXTS = "#define\\s+(BLT_I18NCONTEXT_[A-Z_0-9]+)\\s+\"([^\"]*)\""
 
 # Keywords' regex.
 # XXX Most unfortunately, we can't use named backreferences inside character sets,
@@ -254,7 +256,7 @@ PYGETTEXT_KEYWORDS = (() +
 
     tuple((r"{}\(\s*" + _msg_re + r"\s*,\s*(?:" +
            r"\s*,\s*)?(?:".join(_ctxt_re_gen(i) for i in range(PYGETTEXT_MAX_MULTI_CTXT)) + r")?\s*\)").format(it)
-          for it in ("BLF_I18N_MSGID_MULTI_CTXT",))
+          for it in ("BLT_I18N_MSGID_MULTI_CTXT",))
 )
 
 # Check printf mismatches between msgid and msgstr.
@@ -284,6 +286,7 @@ WARN_MSGID_NOT_CAPITALIZED_ALLOWED = {
     "ascii",
     "author",                        # Addons' field. :/
     "bItasc",
+    "dbl-",                          # Compacted for 'double', for keymap items.
     "description",                   # Addons' field. :/
     "dx",
     "fBM",
@@ -324,14 +327,25 @@ WARN_MSGID_NOT_CAPITALIZED_ALLOWED = {
     "y",
     # Sub-strings.
     "available with",
+    "brown fox",
     "can't save image while rendering",
+    "constructive modifier",
+    "edge data",
     "expected a timeline/animation area to be active",
     "expected a view3d region",
     "expected a view3d region & editcurve",
     "expected a view3d region & editmesh",
+    "face data",
     "image file not found",
+    "image format is read-only",
     "image path can't be written to",
     "in memory to enable editing!",
+    "jumps over",
+    "left",
+    "multi-res modifier",
+    "non-triangle face",
+    "right",
+    "the lazy dog",
     "unable to load movie clip",
     "unable to load text",
     "unable to open the file",
@@ -342,18 +356,20 @@ WARN_MSGID_NOT_CAPITALIZED_ALLOWED = {
     "unsupported format",
     "unsupported image format",
     "unsupported movie clip format",
+    "vertex data",
     "verts only",
     "virtual parents",
 }
 WARN_MSGID_NOT_CAPITALIZED_ALLOWED |= set(lng[2] for lng in LANGUAGES)
 
 WARN_MSGID_END_POINT_ALLOWED = {
-    "Numpad .",
     "Circle|Alt .",
-    "Temp. Diff.",
     "Float Neg. Exp.",
-    "    RNA Path: bpy.types.",
     "Max Ext.",
+    "Numpad .",
+    "Pad.",
+    "    RNA Path: bpy.types.",
+    "Temp. Diff.",
 }
 
 PARSER_CACHE_HASH = 'sha1'
@@ -411,6 +427,15 @@ REL_TRUNK_PO_DIR = os.path.join(REL_TRUNK_DIR, "po")
 
 # The /trunk/mo path (relative to I18N_DIR).
 REL_TRUNK_MO_DIR = os.path.join(REL_TRUNK_DIR, "locale")
+
+
+# The path to the *git* translation repository (relative to SOURCE_DIR).
+REL_GIT_I18N_DIR = os.path.join("release/datafiles/locale")
+
+
+# The /po path of the *git* translation repository (relative to REL_GIT_I18N_DIR).
+REL_GIT_I18N_PO_DIR = os.path.join("po")
+
 
 # The Blender source path to check for i18n macros (relative to SOURCE_DIR).
 REL_POTFILES_SOURCE_DIR = os.path.join("source")
@@ -493,14 +518,6 @@ def _gen_get_set_path(ref, name):
     return _get, _set
 
 
-def _gen_get_set_paths(ref, name):
-    def _get(self):
-        return [_do_get(getattr(self, ref), p) for p in getattr(self, name)]
-    def _set(self, value):
-        setattr(self, name, [_do_set(getattr(self, ref), p) for p in value])
-    return _get, _set
-
-
 class I18nSettings:
     """
     Class allowing persistence of our settings!
@@ -552,6 +569,8 @@ class I18nSettings:
     TRUNK_DIR = property(*(_gen_get_set_path("I18N_DIR", "REL_TRUNK_DIR")))
     TRUNK_PO_DIR = property(*(_gen_get_set_path("I18N_DIR", "REL_TRUNK_PO_DIR")))
     TRUNK_MO_DIR = property(*(_gen_get_set_path("I18N_DIR", "REL_TRUNK_MO_DIR")))
+    GIT_I18N_ROOT = property(*(_gen_get_set_path("SOURCE_DIR", "REL_GIT_I18N_DIR")))
+    GIT_I18N_PO_DIR = property(*(_gen_get_set_path("GIT_I18N_ROOT", "REL_GIT_I18N_PO_DIR")))
     POTFILES_SOURCE_DIR = property(*(_gen_get_set_path("SOURCE_DIR", "REL_POTFILES_SOURCE_DIR")))
     FILE_NAME_POT = property(*(_gen_get_set_path("I18N_DIR", "REL_FILE_NAME_POT")))
     MO_PATH_ROOT = property(*(_gen_get_set_path("I18N_DIR", "REL_MO_PATH_ROOT")))

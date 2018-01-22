@@ -83,16 +83,12 @@ private:
 	void find_objects_using_armature(Object *ob_arm, std::vector<Object *>& objects, Scene *sce);
 #endif
 
-	std::string get_joint_sid(Bone *bone, Object *ob_arm);
-
 	// Scene, SceneExporter and the list of child_objects
 	// are required for writing bone parented objects
 	void add_bone_node(Bone *bone, Object *ob_arm, Scene *sce, SceneExporter *se,
 	                   std::list<Object *>& child_objects);
 
 	void add_bone_transform(Object *ob_arm, Bone *bone, COLLADASW::Node& node);
-
-	void add_blender_leaf_bone(Bone *bone, Object *ob_arm, COLLADASW::Node& node);
 
 	std::string get_controller_id(Object *ob_arm, Object *ob);
 

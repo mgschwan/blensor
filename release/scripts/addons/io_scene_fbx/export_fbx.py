@@ -1508,13 +1508,13 @@ def save_single(operator, scene, filepath="",
         collayers = []
         if len(me.vertex_colors):
             collayers = me.vertex_colors
-            t_lc = [None] * len(me.loops) * 3
+            t_lc = [None] * len(me.loops) * 4
             col2idx = None
             _nchunk = 4  # Number of colors per line
             _nchunk_idx = 64  # Number of color indices per line
             for colindex, collayer in enumerate(collayers):
                 collayer.data.foreach_get("color", t_lc)
-                lc = tuple(zip(*[iter(t_lc)] * 3))
+                lc = tuple(zip(*[iter(t_lc)] * 4))
                 fw('\n\t\tLayerElementColor: %i {'
                    '\n\t\t\tVersion: 101'
                    '\n\t\t\tName: "%s"'
@@ -1523,7 +1523,7 @@ def save_single(operator, scene, filepath="",
                    '\n\t\t\tColors: ' % (colindex, collayer.name))
 
                 col2idx = tuple(set(lc))
-                fw(',\n\t\t\t        '.join(','.join('%.6f,%.6f,%.6f,1' % c for c in chunk)
+                fw(',\n\t\t\t        '.join(','.join('%.6f,%.6f,%.6f,%.06f' % c for c in chunk)
                                             for chunk in grouper_exact(col2idx, _nchunk)))
 
                 fw('\n\t\t\tColorIndex: ')
@@ -1571,7 +1571,7 @@ def save_single(operator, scene, filepath="",
                 if do_textures:
                     fw('\n\t\tLayerElementTexture: %d {'
                        '\n\t\t\tVersion: 101'
-                       '\n\t\t\tName: "%s"' 
+                       '\n\t\t\tName: "%s"'
                        '\n\t\t\tMappingInformationType: "%s"'
                        '\n\t\t\tReferenceInformationType: "IndexToDirect"'
                        '\n\t\t\tBlendMode: "Translucent"'
@@ -1907,9 +1907,11 @@ def save_single(operator, scene, filepath="",
 
                         # Warning for scaled, mesh objects with armatures
                         if abs(ob.scale[0] - 1.0) > 0.05 or abs(ob.scale[1] - 1.0) > 0.05 or abs(ob.scale[1] - 1.0) > 0.05:
-                            operator.report({'WARNING'}, "Object '%s' has a scale of (%.3f, %.3f, %.3f), " \
-                                                         "Armature deformation will not work as expected " \
-                                                         "(apply Scale to fix)" % ((ob.name,) + tuple(ob.scale)))
+                            operator.report(
+                                    {'WARNING'},
+                                    "Object '%s' has a scale of (%.3f, %.3f, %.3f), "
+                                    "Armature deformation will not work as expected "
+                                    "(apply Scale to fix)" % (ob.name, *ob.scale))
 
                     else:
                         blenParentBoneName = armob = None

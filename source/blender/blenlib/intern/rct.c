@@ -123,6 +123,38 @@ bool BLI_rctf_isect_pt_v(const rctf *rect, const float xy[2])
 }
 
 /**
+ * \returns shortest distance from \a rect to x/y (0 if inside)
+*/
+
+int BLI_rcti_length_x(const rcti *rect, const int x)
+{
+	if (x < rect->xmin) return rect->xmin - x;
+	if (x > rect->xmax) return x - rect->xmax;
+	return 0;
+}
+
+int BLI_rcti_length_y(const rcti *rect, const int y)
+{
+	if (y < rect->ymin) return rect->ymin - y;
+	if (y > rect->ymax) return y - rect->ymax;
+	return 0;
+}
+
+float BLI_rctf_length_x(const rctf *rect, const float x)
+{
+	if (x < rect->xmin) return rect->xmin - x;
+	if (x > rect->xmax) return x - rect->xmax;
+	return 0.0f;
+}
+
+float BLI_rctf_length_y(const rctf *rect, const float y)
+{
+	if (y < rect->ymin) return rect->ymin - y;
+	if (y > rect->ymax) return y - rect->ymax;
+	return 0.0f;
+}
+
+/**
  * is \a rct_b inside \a rct_a
  */
 bool BLI_rctf_inside_rctf(rctf *rct_a, const rctf *rct_b)
@@ -141,7 +173,7 @@ bool BLI_rcti_inside_rcti(rcti *rct_a, const rcti *rct_b)
 }
 
 
-/* based closely on 'isect_line_line_v2_int', but in modified so corner cases are treated as intersections */
+/* based closely on 'isect_seg_seg_v2_int', but in modified so corner cases are treated as intersections */
 static int isect_segments_i(const int v1[2], const int v2[2], const int v3[2], const int v4[2])
 {
 	const double div = (double)((v2[0] - v1[0]) * (v4[1] - v3[1]) - (v2[1] - v1[1]) * (v4[0] - v3[0]));
@@ -319,6 +351,22 @@ void BLI_rcti_init(rcti *rect, int xmin, int xmax, int ymin, int ymax)
 	}
 }
 
+void BLI_rctf_init_pt_radius(rctf *rect, const float xy[2], float size)
+{
+	rect->xmin = xy[0] - size;
+	rect->xmax = xy[0] + size;
+	rect->ymin = xy[1] - size;
+	rect->ymax = xy[1] + size;
+}
+
+void BLI_rcti_init_pt_radius(rcti *rect, const int xy[2], int size)
+{
+	rect->xmin = xy[0] - size;
+	rect->xmax = xy[0] + size;
+	rect->ymin = xy[1] - size;
+	rect->ymax = xy[1] + size;
+}
+
 void BLI_rcti_init_minmax(rcti *rect)
 {
 	rect->xmin = rect->ymin = INT_MAX;
@@ -388,20 +436,16 @@ void BLI_rctf_recenter(rctf *rect, float x, float y)
 /* change width & height around the central location */
 void BLI_rcti_resize(rcti *rect, int x, int y)
 {
-	rect->xmin = rect->xmax = BLI_rcti_cent_x(rect);
-	rect->ymin = rect->ymax = BLI_rcti_cent_y(rect);
-	rect->xmin -= x / 2;
-	rect->ymin -= y / 2;
+	rect->xmin = BLI_rcti_cent_x(rect) - (x / 2);
+	rect->ymin = BLI_rcti_cent_y(rect) - (y / 2);
 	rect->xmax = rect->xmin + x;
 	rect->ymax = rect->ymin + y;
 }
 
 void BLI_rctf_resize(rctf *rect, float x, float y)
 {
-	rect->xmin = rect->xmax = BLI_rctf_cent_x(rect);
-	rect->ymin = rect->ymax = BLI_rctf_cent_y(rect);
-	rect->xmin -= x * 0.5f;
-	rect->ymin -= y * 0.5f;
+	rect->xmin = BLI_rctf_cent_x(rect) - (x * 0.5f);
+	rect->ymin = BLI_rctf_cent_y(rect) - (y * 0.5f);
 	rect->xmax = rect->xmin + x;
 	rect->ymax = rect->ymin + y;
 }
@@ -442,7 +486,7 @@ void BLI_rctf_interp(rctf *rect, const rctf *rect_a, const rctf *rect_b, const f
 /* BLI_rcti_interp() not needed yet */
 
 
-bool BLI_rctf_clamp_pt_v(const struct rctf *rect, float xy[2])
+bool BLI_rctf_clamp_pt_v(const rctf *rect, float xy[2])
 {
 	bool changed = false;
 	if (xy[0] < rect->xmin) { xy[0] = rect->xmin; changed = true; }
@@ -452,7 +496,7 @@ bool BLI_rctf_clamp_pt_v(const struct rctf *rect, float xy[2])
 	return changed;
 }
 
-bool BLI_rcti_clamp_pt_v(const struct rcti *rect, int xy[2])
+bool BLI_rcti_clamp_pt_v(const rcti *rect, int xy[2])
 {
 	bool changed = false;
 	if (xy[0] < rect->xmin) { xy[0] = rect->xmin; changed = true; }
@@ -462,7 +506,96 @@ bool BLI_rcti_clamp_pt_v(const struct rcti *rect, int xy[2])
 	return changed;
 }
 
-bool BLI_rctf_compare(const struct rctf *rect_a, const struct rctf *rect_b, const float limit)
+/**
+ * Clamp \a rect within \a rect_bounds, setting \a r_xy to the offset.
+ *
+ * \return true if a change is made.
+ */
+bool BLI_rctf_clamp(rctf *rect, const rctf *rect_bounds, float r_xy[2])
+{
+	bool changed = false;
+
+	r_xy[0] = 0.0f;
+	r_xy[1] = 0.0f;
+
+	if (rect->xmin < rect_bounds->xmin) {
+		float ofs = rect_bounds->xmin - rect->xmin;
+		rect->xmin += ofs;
+		rect->xmax += ofs;
+		r_xy[0] += ofs;
+		changed = true;
+	}
+
+	if (rect->xmax > rect_bounds->xmax) {
+		float ofs = rect_bounds->xmax - rect->xmax;
+		rect->xmin += ofs;
+		rect->xmax += ofs;
+		r_xy[0] += ofs;
+		changed = true;
+	}
+
+	if (rect->ymin < rect_bounds->ymin) {
+		float ofs = rect_bounds->ymin - rect->ymin;
+		rect->ymin += ofs;
+		rect->ymax += ofs;
+		r_xy[1] += ofs;
+		changed = true;
+	}
+
+	if (rect->ymax > rect_bounds->ymax) {
+		float ofs = rect_bounds->ymax - rect->ymax;
+		rect->ymin += ofs;
+		rect->ymax += ofs;
+		r_xy[1] += ofs;
+		changed = true;
+	}
+
+	return changed;
+}
+
+bool BLI_rcti_clamp(rcti *rect, const rcti *rect_bounds, int r_xy[2])
+{
+	bool changed = false;
+
+	r_xy[0] = 0;
+	r_xy[1] = 0;
+
+	if (rect->xmin < rect_bounds->xmin) {
+		int ofs = rect_bounds->xmin - rect->xmin;
+		rect->xmin += ofs;
+		rect->xmax += ofs;
+		r_xy[0] += ofs;
+		changed = true;
+	}
+
+	if (rect->xmax > rect_bounds->xmax) {
+		int ofs = rect_bounds->xmax - rect->xmax;
+		rect->xmin += ofs;
+		rect->xmax += ofs;
+		r_xy[0] += ofs;
+		changed = true;
+	}
+
+	if (rect->ymin < rect_bounds->ymin) {
+		int ofs = rect_bounds->ymin - rect->ymin;
+		rect->ymin += ofs;
+		rect->ymax += ofs;
+		r_xy[1] += ofs;
+		changed = true;
+	}
+
+	if (rect->ymax > rect_bounds->ymax) {
+		int ofs = rect_bounds->ymax - rect->ymax;
+		rect->ymin += ofs;
+		rect->ymax += ofs;
+		r_xy[1] += ofs;
+		changed = true;
+	}
+
+	return changed;
+}
+
+bool BLI_rctf_compare(const rctf *rect_a, const rctf *rect_b, const float limit)
 {
 	if (fabsf(rect_a->xmin - rect_b->xmin) < limit)
 		if (fabsf(rect_a->xmax - rect_b->xmax) < limit)
@@ -473,7 +606,7 @@ bool BLI_rctf_compare(const struct rctf *rect_a, const struct rctf *rect_b, cons
 	return false;
 }
 
-bool BLI_rcti_compare(const struct rcti *rect_a, const struct rcti *rect_b)
+bool BLI_rcti_compare(const rcti *rect_a, const rcti *rect_b)
 {
 	if (rect_a->xmin == rect_b->xmin)
 		if (rect_a->xmax == rect_b->xmax)
@@ -552,6 +685,22 @@ void BLI_rcti_rctf_copy(rcti *dst, const rctf *src)
 	dst->ymax = dst->ymin + floorf(BLI_rctf_size_y(src) + 0.5f);
 }
 
+void BLI_rcti_rctf_copy_floor(rcti *dst, const rctf *src)
+{
+	dst->xmin = floorf(src->xmin);
+	dst->xmax = floorf(src->xmax);
+	dst->ymin = floorf(src->ymin);
+	dst->ymax = floorf(src->ymax);
+}
+
+void BLI_rcti_rctf_copy_round(rcti *dst, const rctf *src)
+{
+	dst->xmin = floorf(src->xmin + 0.5f);
+	dst->xmax = floorf(src->xmax + 0.5f);
+	dst->ymin = floorf(src->ymin + 0.5f);
+	dst->ymax = floorf(src->ymax + 0.5f);
+}
+
 void BLI_rctf_rcti_copy(rctf *dst, const rcti *src)
 {
 	dst->xmin = src->xmin;
@@ -571,3 +720,46 @@ void print_rcti(const char *str, const rcti *rect)
 	printf("%s: xmin %d, xmax %d, ymin %d, ymax %d (%dx%d)\n", str,
 	       rect->xmin, rect->xmax, rect->ymin, rect->ymax, BLI_rcti_size_x(rect), BLI_rcti_size_y(rect));
 }
+
+
+/* -------------------------------------------------------------------- */
+/* Comprehensive math (float only) */
+
+/** \name Rect math functions
+ * \{ */
+
+#define ROTATE_SINCOS(r_vec, mat2, vec) { \
+	(r_vec)[0] = (mat2)[1] * (vec)[0] + (+(mat2)[0]) * (vec)[1]; \
+	(r_vec)[1] = (mat2)[0] * (vec)[0] + (-(mat2)[1]) * (vec)[1]; \
+} ((void)0)
+
+/**
+ * Expand the rectangle to fit a rotated \a src.
+ */
+void BLI_rctf_rotate_expand(rctf *dst, const rctf *src, const float angle)
+{
+	const float mat2[2] = {sinf(angle), cosf(angle)};
+	const float cent[2] = {BLI_rctf_cent_x(src), BLI_rctf_cent_y(src)};
+	float corner[2], corner_rot[2], corder_max[2];
+
+	/* x is same for both corners */
+	corner[0] = src->xmax - cent[0];
+	corner[1] = src->ymax - cent[1];
+	ROTATE_SINCOS(corner_rot, mat2, corner);
+	corder_max[0] = fabsf(corner_rot[0]);
+	corder_max[1] = fabsf(corner_rot[1]);
+
+	corner[1] *= -1;
+	ROTATE_SINCOS(corner_rot, mat2, corner);
+	corder_max[0] = MAX2(corder_max[0], fabsf(corner_rot[0]));
+	corder_max[1] = MAX2(corder_max[1], fabsf(corner_rot[1]));
+
+	dst->xmin = cent[0] - corder_max[0];
+	dst->xmax = cent[0] + corder_max[0];
+	dst->ymin = cent[1] - corder_max[1];
+	dst->ymax = cent[1] + corder_max[1];
+}
+
+#undef ROTATE_SINCOS
+
+/** \} */

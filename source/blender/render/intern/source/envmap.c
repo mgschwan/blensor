@@ -37,7 +37,7 @@
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"        /* for rectcpy */
@@ -52,13 +52,16 @@
 #include "BKE_main.h"
 #include "BKE_image.h"   /* BKE_imbuf_write */
 #include "BKE_texture.h"
+#include "BKE_scene.h"
 
 /* this module */
 #include "render_types.h"
 #include "envmap.h"
-#include "renderdatabase.h" 
+#include "renderdatabase.h"
+#include "renderpipeline.h"
 #include "texture.h"
 #include "zbuf.h"
+#include "render_result.h"
 
 /* ------------------------------------------------------------------------- */
 
@@ -70,7 +73,7 @@ static void envmap_split_ima(EnvMap *env, ImBuf *ibuf)
 	BLI_lock_thread(LOCK_IMAGE);
 	if (env->cube[1] == NULL) {
 
-		BKE_free_envmapdata(env);
+		BKE_texture_envmap_free_data(env);
 	
 		dx = ibuf->y;
 		dx /= 2;
@@ -138,9 +141,10 @@ static Render *envmap_render_copy(Render *re, EnvMap *env)
 	envre->flag = re->flag;
 	
 	/* set up renderdata */
-	envre->r = re->r;
+	render_copy_renderdata(&envre->r, &re->r);
 	envre->r.mode &= ~(R_BORDER | R_PANORAMA | R_ORTHO | R_MBLUR);
-	BLI_listbase_clear(&envre->r.layers);
+	BLI_freelistN(&envre->r.layers);
+	BLI_freelistN(&envre->r.views);
 	envre->r.filtertype = 0;
 	envre->r.tilex = envre->r.xsch / 2;
 	envre->r.tiley = envre->r.ysch / 2;
@@ -261,7 +265,6 @@ static void env_set_imats(Render *re)
 
 void env_rotate_scene(Render *re, float mat[4][4], int do_rotate)
 {
-	GroupObject *go;
 	ObjectRen *obr;
 	ObjectInstanceRen *obi;
 	LampRen *lar = NULL;
@@ -320,19 +323,18 @@ void env_rotate_scene(Render *re, float mat[4][4], int do_rotate)
 		invert_m4(obr->ob->imat_ren);
 	}
 	
-	for (go = re->lights.first; go; go = go->next) {
-		lar = go->lampren;
-		
+	for (lar = re->lampren.first; lar; lar = lar->next) {
+		float lamp_imat[4][4];
+
 		/* copy from add_render_lamp */
 		if (do_rotate == 1)
 			mul_m4_m4m4(tmpmat, re->viewmat, lar->lampmat);
 		else
 			mul_m4_m4m4(tmpmat, re->viewmat_orig, lar->lampmat);
-		invert_m4_m4(go->ob->imat, tmpmat);
-		
+
+		invert_m4_m4(lamp_imat, tmpmat);
 		copy_m3_m4(lar->mat, tmpmat);
-		
-		copy_m3_m4(lar->imat, go->ob->imat);
+		copy_m3_m4(lar->imat, lamp_imat);
 
 		lar->vec[0]= -tmpmat[2][0];
 		lar->vec[1]= -tmpmat[2][1];
@@ -492,12 +494,22 @@ static void render_envmap(Render *re, EnvMap *env)
 		env_rotate_scene(envre, tmat, 0);
 
 		if (re->test_break(re->tbh) == 0) {
-			RenderLayer *rl = envre->result->layers.first;
 			int y;
 			float *alpha;
-			
+			float *rect;
+
+			if (envre->result->do_exr_tile) {
+				BLI_rw_mutex_lock(&envre->resultmutex, THREAD_LOCK_WRITE);
+				render_result_exr_file_end(envre);
+				BLI_rw_mutex_unlock(&envre->resultmutex);
+			}
+
+			RenderLayer *rl = envre->result->layers.first;
+
+			/* envmap is rendered independently of multiview  */
+			rect = RE_RenderLayerGetPass(rl, RE_PASSNAME_COMBINED, "");
 			ibuf = IMB_allocImBuf(envre->rectx, envre->recty, 24, IB_rect | IB_rectfloat);
-			memcpy(ibuf->rect_float, rl->rectf, ibuf->channels * ibuf->x * ibuf->y * sizeof(float));
+			memcpy(ibuf->rect_float, rect, ibuf->channels * ibuf->x * ibuf->y * sizeof(float));
 			
 			/* envmap renders without alpha */
 			alpha = ibuf->rect_float + 3;
@@ -511,7 +523,7 @@ static void render_envmap(Render *re, EnvMap *env)
 
 	}
 	
-	if (re->test_break(re->tbh)) BKE_free_envmapdata(env);
+	if (re->test_break(re->tbh)) BKE_texture_envmap_free_data(env);
 	else {
 		if (envre->r.mode & R_OSA) env->ok = ENV_OSA;
 		else env->ok = ENV_NORMAL;
@@ -572,13 +584,13 @@ void make_envmaps(Render *re)
 								if (env->ok) {
 									/* free when OSA, and old one isn't OSA */
 									if ((re->r.mode & R_OSA) && env->ok == ENV_NORMAL)
-										BKE_free_envmapdata(env);
+										BKE_texture_envmap_free_data(env);
 									/* free when size larger */
 									else if (env->lastsize < re->r.size)
-										BKE_free_envmapdata(env);
+										BKE_texture_envmap_free_data(env);
 									/* free when env is in recalcmode */
 									else if (env->recalc)
-										BKE_free_envmapdata(env);
+										BKE_texture_envmap_free_data(env);
 								}
 								
 								if (env->ok == 0 && depth == 0) env->recalc = 1;
@@ -734,21 +746,28 @@ int envmaptex(Tex *tex, const float texvec[3], float dxt[3], float dyt[3], int o
 	
 	/* rotate to envmap space, if object is set */
 	copy_v3_v3(vec, texvec);
-	if (env->object) mul_m3_v3(env->obimat, vec);
-	else mul_mat3_m4_v3(R.viewinv, vec);
+	if (env->object) {
+		mul_m3_v3(env->obimat, vec);
+		if (osatex) {
+			mul_m3_v3(env->obimat, dxt);
+			mul_m3_v3(env->obimat, dyt);
+		}
+	}
+	else {
+		if (!BKE_scene_use_world_space_shading(R.scene)) {
+			// texvec is in view space
+			mul_mat3_m4_v3(R.viewinv, vec);
+			if (osatex) {
+				mul_mat3_m4_v3(R.viewinv, dxt);
+				mul_mat3_m4_v3(R.viewinv, dyt);
+			}
+		}
+	}
 	
 	face = envcube_isect(env, vec, sco);
 	ibuf = env->cube[face];
 	
 	if (osatex) {
-		if (env->object) {
-			mul_m3_v3(env->obimat, dxt);
-			mul_m3_v3(env->obimat, dyt);
-		}
-		else {
-			mul_mat3_m4_v3(R.viewinv, dxt);
-			mul_mat3_m4_v3(R.viewinv, dyt);
-		}
 		set_dxtdyt(dxts, dyts, dxt, dyt, face);
 		imagewraposa(tex, NULL, ibuf, sco, dxts, dyts, texres, pool, skip_load_image);
 		

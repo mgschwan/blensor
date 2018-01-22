@@ -64,7 +64,7 @@ bool BM_mesh_validate(BMesh *bm)
 
 	int i, j;
 
-	errtot = -1;
+	errtot = -1; /* 'ERRMSG' next line will set at zero */
 	fprintf(stderr, "\n");
 	ERRMSG("This is a debugging function and not intended for general use, running slow test!");
 
@@ -86,20 +86,19 @@ bool BM_mesh_validate(BMesh *bm)
 
 	/* check edges */
 	BM_ITER_MESH_INDEX (e, &iter, bm, BM_EDGES_OF_MESH, i) {
-		BMEdge *e_other;
+		void **val_p;
 
 		if (e->v1 == e->v2) {
 			ERRMSG("edge %d: duplicate index: %d", i, BM_elem_index_get(e->v1));
 		}
 
-
 		/* build edgehash at the same time */
-		e_other = BLI_edgehash_lookup(edge_hash, BM_elem_index_get(e->v1), BM_elem_index_get(e->v2));
-		if (e_other) {
+		if (BLI_edgehash_ensure_p(edge_hash, BM_elem_index_get(e->v1), BM_elem_index_get(e->v2), &val_p)) {
+			BMEdge *e_other = *val_p;
 			ERRMSG("edge %d, %d: are duplicates", i, BM_elem_index_get(e_other));
 		}
 		else {
-			BLI_edgehash_insert(edge_hash, BM_elem_index_get(e->v1), BM_elem_index_get(e->v2), e);
+			*val_p = e;
 		}
 	}
 
@@ -188,15 +187,22 @@ bool BM_mesh_validate(BMesh *bm)
 		} while ((l_iter = l_iter->next) != l_first);
 
 		if (j != f->len) {
-			ERRMSG("face %d: has length if %d but should be %d", i, f->len, j);
+			ERRMSG("face %d: has length of %d but should be %d", i, f->len, j);
 		}
+
+		/* leave elements un-tagged, not essential but nice to avoid unintended dirty tag use later. */
+		do {
+			BM_elem_flag_disable(l_iter,    BM_ELEM_INTERNAL_TAG);
+			BM_elem_flag_disable(l_iter->v, BM_ELEM_INTERNAL_TAG);
+			BM_elem_flag_disable(l_iter->e, BM_ELEM_INTERNAL_TAG);
+		} while ((l_iter = l_iter->next) != l_first);
 	}
 
 	BLI_edgehash_free(edge_hash, NULL);
 
+	const bool is_valid = (errtot == 0);
 	ERRMSG("Finished - errors %d", errtot);
-
-	return true;
+	return is_valid;
 }
 
 

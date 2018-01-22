@@ -24,7 +24,6 @@ from os.path import splitext
 DEPRECATE_DAYS = 120
 
 SKIP_DIRS = ("extern",
-             "scons",
              "tests",  # not this dir
              )
 
@@ -54,10 +53,8 @@ def is_source_any(filename):
 
 def source_list(path, filename_check=None):
     for dirpath, dirnames, filenames in os.walk(path):
-
-        # skip '.svn'
-        if dirpath.startswith("."):
-            continue
+        # skip '.git'
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
 
         for filename in filenames:
             if filename_check is None or filename_check(filename):

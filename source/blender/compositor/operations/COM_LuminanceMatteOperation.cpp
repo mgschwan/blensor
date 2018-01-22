@@ -52,15 +52,15 @@ void LuminanceMatteOperation::executePixelSampled(float output[4], float x, floa
 	this->m_inputImageProgram->readSampled(inColor, x, y, sampler);
 	
 	/* one line thread-friend algorithm:
-	 * output[0] = max(inputValue[3], min(high, max(low, ((inColor[0]-low)/(high-low))))
+	 * output[0] = max(inputValue[3], min(high, max(low, ((inColor[0] - low) / (high - low))));
 	 */
 		
 	/* test range */
 	if (inColor[0] > high) {
-		alpha = 1.f;
+		alpha = 1.0f;
 	}
 	else if (inColor[0] < low) {
-		alpha = 0.f;
+		alpha = 0.0f;
 	}
 	else { /*blend */
 		alpha = (inColor[0] - low) / (high - low);

@@ -17,10 +17,11 @@
 #ifndef __UTIL_HALF_H__
 #define __UTIL_HALF_H__
 
-#include "util_types.h"
+#include "util/util_types.h"
+#include "util/util_math.h"
 
 #ifdef __KERNEL_SSE2__
-#include "util_simd.h"
+#include "util/util_simd.h"
 #endif
 
 CCL_NAMESPACE_BEGIN
@@ -33,17 +34,21 @@ CCL_NAMESPACE_BEGIN
 
 #else
 
+/* CUDA has its own half data type, no need to define then */
+#ifndef __KERNEL_CUDA__
 typedef unsigned short half;
+#endif
+
 struct half4 { half x, y, z, w; };
 
 #ifdef __KERNEL_CUDA__
 
 ccl_device_inline void float4_store_half(half *h, float4 f, float scale)
 {
-	h[0] = __float2half_rn(f.x * scale);
-	h[1] = __float2half_rn(f.y * scale);
-	h[2] = __float2half_rn(f.z * scale);
-	h[3] = __float2half_rn(f.w * scale);
+	h[0] = __float2half(f.x * scale);
+	h[1] = __float2half(f.y * scale);
+	h[2] = __float2half(f.z * scale);
+	h[3] = __float2half(f.w * scale);
 }
 
 #else
@@ -56,7 +61,7 @@ ccl_device_inline void float4_store_half(half *h, float4 f, float scale)
 		 * assumes no negative, no nan, no inf, and sets denormal to 0 */
 		union { uint i; float f; } in;
 		float fscale = f[i] * scale;
-		in.f = (fscale > 0.0f)? ((fscale < 65500.0f)? fscale: 65500.0f): 0.0f;
+		in.f = (fscale > 0.0f)? ((fscale < 65504.0f)? fscale: 65504.0f): 0.0f;
 		int x = in.i;
 
 		int absolute = x & 0x7FFFFFFF;
@@ -68,21 +73,64 @@ ccl_device_inline void float4_store_half(half *h, float4 f, float scale)
 	}
 #else
 	/* same as above with SSE */
-	const ssef mm_scale = ssef(scale);
-	const ssei mm_38800000 = ssei(0x38800000);
-	const ssei mm_7FFF = ssei(0x7FFF);
-	const ssei mm_7FFFFFFF = ssei(0x7FFFFFFF);
-	const ssei mm_C8000000 = ssei(0xC8000000);
+	ssef fscale = load4f(f) * scale;
+	ssef x = min(max(fscale, 0.0f), 65504.0f);
 
-	ssef mm_fscale = load4f(f) * mm_scale;
-	ssei x = cast(min(max(mm_fscale, ssef(0.0f)), ssef(65500.0f)));
-	ssei absolute = x & mm_7FFFFFFF;
-	ssei Z = absolute + mm_C8000000;
-	ssei result = andnot(absolute < mm_38800000, Z); 
-	ssei rh = (result >> 13) & mm_7FFF;
-
-	_mm_storel_pi((__m64*)h, _mm_castsi128_ps(_mm_packs_epi32(rh, rh)));
+#ifdef __KERNEL_AVX2__
+	ssei rpack = _mm_cvtps_ph(x, 0);
+#else
+	ssei absolute = cast(x) & 0x7FFFFFFF;
+	ssei Z = absolute + 0xC8000000;
+	ssei result = andnot(absolute < 0x38800000, Z);
+	ssei rshift = (result >> 13) & 0x7FFF;
+	ssei rpack = _mm_packs_epi32(rshift, rshift);
 #endif
+
+	_mm_storel_pi((__m64*)h, _mm_castsi128_ps(rpack));
+#endif
+}
+
+ccl_device_inline float half_to_float(half h)
+{
+	float f;
+
+	*((int*) &f) = ((h & 0x8000) << 16) | (((h & 0x7c00) + 0x1C000) << 13) | ((h & 0x03FF) << 13);
+
+	return f;
+}
+
+ccl_device_inline float4 half4_to_float4(half4 h)
+{
+	float4 f;
+
+	f.x = half_to_float(h.x);
+	f.y = half_to_float(h.y);
+	f.z = half_to_float(h.z);
+	f.w = half_to_float(h.w);
+
+	return f;
+}
+
+ccl_device_inline half float_to_half(float f)
+{
+	const uint u = __float_as_uint(f);
+	/* Sign bit, shifted to it's position. */
+	uint sign_bit = u & 0x80000000;
+	sign_bit >>= 16;
+	/* Exponent. */
+	uint exponent_bits = u & 0x7f800000;
+	/* Non-sign bits. */
+	uint value_bits = u & 0x7fffffff;
+	value_bits >>= 13;  /* Align mantissa on MSB. */
+	value_bits -= 0x1c000;  /* Adjust bias. */
+	/* Flush-to-zero. */
+	value_bits = (exponent_bits < 0x38800000) ? 0 : value_bits;
+	/* Clamp-to-max. */
+	value_bits = (exponent_bits > 0x47000000) ? 0x7bff : value_bits;
+	/* Denormals-as-zero. */
+	value_bits = (exponent_bits == 0 ? 0 : value_bits);
+	/* Re-insert sign bit and return. */
+	return (value_bits | sign_bit);
 }
 
 #endif

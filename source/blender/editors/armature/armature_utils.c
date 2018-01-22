@@ -34,6 +34,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
+#include "BLI_string_utils.h"
 
 #include "BKE_armature.h"
 #include "BKE_context.h"
@@ -179,7 +180,6 @@ EditBone *ED_armature_bone_find_shared_parent(EditBone *ebone_child[], const uns
 
 	/* accumulate */
 	for (i = 0; i < ebone_child_tot; i++) {
-		ebone_iter = ebone_child[i];
 		for (ebone_iter = ebone_child[i]->parent; ebone_iter; ebone_iter = ebone_iter->parent) {
 			EBONE_TEMP_UINT(ebone_iter) += 1;
 		}
@@ -263,7 +263,7 @@ EditBone *ED_armature_bone_get_mirrored(const ListBase *edbo, EditBone *ebo)
 	if (ebo == NULL)
 		return NULL;
 	
-	BKE_deform_flip_side_name(name_flip, ebo->name, false);
+	BLI_string_flip_side_name(name_flip, ebo->name, false, sizeof(name_flip));
 	
 	if (!STREQ(name_flip, ebo->name)) {
 		return ED_armature_bone_find_name(edbo, name_flip);
@@ -276,23 +276,29 @@ EditBone *ED_armature_bone_get_mirrored(const ListBase *edbo, EditBone *ebo)
 
 /* helper function for tools to work on mirrored parts.
  * it leaves mirrored bones selected then too, which is a good indication of what happened */
-void armature_select_mirrored(bArmature *arm)
+void armature_select_mirrored_ex(bArmature *arm, const int flag)
 {
+	BLI_assert((flag & ~(BONE_SELECTED | BONE_ROOTSEL | BONE_TIPSEL)) == 0);
 	/* Select mirrored bones */
 	if (arm->flag & ARM_MIRROR_EDIT) {
 		EditBone *curBone, *ebone_mirr;
 		
 		for (curBone = arm->edbo->first; curBone; curBone = curBone->next) {
 			if (arm->layer & curBone->layer) {
-				if (curBone->flag & BONE_SELECTED) {
+				if (curBone->flag & flag) {
 					ebone_mirr = ED_armature_bone_get_mirrored(arm->edbo, curBone);
 					if (ebone_mirr)
-						ebone_mirr->flag |= BONE_SELECTED;
+						ebone_mirr->flag |= (curBone->flag & flag);
 				}
 			}
 		}
 	}
 	
+}
+
+void armature_select_mirrored(bArmature *arm)
+{
+	armature_select_mirrored_ex(arm, BONE_SELECTED);
 }
 
 void armature_tag_select_mirrored(bArmature *arm)
@@ -362,6 +368,8 @@ void transform_armature_mirror_update(Object *obedit)
 					eboflip->tail[2] = ebo->tail[2];
 					eboflip->rad_tail = ebo->rad_tail;
 					eboflip->roll = -ebo->roll;
+					eboflip->curveOutX = -ebo->curveOutX;
+					eboflip->roll2 = -ebo->roll2;
 					
 					/* Also move connected children, in case children's name aren't mirrored properly */
 					for (children = arm->edbo->first; children; children = children->next) {
@@ -377,6 +385,8 @@ void transform_armature_mirror_update(Object *obedit)
 					eboflip->head[2] = ebo->head[2];
 					eboflip->rad_head = ebo->rad_head;
 					eboflip->roll = -ebo->roll;
+					eboflip->curveInX = -ebo->curveInX;
+					eboflip->roll1 = -ebo->roll1;
 					
 					/* Also move connected parent, in case parent's name isn't mirrored properly */
 					if (eboflip->parent && eboflip->flag & BONE_CONNECTED) {
@@ -390,6 +400,11 @@ void transform_armature_mirror_update(Object *obedit)
 					eboflip->roll = -ebo->roll;
 					eboflip->xwidth = ebo->xwidth;
 					eboflip->zwidth = ebo->zwidth;
+					
+					eboflip->curveInX = -ebo->curveInX;
+					eboflip->curveOutX = -ebo->curveOutX;
+					eboflip->roll1 = -ebo->roll1;
+					eboflip->roll2 = -ebo->roll2;
 				}
 			}
 		}
@@ -410,7 +425,9 @@ EditBone *make_boneList(ListBase *edbo, ListBase *bones, EditBone *parent, Bone 
 	for (curBone = bones->first; curBone; curBone = curBone->next) {
 		eBone = MEM_callocN(sizeof(EditBone), "make_editbone");
 		
-		/*	Copy relevant data from bone to eBone */
+		/* Copy relevant data from bone to eBone
+		 * Keep selection logic in sync with ED_armature_sync_selection.
+		 */
 		eBone->parent = parent;
 		BLI_strncpy(eBone->name, curBone->name, sizeof(eBone->name));
 		eBone->flag = curBone->flag;
@@ -421,11 +438,11 @@ EditBone *make_boneList(ListBase *edbo, ListBase *bones, EditBone *parent, Bone 
 			eBone->flag |= BONE_TIPSEL;
 			if (eBone->parent && (eBone->flag & BONE_CONNECTED)) {
 				eBone->parent->flag |= BONE_TIPSEL;
-				eBone->flag &= ~BONE_ROOTSEL; /* this is ignored when there is a connected parent, so unset it */
 			}
-			else {
-				eBone->flag |= BONE_ROOTSEL;
-			}
+
+			/* For connected bones, take care when changing the selection when we have a connected parent,
+			 * this flag is a copy of '(eBone->parent->flag & BONE_TIPSEL)'. */
+			eBone->flag |= BONE_ROOTSEL;
 		}
 		else {
 			/* if the bone is not selected, but connected to its parent
@@ -451,7 +468,16 @@ EditBone *make_boneList(ListBase *edbo, ListBase *bones, EditBone *parent, Bone 
 		eBone->rad_tail = curBone->rad_tail;
 		eBone->segments = curBone->segments;
 		eBone->layer = curBone->layer;
-		
+
+		eBone->roll1 = curBone->roll1;
+		eBone->roll2 = curBone->roll2;
+		eBone->curveInX = curBone->curveInX;
+		eBone->curveInY = curBone->curveInY;
+		eBone->curveOutX = curBone->curveOutX;
+		eBone->curveOutY = curBone->curveOutY;
+		eBone->scaleIn = curBone->scaleIn;
+		eBone->scaleOut = curBone->scaleOut;
+
 		if (curBone->prop)
 			eBone->prop = IDP_CopyProperty(curBone->prop);
 		
@@ -471,48 +497,78 @@ EditBone *make_boneList(ListBase *edbo, ListBase *bones, EditBone *parent, Bone 
 	return eBoneAct;
 }
 
-/* nasty stuff for converting roll in editbones into bones */
-/* also sets restposition in armature (arm_mat) */
-static void fix_bonelist_roll(ListBase *bonelist, ListBase *editbonelist)
+/* This function:
+ *     - sets local head/tail rest locations using parent bone's arm_mat.
+ *     - calls BKE_armature_where_is_bone() which uses parent's transform (arm_mat) to define this bone's transform.
+ *     - fixes (converts) EditBone roll into Bone roll.
+ *     - calls again BKE_armature_where_is_bone(), since roll fiddling may have changed things for our bone...
+ * Note that order is crucial here, we can only handle child if all its parents in chain have already been handled
+ * (this is ensured by recursive process). */
+static void armature_finalize_restpose(ListBase *bonelist, ListBase *editbonelist)
 {
 	Bone *curBone;
 	EditBone *ebone;
-	float premat[3][3];
-	float postmat[3][3];
-	float difmat[3][3];
-	float imat[3][3];
-	
+
 	for (curBone = bonelist->first; curBone; curBone = curBone->next) {
-		/* sets local matrix and arm_mat (restpos) */
-		BKE_armature_where_is_bone(curBone, curBone->parent);
-		
-		/* Find the associated editbone */
-		for (ebone = editbonelist->first; ebone; ebone = ebone->next)
-			if ((Bone *)ebone->temp == curBone)
-				break;
-		
-		if (ebone) {
-			/* Get the ebone premat */
-			ED_armature_ebone_to_mat3(ebone, premat);
-			
-			/* Get the bone postmat */
-			copy_m3_m4(postmat, curBone->arm_mat);
-			
-			invert_m3_m3(imat, premat);
-			mul_m3_m3m3(difmat, imat, postmat);
-#if 0
-			printf("Bone %s\n", curBone->name);
-			print_m4("premat", premat);
-			print_m4("postmat", postmat);
-			print_m4("difmat", difmat);
-			printf("Roll = %f\n",  RAD2DEGF(-atan2(difmat[2][0], difmat[2][2])));
-#endif
-			curBone->roll = -atan2f(difmat[2][0], difmat[2][2]);
-			
-			/* and set restposition again */
-			BKE_armature_where_is_bone(curBone, curBone->parent);
+		/* Set bone's local head/tail.
+		 * Note that it's important to use final parent's restpose (arm_mat) here, instead of setting those values
+		 * from editbone's matrix (see T46010). */
+		if (curBone->parent) {
+			float parmat_inv[4][4];
+
+			invert_m4_m4(parmat_inv, curBone->parent->arm_mat);
+
+			/* Get the new head and tail */
+			sub_v3_v3v3(curBone->head, curBone->arm_head, curBone->parent->arm_tail);
+			sub_v3_v3v3(curBone->tail, curBone->arm_tail, curBone->parent->arm_tail);
+
+			mul_mat3_m4_v3(parmat_inv, curBone->head);
+			mul_mat3_m4_v3(parmat_inv, curBone->tail);
 		}
-		fix_bonelist_roll(&curBone->childbase, editbonelist);
+		else {
+			copy_v3_v3(curBone->head, curBone->arm_head);
+			copy_v3_v3(curBone->tail, curBone->arm_tail);
+		}
+
+		/* Set local matrix and arm_mat (restpose).
+		 * Do not recurse into children here, armature_finalize_restpose() is already recursive. */
+		BKE_armature_where_is_bone(curBone, curBone->parent, false);
+
+		/* Find the associated editbone */
+		for (ebone = editbonelist->first; ebone; ebone = ebone->next) {
+			if (ebone->temp.bone == curBone) {
+				float premat[3][3];
+				float postmat[3][3];
+				float difmat[3][3];
+				float imat[3][3];
+
+				/* Get the ebone premat and its inverse. */
+				ED_armature_ebone_to_mat3(ebone, premat);
+				invert_m3_m3(imat, premat);
+
+				/* Get the bone postmat. */
+				copy_m3_m4(postmat, curBone->arm_mat);
+
+				mul_m3_m3m3(difmat, imat, postmat);
+
+#if 0
+				printf("Bone %s\n", curBone->name);
+				print_m4("premat", premat);
+				print_m4("postmat", postmat);
+				print_m4("difmat", difmat);
+				printf("Roll = %f\n",  RAD2DEGF(-atan2(difmat[2][0], difmat[2][2])));
+#endif
+
+				curBone->roll = -atan2f(difmat[2][0], difmat[2][2]);
+
+				/* and set restposition again */
+				BKE_armature_where_is_bone(curBone, curBone->parent, false);
+				break;
+			}
+		}
+
+		/* Recurse into children... */
+		armature_finalize_restpose(&curBone->childbase, editbonelist);
 	}
 }
 
@@ -529,9 +585,9 @@ void ED_armature_from_edit(bArmature *arm)
 	
 	/* remove zero sized bones, this gives unstable restposes */
 	for (eBone = arm->edbo->first; eBone; eBone = neBone) {
-		float len = len_v3v3(eBone->head, eBone->tail);
+		float len_sq = len_squared_v3v3(eBone->head, eBone->tail);
 		neBone = eBone->next;
-		if (len <= 0.000001f) {  /* FLT_EPSILON is too large? */
+		if (len_sq <= SQUARE(0.000001f)) {  /* FLT_EPSILON is too large? */
 			EditBone *fBone;
 			
 			/*	Find any bones that refer to this bone	*/
@@ -548,7 +604,7 @@ void ED_armature_from_edit(bArmature *arm)
 	/*	Copy the bones from the editData into the armature */
 	for (eBone = arm->edbo->first; eBone; eBone = eBone->next) {
 		newBone = MEM_callocN(sizeof(Bone), "bone");
-		eBone->temp = newBone;   /* Associate the real Bones with the EditBones */
+		eBone->temp.bone = newBone;   /* Associate the real Bones with the EditBones */
 		
 		BLI_strncpy(newBone->name, eBone->name, sizeof(newBone->name));
 		copy_v3_v3(newBone->arm_head, eBone->head);
@@ -576,53 +632,44 @@ void ED_armature_from_edit(bArmature *arm)
 		newBone->rad_tail = eBone->rad_tail;
 		newBone->segments = eBone->segments;
 		newBone->layer = eBone->layer;
-		
+
+		newBone->roll1 = eBone->roll1;
+		newBone->roll2 = eBone->roll2;
+		newBone->curveInX = eBone->curveInX;
+		newBone->curveInY = eBone->curveInY;
+		newBone->curveOutX = eBone->curveOutX;
+		newBone->curveOutY = eBone->curveOutY;
+		newBone->scaleIn = eBone->scaleIn;
+		newBone->scaleOut = eBone->scaleOut;
+
+
 		if (eBone->prop)
 			newBone->prop = IDP_CopyProperty(eBone->prop);
 	}
 	
-	/* Fix parenting in a separate pass to ensure ebone->bone connections
-	 * are valid at this point */
+	/* Fix parenting in a separate pass to ensure ebone->bone connections are valid at this point.
+	 * Do not set bone->head/tail here anymore, using EditBone data for that is not OK since our later fiddling
+	 * with parent's arm_mat (for roll conversion) may have some small but visible impact on locations (T46010). */
 	for (eBone = arm->edbo->first; eBone; eBone = eBone->next) {
-		newBone = (Bone *)eBone->temp;
+		newBone = eBone->temp.bone;
 		if (eBone->parent) {
-			newBone->parent = (Bone *)eBone->parent->temp;
+			newBone->parent = eBone->parent->temp.bone;
 			BLI_addtail(&newBone->parent->childbase, newBone);
-			
-			{
-				float M_parentRest[3][3];
-				float iM_parentRest[3][3];
-				
-				/* Get the parent's  matrix (rotation only) */
-				ED_armature_ebone_to_mat3(eBone->parent, M_parentRest);
-				
-				/* Invert the parent matrix */
-				invert_m3_m3(iM_parentRest, M_parentRest);
-				
-				/* Get the new head and tail */
-				sub_v3_v3v3(newBone->head, eBone->head, eBone->parent->tail);
-				sub_v3_v3v3(newBone->tail, eBone->tail, eBone->parent->tail);
-				
-				mul_m3_v3(iM_parentRest, newBone->head);
-				mul_m3_v3(iM_parentRest, newBone->tail);
-			}
 		}
 		/*	...otherwise add this bone to the armature's bonebase */
 		else {
-			copy_v3_v3(newBone->head, eBone->head);
-			copy_v3_v3(newBone->tail, eBone->tail);
 			BLI_addtail(&arm->bonebase, newBone);
 		}
 	}
 	
-	/* Make a pass through the new armature to fix rolling */
-	/* also builds restposition again (like BKE_armature_where_is) */
-	fix_bonelist_roll(&arm->bonebase, arm->edbo);
+	/* Finalize definition of restpose data (roll, bone_mat, arm_mat, head/tail...). */
+	armature_finalize_restpose(&arm->bonebase, arm->edbo);
 	
 	/* so all users of this armature should get rebuilt */
 	for (obt = G.main->object.first; obt; obt = obt->id.next) {
-		if (obt->data == arm)
+		if (obt->data == arm) {
 			BKE_pose_rebuild(obt, arm);
+		}
 	}
 	
 	DAG_id_tag_update(&arm->id, 0);
@@ -695,24 +742,24 @@ static void ED_armature_ebone_listbase_copy(ListBase *lb_dst, ListBase *lb_src)
 		if (ebone_dst->prop) {
 			ebone_dst->prop = IDP_CopyProperty(ebone_dst->prop);
 		}
-		ebone_src->temp = ebone_dst;
+		ebone_src->temp.ebone = ebone_dst;
 		BLI_addtail(lb_dst, ebone_dst);
 	}
 
 	/* set pointers */
 	for (ebone_dst = lb_dst->first; ebone_dst; ebone_dst = ebone_dst->next) {
 		if (ebone_dst->parent) {
-			ebone_dst->parent = ebone_dst->parent->temp;
+			ebone_dst->parent = ebone_dst->parent->temp.ebone;
 		}
 	}
 }
 
-static void ED_armature_ebone_listbase_temp_clear(ListBase *lb)
+void ED_armature_ebone_listbase_temp_clear(ListBase *lb)
 {
 	EditBone *ebone;
 	/* be sure they don't hang ever */
 	for (ebone = lb->first; ebone; ebone = ebone->next) {
-		ebone->temp = NULL;
+		ebone->temp.p = NULL;
 	}
 }
 
@@ -733,7 +780,7 @@ static void undoBones_to_editBones(void *uarmv, void *armv, void *UNUSED(data))
 	/* active bone */
 	if (uarm->act_edbone) {
 		ebone = uarm->act_edbone;
-		arm->act_edbone = ebone->temp;
+		arm->act_edbone = ebone->temp.ebone;
 	}
 	else {
 		arm->act_edbone = NULL;
@@ -755,7 +802,7 @@ static void *editBones_to_undoBones(void *armv, void *UNUSED(obdata))
 	/* active bone */
 	if (arm->act_edbone) {
 		ebone = arm->act_edbone;
-		uarm->act_edbone = ebone->temp;
+		uarm->act_edbone = ebone->temp.ebone;
 	}
 
 	ED_armature_ebone_listbase_temp_clear(&uarm->lb);

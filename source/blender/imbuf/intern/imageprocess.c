@@ -51,7 +51,7 @@
 /* Only this one is used liberally here, and in imbuf */
 void IMB_convert_rgba_to_abgr(struct ImBuf *ibuf)
 {
-	int size;
+	size_t size;
 	unsigned char rt, *cp = (unsigned char *)ibuf->rect;
 	float rtf, *cpf = ibuf->rect_float;
 
@@ -86,7 +86,7 @@ void IMB_convert_rgba_to_abgr(struct ImBuf *ibuf)
 static void pixel_from_buffer(struct ImBuf *ibuf, unsigned char **outI, float **outF, int x, int y)
 
 {
-	int offset = ibuf->x * y * 4 + 4 * x;
+	size_t offset = ((size_t)ibuf->x) * y * 4 + 4 * x;
 	
 	if (ibuf->rect)
 		*outI = (unsigned char *)ibuf->rect + offset;
@@ -172,10 +172,10 @@ void bilinear_interpolation_color_wrap(struct ImBuf *in, unsigned char outI[4], 
 
 	if (outF) {
 		/* sample including outside of edges of image */
-		row1 = in->rect_float + in->x * y1 * 4 + 4 * x1;
-		row2 = in->rect_float + in->x * y2 * 4 + 4 * x1;
-		row3 = in->rect_float + in->x * y1 * 4 + 4 * x2;
-		row4 = in->rect_float + in->x * y2 * 4 + 4 * x2;
+		row1 = in->rect_float + ((size_t)in->x) * y1 * 4 + 4 * x1;
+		row2 = in->rect_float + ((size_t)in->x) * y2 * 4 + 4 * x1;
+		row3 = in->rect_float + ((size_t)in->x) * y1 * 4 + 4 * x2;
+		row4 = in->rect_float + ((size_t)in->x) * y2 * 4 + 4 * x2;
 
 		outF[0] = ma_mb * row1[0] + a_mb * row3[0] + ma_b * row2[0] + a_b * row4[0];
 		outF[1] = ma_mb * row1[1] + a_mb * row3[1] + ma_b * row2[1] + a_b * row4[1];
@@ -190,10 +190,10 @@ void bilinear_interpolation_color_wrap(struct ImBuf *in, unsigned char outI[4], 
 	}
 	if (outI) {
 		/* sample including outside of edges of image */
-		row1I = (unsigned char *)in->rect + in->x * y1 * 4 + 4 * x1;
-		row2I = (unsigned char *)in->rect + in->x * y2 * 4 + 4 * x1;
-		row3I = (unsigned char *)in->rect + in->x * y1 * 4 + 4 * x2;
-		row4I = (unsigned char *)in->rect + in->x * y2 * 4 + 4 * x2;
+		row1I = (unsigned char *)in->rect + ((size_t)in->x) * y1 * 4 + 4 * x1;
+		row2I = (unsigned char *)in->rect + ((size_t)in->x) * y2 * 4 + 4 * x1;
+		row3I = (unsigned char *)in->rect + ((size_t)in->x) * y1 * 4 + 4 * x2;
+		row4I = (unsigned char *)in->rect + ((size_t)in->x) * y2 * 4 + 4 * x2;
 		
 		/* need to add 0.5 to avoid rounding down (causes darken with the smear brush)
 		 * tested with white images and this should not wrap back to zero */
@@ -256,20 +256,55 @@ void nearest_interpolation_color(struct ImBuf *in, unsigned char outI[4], float 
 		}
 	}
 	else {
-		dataI = (unsigned char *)in->rect + in->x * y1 * 4 + 4 * x1;
+		dataI = (unsigned char *)in->rect + ((size_t)in->x) * y1 * 4 + 4 * x1;
 		if (outI) {
 			outI[0] = dataI[0];
 			outI[1] = dataI[1];
 			outI[2] = dataI[2];
 			outI[3] = dataI[3];
 		}
-		dataF = in->rect_float + in->x * y1 * 4 + 4 * x1;
+		dataF = in->rect_float + ((size_t)in->x) * y1 * 4 + 4 * x1;
 		if (outF) {
 			outF[0] = dataF[0];
 			outF[1] = dataF[1];
 			outF[2] = dataF[2];
 			outF[3] = dataF[3];
 		}
+	}
+}
+
+
+void nearest_interpolation_color_wrap(struct ImBuf *in, unsigned char outI[4], float outF[4], float u, float v)
+{
+	const float *dataF;
+	unsigned char *dataI;
+	int y, x;
+
+	/* ImBuf in must have a valid rect or rect_float, assume this is already checked */
+
+	x = (int) floor(u);
+	y = (int) floor(v);
+
+	x = x % in->x;
+	y = y % in->y;
+
+	/* wrap interpolation pixels - main difference from nearest_interpolation_color  */
+	if (x < 0) x += in->x;
+	if (y < 0) y += in->y;
+
+	dataI = (unsigned char *)in->rect + ((size_t)in->x) * y * 4 + 4 * x;
+	if (outI) {
+		outI[0] = dataI[0];
+		outI[1] = dataI[1];
+		outI[2] = dataI[2];
+		outI[3] = dataI[3];
+	}
+	dataF = in->rect_float + ((size_t)in->x) * y * 4 + 4 * x;
+	if (outF) {
+		outF[0] = dataF[0];
+		outF[1] = dataF[1];
+		outF[2] = dataF[2];
+		outF[3] = dataF[3];
 	}
 }
 
@@ -289,7 +324,7 @@ void nearest_interpolation(ImBuf *in, ImBuf *out, float x, float y, int xout, in
 
 /*********************** Threaded image processing *************************/
 
-static void processor_apply_func(TaskPool *pool, void *taskdata, int UNUSED(threadid))
+static void processor_apply_func(TaskPool * __restrict pool, void *taskdata, int UNUSED(threadid))
 {
 	void (*do_thread) (void *) = (void (*) (void *)) BLI_task_pool_userdata(pool);
 	do_thread(taskdata);
@@ -339,11 +374,65 @@ void IMB_processor_apply_threaded(int buffer_lines, int handle_size, void *init_
 	BLI_task_pool_free(task_pool);
 }
 
+typedef struct ScanlineGlobalData {
+	void *custom_data;
+	ScanlineThreadFunc do_thread;
+	int scanlines_per_task;
+	int total_scanlines;
+} ScanlineGlobalData;
+
+typedef struct ScanlineTask {
+	int start_scanline;
+	int num_scanlines;
+} ScanlineTask;
+
+static void processor_apply_scanline_func(TaskPool * __restrict pool,
+                                          void *taskdata,
+                                          int UNUSED(threadid))
+{
+	ScanlineGlobalData *data = BLI_task_pool_userdata(pool);
+	int start_scanline = GET_INT_FROM_POINTER(taskdata);
+	int num_scanlines = min_ii(data->scanlines_per_task,
+	                           data->total_scanlines - start_scanline);
+	data->do_thread(data->custom_data,
+	                start_scanline,
+	                num_scanlines);
+}
+
+void IMB_processor_apply_threaded_scanlines(int total_scanlines,
+                                            ScanlineThreadFunc do_thread,
+                                            void *custom_data)
+{
+	const int scanlines_per_task = 64;
+	ScanlineGlobalData data;
+	data.custom_data = custom_data;
+	data.do_thread = do_thread;
+	data.scanlines_per_task = scanlines_per_task;
+	data.total_scanlines = total_scanlines;
+	const int total_tasks = (total_scanlines + scanlines_per_task - 1) / scanlines_per_task;
+	TaskScheduler *task_scheduler = BLI_task_scheduler_get();
+	TaskPool *task_pool = BLI_task_pool_create(task_scheduler, &data);
+	for (int i = 0, start_line = 0; i < total_tasks; i++) {
+		BLI_task_pool_push(task_pool,
+		                   processor_apply_scanline_func,
+		                   SET_INT_IN_POINTER(start_line),
+		                   false,
+		                   TASK_PRIORITY_LOW);
+		start_line += scanlines_per_task;
+	}
+
+	/* work and wait until tasks are done */
+	BLI_task_pool_work_and_wait(task_pool);
+
+	/* Free memory. */
+	BLI_task_pool_free(task_pool);
+}
+
 /* Alpha-under */
 
 void IMB_alpha_under_color_float(float *rect_float, int x, int y, float backcol[3])
 {
-	int a = x * y;
+	size_t a = ((size_t)x) * y;
 	float *fp = rect_float;
 
 	while (a--) {
@@ -366,7 +455,7 @@ void IMB_alpha_under_color_float(float *rect_float, int x, int y, float backcol[
 
 void IMB_alpha_under_color_byte(unsigned char *rect, int x, int y, float backcol[3])
 {
-	int a = x * y;
+	size_t a = ((size_t)x) * y;
 	unsigned char *cp = rect;
 
 	while (a--) {

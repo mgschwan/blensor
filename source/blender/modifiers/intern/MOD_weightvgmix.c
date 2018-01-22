@@ -39,12 +39,17 @@
 #include "BKE_cdderivedmesh.h"
 #include "BKE_deform.h"
 #include "BKE_library.h"
+#include "BKE_library_query.h"
 #include "BKE_modifier.h"
 #include "BKE_texture.h"          /* Texture masking. */
 
 #include "depsgraph_private.h"
+#include "DEG_depsgraph_build.h"
+
 #include "MEM_guardedalloc.h"
+
 #include "MOD_weightvg_util.h"
+#include "MOD_modifiertypes.h"
 
 
 /**
@@ -169,19 +174,17 @@ static bool dependsOnTime(ModifierData *md)
 	return false;
 }
 
-static void foreachObjectLink(ModifierData *md, Object *ob,
-                              void (*walk)(void *userData, Object *ob, Object **obpoin),
-                              void *userData)
+static void foreachObjectLink(ModifierData *md, Object *ob, ObjectWalkFunc walk, void *userData)
 {
 	WeightVGMixModifierData *wmd = (WeightVGMixModifierData *) md;
-	walk(userData, ob, &wmd->mask_tex_map_obj);
+	walk(userData, ob, &wmd->mask_tex_map_obj, IDWALK_CB_NOP);
 }
 
 static void foreachIDLink(ModifierData *md, Object *ob, IDWalkFunc walk, void *userData)
 {
 	WeightVGMixModifierData *wmd = (WeightVGMixModifierData *) md;
 
-	walk(userData, ob, (ID **)&wmd->mask_texture);
+	walk(userData, ob, (ID **)&wmd->mask_texture, IDWALK_CB_USER);
 
 	foreachObjectLink(md, ob, (ObjectWalkFunc)walk, userData);
 }
@@ -211,6 +214,23 @@ static void updateDepgraph(ModifierData *md, DagForest *forest,
 		                 "WeightVGMix Modifier");
 }
 
+static void updateDepsgraph(ModifierData *md,
+                            struct Main *UNUSED(bmain),
+                            struct Scene *UNUSED(scene),
+                            Object *ob,
+                            struct DepsNodeHandle *node)
+{
+	WeightVGMixModifierData *wmd = (WeightVGMixModifierData *) md;
+	if (wmd->mask_tex_map_obj != NULL && wmd->mask_tex_mapping == MOD_DISP_MAP_OBJECT) {
+		DEG_add_object_relation(node, wmd->mask_tex_map_obj, DEG_OB_COMP_TRANSFORM, "WeightVGMix Modifier");
+		DEG_add_object_relation(node, wmd->mask_tex_map_obj, DEG_OB_COMP_GEOMETRY, "WeightVGMix Modifier");
+	}
+	if (wmd->mask_tex_mapping == MOD_DISP_MAP_GLOBAL) {
+		DEG_add_object_relation(node, ob, DEG_OB_COMP_TRANSFORM, "WeightVGMix Modifier");
+		DEG_add_object_relation(node, ob, DEG_OB_COMP_GEOMETRY, "WeightVGMix Modifier");
+	}
+}
+
 static bool isDisabled(ModifierData *md, int UNUSED(useRenderParams))
 {
 	WeightVGMixModifierData *wmd = (WeightVGMixModifierData *) md;
@@ -234,7 +254,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 	int i;
 	/* Flags. */
 #if 0
-	int do_prev = (wmd->modifier.mode & eModifierMode_DoWeightPreview);
+	const bool do_prev = (wmd->modifier.mode & eModifierMode_DoWeightPreview) != 0;
 #endif
 
 	/* Get number of verts. */
@@ -250,7 +270,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 	defgrp_index = defgroup_name_index(ob, wmd->defgrp_name_a);
 	if (defgrp_index == -1)
 		return dm;
-	/* Get seconf vgroup idx from its name, if given. */
+	/* Get second vgroup idx from its name, if given. */
 	if (wmd->defgrp_name_b[0] != (char)0) {
 		defgrp_index_other = defgroup_name_index(ob, wmd->defgrp_name_b);
 		if (defgrp_index_other == -1)
@@ -264,8 +284,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		if (wmd->mix_set != MOD_WVG_SET_ALL)
 			return dm;
 		/* Else, add a valid data layer! */
-		dvert = CustomData_add_layer_named(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC,
-		                                   NULL, numVerts, wmd->defgrp_name_a);
+		dvert = CustomData_add_layer(&dm->vertData, CD_MDEFORMVERT, CD_CALLOC, NULL, numVerts);
 		/* Ultimate security check. */
 		if (!dvert)
 			return dm;
@@ -281,7 +300,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 				MDeformWeight *dw = defvert_find_index(&dvert[i], defgrp_index);
 				if (dw) {
 					tdw1[numIdx] = dw;
-					tdw2[numIdx] = defvert_find_index(&dvert[i], defgrp_index_other);
+					tdw2[numIdx] = (defgrp_index_other >= 0) ? defvert_find_index(&dvert[i], defgrp_index_other) : NULL;
 					tidx[numIdx++] = i;
 				}
 			}
@@ -289,7 +308,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		case MOD_WVG_SET_B:
 			/* All vertices in second vgroup. */
 			for (i = 0; i < numVerts; i++) {
-				MDeformWeight *dw = defvert_find_index(&dvert[i], defgrp_index_other);
+				MDeformWeight *dw = (defgrp_index_other >= 0) ? defvert_find_index(&dvert[i], defgrp_index_other) : NULL;
 				if (dw) {
 					tdw1[numIdx] = defvert_find_index(&dvert[i], defgrp_index);
 					tdw2[numIdx] = dw;
@@ -301,7 +320,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 			/* All vertices in one vgroup or the other. */
 			for (i = 0; i < numVerts; i++) {
 				MDeformWeight *adw = defvert_find_index(&dvert[i], defgrp_index);
-				MDeformWeight *bdw = defvert_find_index(&dvert[i], defgrp_index_other);
+				MDeformWeight *bdw = (defgrp_index_other >= 0) ? defvert_find_index(&dvert[i], defgrp_index_other) : NULL;
 				if (adw || bdw) {
 					tdw1[numIdx] = adw;
 					tdw2[numIdx] = bdw;
@@ -313,7 +332,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 			/* All vertices in both vgroups. */
 			for (i = 0; i < numVerts; i++) {
 				MDeformWeight *adw = defvert_find_index(&dvert[i], defgrp_index);
-				MDeformWeight *bdw = defvert_find_index(&dvert[i], defgrp_index_other);
+				MDeformWeight *bdw = (defgrp_index_other >= 0) ? defvert_find_index(&dvert[i], defgrp_index_other) : NULL;
 				if (adw && bdw) {
 					tdw1[numIdx] = adw;
 					tdw2[numIdx] = bdw;
@@ -326,7 +345,7 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 			/* Use all vertices. */
 			for (i = 0; i < numVerts; i++) {
 				tdw1[i] = defvert_find_index(&dvert[i], defgrp_index);
-				tdw2[i] = defvert_find_index(&dvert[i], defgrp_index_other);
+				tdw2[i] = (defgrp_index_other >= 0) ? defvert_find_index(&dvert[i], defgrp_index_other) : NULL;
 			}
 			numIdx = -1;
 			break;
@@ -422,6 +441,7 @@ ModifierTypeInfo modifierType_WeightVGMix = {
 	/* freeData */          freeData,
 	/* isDisabled */        isDisabled,
 	/* updateDepgraph */    updateDepgraph,
+	/* updateDepsgraph */   updateDepsgraph,
 	/* dependsOnTime */     dependsOnTime,
 	/* dependsOnNormals */  NULL,
 	/* foreachObjectLink */ foreachObjectLink,

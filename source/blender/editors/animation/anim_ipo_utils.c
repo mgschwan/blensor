@@ -42,7 +42,7 @@
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
 
-#include "BLF_translation.h"
+#include "BLT_translation.h"
 
 #include "DNA_anim_types.h"
 
@@ -192,7 +192,7 @@ int getname_anim_fcurve(char *name, ID *id, FCurve *fcu)
 #define HSV_BANDWIDTH   0.3f
 
 /* used to determine the color of F-Curves with FCURVE_COLOR_AUTO_RAINBOW set */
-//void fcurve_rainbow (unsigned int cur, unsigned int tot, float *out)
+// void fcurve_rainbow(unsigned int cur, unsigned int tot, float *out)
 void getcolor_fcurve_rainbow(int cur, int tot, float out[3])
 {
 	float hsv[3], fac;

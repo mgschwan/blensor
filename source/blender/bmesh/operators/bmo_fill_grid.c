@@ -114,8 +114,9 @@ static void quad_verts_to_barycentric_tri(
 /**
  * Assign a loop pair from 2 verts (which _must_ share an edge)
  */
-static void bm_loop_pair_from_verts(BMVert *v_a, BMVert *v_b,
-                                    BMLoop *l_pair[2])
+static void bm_loop_pair_from_verts(
+        BMVert *v_a, BMVert *v_b,
+        BMLoop *l_pair[2])
 {
 	BMEdge *e = BM_edge_exists(v_a, v_b);
 	if (e->l) {
@@ -185,15 +186,16 @@ static void bm_loop_interp_from_grid_boundary_2(BMesh *bm, BMLoop *l, BMLoop *l_
 /**
  * Avoids calling #barycentric_weights_v2_quad often by caching weights into an array.
  */
-static void barycentric_weights_v2_grid_cache(const unsigned int xtot, const unsigned int ytot,
-                                              float (*weight_table)[4])
+static void barycentric_weights_v2_grid_cache(
+        const uint xtot, const uint ytot,
+        float (*weight_table)[4])
 {
 	float x_step = 1.0f / (float)(xtot - 1);
 	float y_step = 1.0f / (float)(ytot - 1);
-	unsigned int i = 0;
+	uint i = 0;
 	float xy_fl[2];
 
-	unsigned int x, y;
+	uint x, y;
 	for (y = 0; y < ytot; y++) {
 		xy_fl[1] = y_step * (float)y;
 		for (x = 0; x < xtot; x++) {
@@ -216,13 +218,14 @@ static void barycentric_weights_v2_grid_cache(const unsigned int xtot, const uns
  *
  * \param v_grid  2d array of verts, all boundary verts must be set, we fill in the middle.
  */
-static void bm_grid_fill_array(BMesh *bm, BMVert **v_grid, const unsigned int xtot, unsigned const int ytot,
-                               const short mat_nr, const bool use_smooth,
-                               const bool use_flip, const bool use_interp_simple)
+static void bm_grid_fill_array(
+        BMesh *bm, BMVert **v_grid, const uint xtot, unsigned const int ytot,
+        const short mat_nr, const bool use_smooth,
+        const bool use_flip, const bool use_interp_simple)
 {
 	const bool use_vert_interp = CustomData_has_interp(&bm->vdata);
 	const bool use_loop_interp = CustomData_has_interp(&bm->ldata);
-	unsigned int x, y;
+	uint x, y;
 
 	/* for use_loop_interp */
 	BMLoop *((*larr_x_a)[2]), *((*larr_x_b)[2]), *((*larr_y_a)[2]), *((*larr_y_b)[2]);
@@ -390,7 +393,7 @@ static void bm_grid_fill_array(BMesh *bm, BMVert **v_grid, const unsigned int xt
 				BMLoop *l_quad[4];
 				BMLoop *l_bound[4];
 				BMLoop *l_tmp;
-				unsigned int x_side, y_side, i;
+				uint x_side, y_side, i;
 				char interp_from;
 
 
@@ -463,7 +466,7 @@ static void bm_grid_fill_array(BMesh *bm, BMVert **v_grid, const unsigned int xt
 			/* end interp */
 
 
-			BMO_elem_flag_enable(bm, f, FACE_OUT);
+			BMO_face_flag_enable(bm, f, FACE_OUT);
 			f->mat_nr = mat_nr;
 			if (use_smooth) {
 				BM_elem_flag_enable(f, BM_ELEM_SMOOTH);
@@ -485,19 +488,20 @@ static void bm_grid_fill_array(BMesh *bm, BMVert **v_grid, const unsigned int xt
 #undef XY
 }
 
-static void bm_grid_fill(BMesh *bm,
-                         struct BMEdgeLoopStore *estore_a,      struct BMEdgeLoopStore *estore_b,
-                         struct BMEdgeLoopStore *estore_rail_a, struct BMEdgeLoopStore *estore_rail_b,
-                         const short mat_nr, const bool use_smooth, const bool use_interp_simple)
+static void bm_grid_fill(
+        BMesh *bm,
+        struct BMEdgeLoopStore *estore_a,      struct BMEdgeLoopStore *estore_b,
+        struct BMEdgeLoopStore *estore_rail_a, struct BMEdgeLoopStore *estore_rail_b,
+        const short mat_nr, const bool use_smooth, const bool use_interp_simple)
 {
 #define USE_FLIP_DETECT
 
-	const unsigned int xtot = (unsigned int)BM_edgeloop_length_get(estore_a);
-	const unsigned int ytot = (unsigned int)BM_edgeloop_length_get(estore_rail_a);
+	const uint xtot = (uint)BM_edgeloop_length_get(estore_a);
+	const uint ytot = (uint)BM_edgeloop_length_get(estore_rail_a);
 	//BMVert *v;
-	unsigned int i;
+	uint i;
 #ifdef DEBUG
-	unsigned int x, y;
+	uint x, y;
 #endif
 	LinkData *el;
 	bool use_flip = false;
@@ -565,9 +569,23 @@ static void bm_grid_fill(BMesh *bm,
 #undef USE_FLIP_DETECT
 }
 
+static void bm_edgeloop_flag_set(struct BMEdgeLoopStore *estore, char hflag, bool set)
+{
+	/* only handle closed loops in this case */
+	LinkData *link = BM_edgeloop_verts_get(estore)->first;
+	link = link->next;
+	while (link) {
+		BMEdge *e = BM_edge_exists(link->data, link->prev->data);
+		if (e) {
+			BM_elem_flag_set(e, hflag, set);
+		}
+		link = link->next;
+	}
+}
+
 static bool bm_edge_test_cb(BMEdge *e, void *bm_v)
 {
-	return BMO_elem_flag_test_bool((BMesh *)bm_v, e, EDGE_MARK);
+	return BMO_edge_flag_test_bool((BMesh *)bm_v, e, EDGE_MARK);
 }
 
 static bool bm_edge_test_rail_cb(BMEdge *e, void *UNUSED(bm_v))
@@ -591,6 +609,7 @@ void bmo_grid_fill_exec(BMesh *bm, BMOperator *op)
 	const short mat_nr = (short)BMO_slot_int_get(op->slots_in,  "mat_nr");
 	const bool use_smooth = BMO_slot_bool_get(op->slots_in, "use_smooth");
 	const bool use_interp_simple = BMO_slot_bool_get(op->slots_in, "use_interp_simple");
+	GSet *split_edges = NULL;
 
 	int count;
 	bool changed = false;
@@ -612,12 +631,6 @@ void bmo_grid_fill_exec(BMesh *bm, BMOperator *op)
 	v_b_first = ((LinkData *)BM_edgeloop_verts_get(estore_b)->first)->data;
 	v_b_last  = ((LinkData *)BM_edgeloop_verts_get(estore_b)->last)->data;
 
-	if (BM_edgeloop_length_get(estore_a) != BM_edgeloop_length_get(estore_b)) {
-		BMO_error_raise(bm, op, BMERR_INVALID_SELECTION,
-		                "Edge loop vertex count mismatch");
-		goto cleanup;
-	}
-
 	if (BM_edgeloop_is_closed(estore_a) || BM_edgeloop_is_closed(estore_b)) {
 		BMO_error_raise(bm, op, BMERR_INVALID_SELECTION,
 		                "Closed loops unsupported");
@@ -626,63 +639,73 @@ void bmo_grid_fill_exec(BMesh *bm, BMOperator *op)
 
 	/* ok. all error checking done, now we can find the rail edges */
 
-	if (BM_mesh_edgeloops_find_path(bm, &eloops_rail, bm_edge_test_rail_cb, bm, v_a_first, v_b_first) == false) {
+
+	/* cheat here, temp hide all edges so they won't be included in rails
+	 * this puts the mesh in an invalid state for a short time. */
+	bm_edgeloop_flag_set(estore_a, BM_ELEM_HIDDEN, true);
+	bm_edgeloop_flag_set(estore_b, BM_ELEM_HIDDEN, true);
+
+	if ((BM_mesh_edgeloops_find_path(bm, &eloops_rail, bm_edge_test_rail_cb, bm, v_a_first, v_b_first)) &&
+	    (BM_mesh_edgeloops_find_path(bm, &eloops_rail, bm_edge_test_rail_cb, bm, v_a_last, v_b_last)))
+	{
+		estore_rail_a = eloops_rail.first;
+		estore_rail_b = eloops_rail.last;
+	}
+	else {
+		BM_mesh_edgeloops_free(&eloops_rail);
+
+		if ((BM_mesh_edgeloops_find_path(bm, &eloops_rail, bm_edge_test_rail_cb, bm, v_a_first, v_b_last)) &&
+		    (BM_mesh_edgeloops_find_path(bm, &eloops_rail, bm_edge_test_rail_cb, bm, v_a_last, v_b_first)))
+		{
+			estore_rail_a = eloops_rail.first;
+			estore_rail_b = eloops_rail.last;
+			BM_edgeloop_flip(bm, estore_b);
+		}
+		else {
+			BM_mesh_edgeloops_free(&eloops_rail);
+		}
+	}
+
+	bm_edgeloop_flag_set(estore_a, BM_ELEM_HIDDEN, false);
+	bm_edgeloop_flag_set(estore_b, BM_ELEM_HIDDEN, false);
+
+
+	if (BLI_listbase_is_empty(&eloops_rail)) {
 		BMO_error_raise(bm, op, BMERR_INVALID_SELECTION,
 		                "Loops are not connected by wire/boundary edges");
 		goto cleanup;
-	}
-
-	/* We may find a first path, but not a second one! See geometry attached to bug [#37388]. */
-	if (BM_mesh_edgeloops_find_path(bm, &eloops_rail, bm_edge_test_rail_cb, bm, v_a_first, v_b_last) == false) {
-		BMO_error_raise(bm, op, BMERR_INVALID_SELECTION,
-		                "Loops are not connected by wire/boundary edges");
-		goto cleanup;
-	}
-
-	/* Check flipping by comparing path length */
-	estore_rail_a = eloops_rail.first;
-	estore_rail_b = eloops_rail.last;
-
-	BLI_assert(BM_edgeloop_length_get(estore_rail_a) != BM_edgeloop_length_get(estore_rail_b));
-
-	if (BM_edgeloop_length_get(estore_rail_a) < BM_edgeloop_length_get(estore_rail_b)) {
-		BLI_remlink(&eloops_rail, estore_rail_b);
-		BM_edgeloop_free(estore_rail_b);
-		estore_rail_b = NULL;
-
-		BM_mesh_edgeloops_find_path(bm, &eloops_rail, bm_edge_test_rail_cb, (void *)bm,
-		                            v_a_last,
-		                            v_b_last);
-		estore_rail_b = eloops_rail.last;
-	}
-	else {  /* a > b */
-		BLI_remlink(&eloops_rail, estore_rail_a);
-		BM_edgeloop_free(estore_rail_a);
-		estore_rail_a = estore_rail_b;
-
-		/* reverse so both are sorted the same way */
-		BM_edgeloop_flip(bm, estore_b);
-		SWAP(BMVert *, v_b_first, v_b_last);
-
-		BM_mesh_edgeloops_find_path(bm, &eloops_rail, bm_edge_test_rail_cb, (void *)bm,
-		                            v_a_last,
-		                            v_b_last);
-		estore_rail_b = eloops_rail.last;
 	}
 
 	BLI_assert(estore_a != estore_b);
 	BLI_assert(v_a_last != v_b_last);
 
-	if (BM_edgeloop_length_get(estore_rail_a) != BM_edgeloop_length_get(estore_rail_b)) {
-		BMO_error_raise(bm, op, BMERR_INVALID_SELECTION,
-		                "Connecting edges vertex mismatch");
-		goto cleanup;
-	}
-
 	if (BM_edgeloop_overlap_check(estore_rail_a, estore_rail_b)) {
 		BMO_error_raise(bm, op, BMERR_INVALID_SELECTION,
 		                "Connecting edge loops overlap");
 		goto cleanup;
+	}
+
+	/* add vertices if needed */
+	{
+		struct BMEdgeLoopStore *estore_pairs[2][2] = {{estore_a, estore_b}, {estore_rail_a, estore_rail_b}};
+		int i;
+
+		for (i = 0; i < 2; i++) {
+			const int len_a = BM_edgeloop_length_get(estore_pairs[i][0]);
+			const int len_b = BM_edgeloop_length_get(estore_pairs[i][1]);
+			if (len_a != len_b) {
+				if (split_edges == NULL) {
+					split_edges = BLI_gset_ptr_new(__func__);
+				}
+
+				if (len_a < len_b) {
+					BM_edgeloop_expand(bm, estore_pairs[i][0], len_b, true, split_edges);
+				}
+				else {
+					BM_edgeloop_expand(bm, estore_pairs[i][1], len_a, true, split_edges);
+				}
+			}
+		}
 	}
 
 	/* finally we have all edge loops needed */
@@ -691,6 +714,14 @@ void bmo_grid_fill_exec(BMesh *bm, BMOperator *op)
 
 	changed = true;
 
+	if (split_edges) {
+		GSetIterator gs_iter;
+		GSET_ITER (gs_iter, split_edges) {
+			BMEdge *e = BLI_gsetIterator_getKey(&gs_iter);
+			BM_edge_collapse(bm, e, e->v2, true, true);
+		}
+		BLI_gset_free(split_edges, NULL);
+	}
 
 cleanup:
 	BM_mesh_edgeloops_free(&eloops);

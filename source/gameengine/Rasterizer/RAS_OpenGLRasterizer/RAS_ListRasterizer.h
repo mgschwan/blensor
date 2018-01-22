@@ -35,12 +35,9 @@ public:
 enum RAS_ListSlotFlags	{
 	LIST_CREATE		=1,
 	LIST_MODIFY		=2,
-	LIST_STREAM		=4,
-	LIST_NOCREATE	=8,
-	LIST_BEGIN		=16,
-	LIST_END		=32,
-	LIST_REGEN		=64,
-	LIST_DERIVEDMESH=128,
+	LIST_BEGIN		=4,
+	LIST_END		=8,
+	LIST_DERIVEDMESH=16,
 };
 
 struct DerivedMesh;
@@ -59,11 +56,10 @@ class RAS_ListRasterizer : public RAS_OpenGLRasterizer
 
 public:
 	void RemoveListSlot(RAS_ListSlot* list);
-	RAS_ListRasterizer(RAS_ICanvas* canvas, bool lock=false, int storage=RAS_AUTO_STORAGE);
+	RAS_ListRasterizer(RAS_ICanvas* canvas, bool lock, RAS_STORAGE_TYPE storage);
 	virtual ~RAS_ListRasterizer();
 
 	virtual void	IndexPrimitives(class RAS_MeshSlot& ms);
-	virtual void	IndexPrimitivesMulti(class RAS_MeshSlot& ms);
 
 	virtual bool	Init();
 	virtual void	Exit();

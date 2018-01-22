@@ -188,7 +188,10 @@ static PyObject *CurvePoint_fedge_get(BPy_CurvePoint *self, void *UNUSED(closure
 {
 	SVertex *A = self->cp->A();
 	Interface0D *B = (Interface0D *)self->cp->B();
-	return Any_BPy_Interface1D_from_Interface1D(*(A->getFEdge(*B)));
+	// B can be NULL under certain circumstances
+	if (B)
+		return Any_BPy_Interface1D_from_Interface1D(*(A->getFEdge(*B)));
+	Py_RETURN_NONE;
 }
 
 PyDoc_STRVAR(CurvePoint_t2d_doc,
@@ -217,8 +220,8 @@ static PyGetSetDef BPy_CurvePoint_getseters[] = {
 	                          (char *)CurvePoint_first_svertex_doc, NULL},
 	{(char *)"second_svertex", (getter)CurvePoint_second_svertex_get, (setter)CurvePoint_second_svertex_set,
 	                           (char *)CurvePoint_second_svertex_doc, NULL},
-    {(char *)"fedge", (getter)CurvePoint_fedge_get, NULL,
-                               CurvePoint_fedge_doc, NULL},
+	{(char *)"fedge", (getter)CurvePoint_fedge_get, NULL,
+	                           CurvePoint_fedge_doc, NULL},
 	{(char *)"t2d", (getter)CurvePoint_t2d_get, (setter)CurvePoint_t2d_set, (char *)CurvePoint_t2d_doc, NULL},
 	{NULL, NULL, NULL, NULL, NULL}  /* Sentinel */
 };

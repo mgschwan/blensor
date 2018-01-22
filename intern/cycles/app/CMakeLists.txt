@@ -1,13 +1,6 @@
 
 set(INC
-	.
-	../device
-	../kernel
-	../kernel/svm
-	../bvh
-	../util
-	../render
-	../subd
+	..
 )
 set(INC_SYS
 )
@@ -20,6 +13,7 @@ set(LIBRARIES
 	cycles_render
 	cycles_bvh
 	cycles_subd
+	cycles_graph
 	cycles_util
 	${BLENDER_GL_LIBRARIES}
 	${CYCLES_APP_GLEW_LIBRARY}
@@ -29,25 +23,27 @@ set(LIBRARIES
 	${TIFF_LIBRARY}
 	${PTHREADS_LIBRARIES}
 	extern_clew
-	extern_cuew
 )
+
+if(WITH_CUDA_DYNLOAD)
+	list(APPEND LIBRARIES extern_cuew)
+else()
+	list(APPEND LIBRARIES ${CUDA_CUDA_LIBRARY})
+endif()
 
 if(WITH_CYCLES_OSL)
 	list(APPEND LIBRARIES cycles_kernel_osl)
 endif()
 
-if(CYCLES_STANDALONE_REPOSITORY)
-	if(WITH_CYCLES_LOGGING)
-		list(APPEND LIBRARIES
-			${GLOG_LIBRARIES}
-			${GFLAGS_LIBRARIES}
-		)
-	endif()
-else()
-	list(APPEND LIBRARIES bf_intern_glew_mx)
-	if(WITH_CYCLES_LOGGING)
-		list(APPEND LIBRARIES extern_glog)
-	endif()
+if(NOT CYCLES_STANDALONE_REPOSITORY)
+	list(APPEND LIBRARIES bf_intern_glew_mx bf_intern_guardedalloc)
+endif()
+
+if(WITH_CYCLES_LOGGING)
+	list(APPEND LIBRARIES
+		${GLOG_LIBRARIES}
+		${GFLAGS_LIBRARIES}
+	)
 endif()
 
 if(WITH_CYCLES_STANDALONE AND WITH_CYCLES_STANDALONE_GUI)
@@ -79,18 +75,15 @@ include_directories(SYSTEM ${INC_SYS})
 macro(cycles_target_link_libraries target)
 	target_link_libraries(${target} ${LIBRARIES})
 	if(WITH_CYCLES_OSL)
-		target_link_libraries_decoupled(${target} OSL_LIBRARIES)
-		if(MSVC)
-			target_link_libraries_debug(${target} "${LLVM_LIBRARIES_DEBUG}")
-			target_link_libraries_optimized(${target} "${LLVM_LIBRARIES}")
-		else()
-			target_link_libraries(${target} ${LLVM_LIBRARIES})
-		endif()
+		target_link_libraries(${target} ${OSL_LIBRARIES} ${LLVM_LIBRARIES})
 	endif()
-	target_link_libraries_decoupled(${target} OPENIMAGEIO_LIBRARIES)
-	target_link_libraries_decoupled(${target} OPENEXR_LIBRARIES)
+	if(WITH_CYCLES_OPENSUBDIV)
+		target_link_libraries(${target} ${OPENSUBDIV_LIBRARIES})
+	endif()
 	target_link_libraries(
 		${target}
+		${OPENIMAGEIO_LIBRARIES}
+		${OPENEXR_LIBRARIES}
 		${PUGIXML_LIBRARIES}
 		${BOOST_LIBRARIES}
 		${CMAKE_DL_LIBS}

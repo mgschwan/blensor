@@ -70,15 +70,15 @@ typedef enum BMIterType {
 	/* returns elements from all boundaries, and returns
 	 * the first element at the end to flag that we're entering
 	 * a different face hole boundary*/
-	BM_ALL_LOOPS_OF_FACE = 12,
+	// BM_ALL_LOOPS_OF_FACE = 12,
 	/* iterate through loops around this loop, which are fetched
 	 * from the other faces in the radial cycle surrounding the
 	 * input loop's edge.*/
-	BM_LOOPS_OF_LOOP = 13,
-	BM_LOOPS_OF_EDGE = 14
+	BM_LOOPS_OF_LOOP = 12,
+	BM_LOOPS_OF_EDGE = 13
 } BMIterType;
 
-#define BM_ITYPE_MAX 15
+#define BM_ITYPE_MAX 14
 
 /* the iterator htype for each iterator */
 extern const char bm_iter_itype_htype_map[BM_ITYPE_MAX];
@@ -197,14 +197,29 @@ typedef struct BMIter {
 
 void   *BM_iter_at_index(BMesh *bm, const char itype, void *data, int index) ATTR_WARN_UNUSED_RESULT;
 int     BM_iter_as_array(BMesh *bm, const char itype, void *data, void **array, const int len);
-void   *BM_iter_as_arrayN(BMesh *bm, const char itype, void *data, int *r_len,
-                          void **stack_array, int stack_array_size) ATTR_WARN_UNUSED_RESULT;
-int     BMO_iter_as_array(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name, const char restrictmask,
-                          void **array, const int len);
-void    *BMO_iter_as_arrayN(BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name, const char restrictmask,
-                            int *r_len,
-                            /* optional args to avoid an alloc (normally stack array) */
-                            void **stack_array, int stack_array_size);
+void   *BM_iter_as_arrayN(
+        BMesh *bm, const char itype, void *data, int *r_len,
+        void **stack_array, int stack_array_size) ATTR_WARN_UNUSED_RESULT;
+int     BMO_iter_as_array(
+        BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name, const char restrictmask,
+        void **array, const int len);
+void    *BMO_iter_as_arrayN(
+        BMOpSlot slot_args[BMO_OP_MAX_SLOTS], const char *slot_name, const char restrictmask,
+        int *r_len,
+        /* optional args to avoid an alloc (normally stack array) */
+        void **stack_array, int stack_array_size);
+
+int BM_iter_mesh_bitmap_from_filter(
+        const char itype, BMesh *bm,
+        uint *bitmap,
+        bool (*test_fn)(BMElem *, void *user_data),
+        void *user_data);
+int BM_iter_mesh_bitmap_from_filter_tessface(
+        BMesh *bm,
+        uint *bitmap,
+        bool (*test_fn)(BMFace *, void *user_data),
+        void *user_data);
+
 int     BM_iter_elem_count_flag(const char itype, void *data, const char hflag, const bool value);
 int     BMO_iter_elem_count_flag(BMesh *bm, const char itype, void *data, const short oflag, const bool value);
 int     BM_iter_mesh_count(const char itype, BMesh *bm);

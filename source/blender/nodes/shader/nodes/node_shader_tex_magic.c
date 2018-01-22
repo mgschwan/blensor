@@ -45,8 +45,8 @@ static bNodeSocketTemplate sh_node_tex_magic_out[] = {
 static void node_shader_init_tex_magic(bNodeTree *UNUSED(ntree), bNode *node)
 {
 	NodeTexMagic *tex = MEM_callocN(sizeof(NodeTexMagic), "NodeTexMagic");
-	default_tex_mapping(&tex->base.tex_mapping, TEXMAP_TYPE_POINT);
-	default_color_mapping(&tex->base.color_mapping);
+	BKE_texture_mapping_default(&tex->base.tex_mapping, TEXMAP_TYPE_POINT);
+	BKE_texture_colormapping_default(&tex->base.color_mapping);
 	tex->depth = 2;
 
 	node->storage = tex;
@@ -57,8 +57,10 @@ static int node_shader_gpu_tex_magic(GPUMaterial *mat, bNode *node, bNodeExecDat
 	NodeTexMagic *tex = (NodeTexMagic *)node->storage;
 	float depth = tex->depth;
 
-	if (!in[0].link)
+	if (!in[0].link) {
 		in[0].link = GPU_attribute(CD_ORCO, "");
+		GPU_link(mat, "generated_from_orco", in[0].link, &in[0].link);
+	}
 
 	node_shader_gpu_tex_mapping(mat, node, in, out);
 

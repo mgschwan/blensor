@@ -31,15 +31,10 @@
 #ifndef __ED_UTIL_H__
 #define __ED_UTIL_H__
 
-struct Scene;
-struct Object;
 struct bContext;
-struct ARegion;
-struct uiBlock;
+struct SpaceLink;
 struct wmOperator;
 struct wmOperatorType;
-struct BMEditMesh;
-struct Mesh;
 
 /* ed_util.c */
 
@@ -48,17 +43,24 @@ void    ED_editors_exit(struct bContext *C);
 
 bool    ED_editors_flush_edits(const struct bContext *C, bool for_render);
 
+void    ED_spacedata_id_remap(struct ScrArea *sa, struct SpaceLink *sl, struct ID *old_id, struct ID *new_id);
+
+void    ED_OT_flush_edits(struct wmOperatorType *ot);
+
 /* ************** Undo ************************ */
 
 /* undo.c */
 void    ED_undo_push(struct bContext *C, const char *str);
 void    ED_undo_push_op(struct bContext *C, struct wmOperator *op);
+void    ED_undo_grouped_push(struct bContext *C, const char *str);
+void    ED_undo_grouped_push_op(struct bContext *C, struct wmOperator *op);
 void    ED_undo_pop_op(struct bContext *C, struct wmOperator *op);
 void    ED_undo_pop(struct bContext *C);
 void    ED_undo_redo(struct bContext *C);
 void    ED_OT_undo(struct wmOperatorType *ot);
 void    ED_OT_undo_push(struct wmOperatorType *ot);
 void    ED_OT_redo(struct wmOperatorType *ot);
+void    ED_OT_undo_redo(struct wmOperatorType *ot);
 void    ED_OT_undo_history(struct wmOperatorType *ot);
 
 int     ED_undo_operator_repeat(struct bContext *C, struct wmOperator *op);
@@ -66,7 +68,7 @@ int     ED_undo_operator_repeat(struct bContext *C, struct wmOperator *op);
 void    ED_undo_operator_repeat_cb(struct bContext *C, void *arg_op, void *arg_unused);
 void    ED_undo_operator_repeat_cb_evt(struct bContext *C, void *arg_op, int arg_unused);
 
-int     ED_undo_valid(const struct bContext *C, const char *undoname);
+bool    ED_undo_is_valid(const struct bContext *C, const char *undoname);
 
 /* undo_editmode.c */
 void undo_editmode_push(struct bContext *C, const char *name, 
@@ -78,9 +80,6 @@ void undo_editmode_push(struct bContext *C, const char *name,
 
 
 void    undo_editmode_clear(void);
-
-/* cut-paste buffer free */
-void ED_clipboard_posebuf_free(void);
 
 /* ************** XXX OLD CRUFT WARNING ************* */
 

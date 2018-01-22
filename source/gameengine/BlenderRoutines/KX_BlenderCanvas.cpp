@@ -29,29 +29,22 @@
  *  \ingroup blroutines
  */
 
-#include "glew-mx.h"
+#include "GPU_glew.h"
 
 #include "MEM_guardedalloc.h"
 
 #include "KX_BlenderCanvas.h"
 
-#include "DNA_image_types.h"
-#include "DNA_scene_types.h"
 #include "DNA_screen_types.h"
+#include "DNA_scene_types.h"
 #include "DNA_windowmanager_types.h"
 
 #include "BKE_image.h"
-#include "BKE_global.h"
-#include "BKE_main.h"
-
-#include "BLI_path_util.h"
-#include "BLI_string.h"
 
 #include <assert.h>
+#include <iostream>
 
 extern "C" {
-#include "IMB_imbuf.h"
-#include "IMB_imbuf_types.h"
 #include "WM_api.h"
 #include "wm_cursors.h"
 #include "wm_window.h"
@@ -95,6 +88,11 @@ void KX_BlenderCanvas::SetSwapInterval(int interval)
 bool KX_BlenderCanvas::GetSwapInterval(int &intervalOut)
 {
 	return wm_window_get_swap_interval(m_win, &intervalOut);
+}
+
+void KX_BlenderCanvas::GetDisplayDimensions(int &width, int &height)
+{
+	wm_get_screensize(&width, &height);
 }
 
 void KX_BlenderCanvas::ResizeWindow(int width, int height)
@@ -336,33 +334,20 @@ void KX_BlenderCanvas::MakeScreenShot(const char *filename)
 	area_dummy.totrct.ymax = m_frame_rect.GetTop();
 
 	dumprect = screenshot(&area_dummy, &dumpsx, &dumpsy);
-
-	if (dumprect) {
-		/* initialize image file format data */
-		Scene *scene = (screen)? screen->scene: NULL;
-		ImageFormatData im_format;
-
-		if (scene)
-			im_format = scene->r.im_format;
-		else
-			BKE_imformat_defaults(&im_format);
-
-		/* create file path */
-		char path[FILE_MAX];
-		BLI_strncpy(path, filename, sizeof(path));
-		BLI_path_abs(path, G.main->name);
-		BLI_path_frame(path, m_frame, 0);
-		m_frame++;
-		BKE_image_path_ensure_ext_from_imtype(path, im_format.imtype);
-
-		/* create and save imbuf */
-		ImBuf *ibuf = IMB_allocImBuf(dumpsx, dumpsy, 24, 0);
-		ibuf->rect = dumprect;
-
-		BKE_imbuf_write_as(ibuf, path, &im_format, false);
-
-		ibuf->rect = NULL;
-		IMB_freeImBuf(ibuf);
-		MEM_freeN(dumprect);
+	if (!dumprect) {
+		std::cerr << "KX_BlenderCanvas: Unable to take screenshot!" << std::endl;
+		return;
 	}
+
+	/* initialize image file format data */
+	Scene *scene = (screen)? screen->scene: NULL;
+	ImageFormatData *im_format = (ImageFormatData *)MEM_mallocN(sizeof(ImageFormatData), "im_format");
+
+	if (scene)
+		*im_format = scene->r.im_format;
+	else
+		BKE_imformat_defaults(im_format);
+
+	/* save_screenshot() frees dumprect and im_format */
+	save_screenshot(filename, dumpsx, dumpsy, dumprect, im_format);
 }

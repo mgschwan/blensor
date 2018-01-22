@@ -40,10 +40,10 @@ extern "C" {
 #endif
 
 /**
- * Creates a &quot;handle&quot; for a C++ GHOST object.
+ * Creates a "handle" for a C++ GHOST object.
  * A handle is just an opaque pointer to an empty struct.
  * In the API the pointer is casted to the actual C++ class.
- * \param name Name of the handle to create.
+ * The 'name' argument to the macro is the name of the handle to create.
  */
 
 GHOST_DECLARE_HANDLE(GHOST_SystemHandle);
@@ -174,19 +174,19 @@ extern void GHOST_GetAllDisplayDimensions(GHOST_SystemHandle systemhandle,
  * \param height The height the window.
  * \param state The state of the window when opened.
  * \param type The type of drawing context installed in this window.
- * \param stereoVisual Stereo visual for quad buffered stereo.
- * \param numOfAASamples Number of samples used for AA (zero if no AA)
+ * \param glSettings: Misc OpenGL options.
  * \return A handle to the new window ( == NULL if creation failed).
  */
-extern GHOST_WindowHandle GHOST_CreateWindow(GHOST_SystemHandle systemhandle,
-                                             const char *title,
-                                             GHOST_TInt32 left,
-                                             GHOST_TInt32 top,
-                                             GHOST_TUns32 width,
-                                             GHOST_TUns32 height,
-                                             GHOST_TWindowState state,
-                                             GHOST_TDrawingContextType type,
-                                             GHOST_GLSettings glSettings);
+extern GHOST_WindowHandle GHOST_CreateWindow(
+        GHOST_SystemHandle systemhandle,
+        const char *title,
+        GHOST_TInt32 left,
+        GHOST_TInt32 top,
+        GHOST_TUns32 width,
+        GHOST_TUns32 height,
+        GHOST_TWindowState state,
+        GHOST_TDrawingContextType type,
+        GHOST_GLSettings glSettings);
 
 /**
  * Returns the window user data.
@@ -263,9 +263,8 @@ extern int GHOST_ProcessEvents(GHOST_SystemHandle systemhandle, int waitForEvent
 /**
  * Retrieves events from the queue and send them to the event consumers.
  * \param systemhandle The handle to the system
- * \return Indication of the presence of events.
  */
-extern int GHOST_DispatchEvents(GHOST_SystemHandle systemhandle);
+extern void GHOST_DispatchEvents(GHOST_SystemHandle systemhandle);
 
 /**
  * Adds the given event consumer to our list.
@@ -433,6 +432,18 @@ extern GHOST_TSuccess GHOST_GetModifierKeyState(GHOST_SystemHandle systemhandle,
 extern GHOST_TSuccess GHOST_GetButtonState(GHOST_SystemHandle systemhandle,
                                            GHOST_TButtonMask mask,
                                            int *isDown);
+
+#ifdef WITH_INPUT_NDOF
+/***************************************************************************************
+ * Access to 3D mouse.
+ ***************************************************************************************/
+
+/**
+ * Sets 3D mouse deadzone
+ * \param deadzone Deadzone of the 3D mouse (both for rotation and pan) relative to full range
+ */
+extern void GHOST_setNDOFDeadZone(float deadzone);
+#endif
 
 
 /***************************************************************************************
@@ -660,7 +671,7 @@ extern GHOST_TSuccess GHOST_SetWindowOrder(GHOST_WindowHandle windowhandle,
 /**
  * Swaps front and back buffers of a window.
  * \param windowhandle The handle to the window
- * \return An intean success indicator.
+ * \return A success indicator.
  */
 extern GHOST_TSuccess GHOST_SwapWindowBuffers(GHOST_WindowHandle windowhandle);
 
@@ -688,7 +699,7 @@ extern GHOST_TUns16 GHOST_GetNumOfAASamples(GHOST_WindowHandle windowhandle);
 /**
  * Activates the drawing context of this window.
  * \param windowhandle The handle to the window
- * \return An intean success indicator.
+ * \return A success indicator.
  */
 extern GHOST_TSuccess GHOST_ActivateWindowDrawingContext(GHOST_WindowHandle windowhandle);
 
@@ -752,7 +763,7 @@ extern void GHOST_SetRectangle(GHOST_RectangleHandle rectanglehandle,
  * Returns whether this rectangle is empty.
  * Empty rectangles are rectangles that have width==0 and/or height==0.
  * \param rectanglehandle The handle to the rectangle
- * \return intean value (true == empty rectangle)
+ * \return Success value (true == empty rectangle)
  */
 extern GHOST_TSuccess GHOST_IsEmptyRectangle(GHOST_RectangleHandle rectanglehandle);
 
@@ -760,7 +771,7 @@ extern GHOST_TSuccess GHOST_IsEmptyRectangle(GHOST_RectangleHandle rectanglehand
  * Returns whether this rectangle is valid.
  * Valid rectangles are rectangles that have m_l <= m_r and m_t <= m_b. Thus, empty rectangles are valid.
  * \param rectanglehandle The handle to the rectangle
- * \return intean value (true == valid rectangle)
+ * \return Success value (true == valid rectangle)
  */
 extern GHOST_TSuccess GHOST_IsValidRectangle(GHOST_RectangleHandle rectanglehandle);
 
@@ -798,7 +809,7 @@ extern void GHOST_UnionPointRectangle(GHOST_RectangleHandle rectanglehandle,
  * \param rectanglehandle The handle to the rectangle
  * \param x x-coordinate of point to test.
  * \param y y-coordinate of point to test.
- * \return intean value (true if point is inside).
+ * \return Success value (true if point is inside).
  */
 extern GHOST_TSuccess GHOST_IsInsideRectangle(GHOST_RectangleHandle rectanglehandle,
                                               GHOST_TInt32 x,
@@ -895,6 +906,11 @@ extern int GHOST_UseNativePixels(void);
  * If window was opened using native pixel size, it returns scaling factor.
  */
 extern float GHOST_GetNativePixelSize(GHOST_WindowHandle windowhandle);
+
+/**
+ * Returns the suggested DPI for this window.
+ */
+extern GHOST_TUns16 GHOST_GetDPIHint(GHOST_WindowHandle windowhandle);
 
 /**
  * Enable IME attached to the given window, i.e. allows user-input

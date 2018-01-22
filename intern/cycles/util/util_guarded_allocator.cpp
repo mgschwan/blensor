@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#include "util_guarded_allocator.h"
-#include "util_stats.h"
+#include "util/util_guarded_allocator.h"
+#include "util/util_stats.h"
 
 CCL_NAMESPACE_BEGIN
 
-static Stats global_stats;
+static Stats global_stats(Stats::static_init);
 
 /* Internal API. */
 

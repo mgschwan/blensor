@@ -109,6 +109,7 @@ typedef struct ParticleData {
 	float time, lifetime;	/* dietime is not nescessarily time+lifetime as	*/
 	float dietime;			/* particles can die unnaturally (collision)	*/
 
+	/* WARNING! Those two indices, when not affected to vertices, are for !!! TESSELLATED FACES !!!, not POLYGONS! */
 	int num;				/* index to vert/edge/face */
 	int num_dmcache;		/* index to derived mesh data (face) to avoid slow lookups */
 
@@ -159,6 +160,7 @@ typedef struct ParticleSettings {
 	struct SPHFluidSettings *fluid;
 
 	struct EffectorWeights *effector_weights;
+	struct Group *collision_group;
 
 	int flag, rt;
 	short type, from, distr, texact;
@@ -321,7 +323,7 @@ typedef struct ParticleSystem {
 	struct ParticleDrawData *pdd;
 
 	float dt_frac;							/* current time step, as a fraction of a frame */
-	float _pad;								/* spare capacity */
+	float lattice_strength;					/* influence of the lattice modifier */
 } ParticleSystem;
 
 typedef enum eParticleDrawFlag {

@@ -14,47 +14,95 @@
  * limitations under the License.
  */
 
-#include "util_system.h"
-#include "util_types.h"
+#include "util/util_system.h"
+
+#include "util/util_debug.h"
+#include "util/util_logging.h"
+#include "util/util_types.h"
+#include "util/util_string.h"
 
 #ifdef _WIN32
-#if(!defined(FREE_WINDOWS))
-#include <intrin.h>
-#endif
-#include <windows.h>
+#  if(!defined(FREE_WINDOWS))
+#    include <intrin.h>
+#  endif
+#  include "util_windows.h"
 #elif defined(__APPLE__)
-#include <sys/sysctl.h>
-#include <sys/types.h>
+#  include <sys/sysctl.h>
+#  include <sys/types.h>
 #else
-#include <unistd.h>
+#  include <unistd.h>
 #endif
 
 CCL_NAMESPACE_BEGIN
+
+int system_cpu_group_count()
+{
+#ifdef _WIN32
+	util_windows_init_numa_groups();
+	return GetActiveProcessorGroupCount();
+#else
+	/* TODO(sergey): Need to adopt for other platforms. */
+	return 1;
+#endif
+}
+
+int system_cpu_group_thread_count(int group)
+{
+	/* TODO(sergey): Need make other platforms aware of groups. */
+#ifdef _WIN32
+	util_windows_init_numa_groups();
+	return GetActiveProcessorCount(group);
+#elif defined(__APPLE__)
+	(void)group;
+	int count;
+	size_t len = sizeof(count);
+	int mib[2] = { CTL_HW, HW_NCPU };
+	sysctl(mib, 2, &count, &len, NULL, 0);
+	return count;
+#else
+	(void)group;
+	return sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+}
 
 int system_cpu_thread_count()
 {
 	static uint count = 0;
 
-	if(count > 0)
+	if(count > 0) {
 		return count;
+	}
 
-#ifdef _WIN32
-	SYSTEM_INFO info;
-	GetSystemInfo(&info);
-	count = (uint)info.dwNumberOfProcessors;
-#elif defined(__APPLE__)
-	size_t len = sizeof(count);
-	int mib[2] = { CTL_HW, HW_NCPU };
-	
-	sysctl(mib, 2, &count, &len, NULL, 0);
-#else
-	count = (uint)sysconf(_SC_NPROCESSORS_ONLN);
-#endif
+	int max_group = system_cpu_group_count();
+	VLOG(1) << "Detected " << max_group << " CPU groups.";
+	for(int group = 0; group < max_group; ++group) {
+		int num_threads = system_cpu_group_thread_count(group);
+		VLOG(1) << "Group " << group
+		        << " has " << num_threads << " threads.";
+		count += num_threads;
+	}
 
-	if(count < 1)
+	if(count < 1) {
 		count = 1;
+	}
 
 	return count;
+}
+
+unsigned short system_cpu_process_groups(unsigned short max_groups,
+                                         unsigned short *groups)
+{
+#ifdef _WIN32
+	unsigned short group_count = max_groups;
+	if(!GetProcessGroupAffinity(GetCurrentProcess(), &group_count, groups)) {
+		return 0;
+	}
+	return group_count;
+#else
+	(void) max_groups;
+	(void) groups;
+	return 0;
+#endif
 }
 
 #if !defined(_WIN32) || defined(FREE_WINDOWS)
@@ -75,14 +123,6 @@ static void __cpuid(int data[4], int selector)
 }
 #endif
 
-static void replace_string(string& haystack, const string& needle, const string& other)
-{
-	size_t i;
-
-	while((i = haystack.find(needle)) != string::npos)
-		haystack.replace(i, needle.length(), other);
-}
-
 string system_cpu_brand_string()
 {
 	char buf[48];
@@ -98,10 +138,7 @@ string system_cpu_brand_string()
 		string brand = buf;
 
 		/* make it a bit more presentable */
-		replace_string(brand, "(TM)", "");
-		replace_string(brand, "(R)", "");
-
-		brand = string_strip(brand);
+		brand = string_remove_trademark(brand);
 
 		return brand;
 	}
@@ -127,6 +164,7 @@ struct CPUCapabilities {
 	bool sse42;
 	bool sse4a;
 	bool avx;
+	bool f16c;
 	bool avx2;
 	bool xop;
 	bool fma3;
@@ -134,29 +172,6 @@ struct CPUCapabilities {
 	bool bmi1;
 	bool bmi2;
 };
-
-static void system_cpu_capabilities_override(CPUCapabilities *caps)
-{
-	/* Only capabilities which affects on cycles kernel. */
-	if(getenv("CYCLES_CPU_NO_AVX2")) {
-		caps->avx2 = false;
-	}
-	if(getenv("CYCLES_CPU_NO_AVX")) {
-		caps->avx = false;
-	}
-	if(getenv("CYCLES_CPU_NO_SSE41")) {
-		caps->sse41 = false;
-	}
-	if(getenv("CYCLES_CPU_NO_SSE3")) {
-		caps->sse3 = false;
-	}
-	if(getenv("CYCLES_CPU_NO_SSE2")) {
-		caps->sse2 = false;
-	}
-	if(getenv("CYCLES_CPU_NO_SSE")) {
-		caps->sse = false;
-	}
-}
 
 static CPUCapabilities& system_cpu_capabilities()
 {
@@ -202,13 +217,13 @@ static CPUCapabilities& system_cpu_capabilities()
 				caps.avx = (xcr_feature_mask & 0x6) == 0x6;
 			}
 
+			caps.f16c = (result[2] & ((int)1 << 29)) != 0;
+
 			__cpuid(result, 0x00000007);
 			caps.bmi1 = (result[1] & ((int)1 << 3)) != 0;
 			caps.bmi2 = (result[1] & ((int)1 << 8)) != 0;
 			caps.avx2 = (result[1] & ((int)1 << 5)) != 0;
 		}
-
-		system_cpu_capabilities_override(&caps);
 
 		caps_init = true;
 	}
@@ -219,30 +234,35 @@ static CPUCapabilities& system_cpu_capabilities()
 bool system_cpu_support_sse2()
 {
 	CPUCapabilities& caps = system_cpu_capabilities();
-	return caps.sse && caps.sse2;
+	return DebugFlags().cpu.sse2 && caps.sse && caps.sse2;
 }
 
 bool system_cpu_support_sse3()
 {
 	CPUCapabilities& caps = system_cpu_capabilities();
-	return caps.sse && caps.sse2 && caps.sse3 && caps.ssse3;
+	return DebugFlags().cpu.sse3 &&
+	       caps.sse && caps.sse2 && caps.sse3 && caps.ssse3;
 }
 
 bool system_cpu_support_sse41()
 {
 	CPUCapabilities& caps = system_cpu_capabilities();
-	return caps.sse && caps.sse2 && caps.sse3 && caps.ssse3 && caps.sse41;
+	return DebugFlags().cpu.sse41 &&
+	       caps.sse && caps.sse2 && caps.sse3 && caps.ssse3 && caps.sse41;
 }
 
 bool system_cpu_support_avx()
 {
 	CPUCapabilities& caps = system_cpu_capabilities();
-	return caps.sse && caps.sse2 && caps.sse3 && caps.ssse3 && caps.sse41 && caps.avx;
+	return DebugFlags().cpu.avx &&
+	       caps.sse && caps.sse2 && caps.sse3 && caps.ssse3 && caps.sse41 && caps.avx;
 }
+
 bool system_cpu_support_avx2()
 {
 	CPUCapabilities& caps = system_cpu_capabilities();
-	return caps.sse && caps.sse2 && caps.sse3 && caps.ssse3 && caps.sse41 && caps.avx && caps.avx2 && caps.fma3 && caps.bmi1 && caps.bmi2;
+	return DebugFlags().cpu.avx2 &&
+	       caps.sse && caps.sse2 && caps.sse3 && caps.ssse3 && caps.sse41 && caps.avx && caps.f16c && caps.avx2 && caps.fma3 && caps.bmi1 && caps.bmi2;
 }
 #else
 

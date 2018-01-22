@@ -35,6 +35,7 @@
 
 struct ARegion;
 struct Header;
+struct ID;
 struct ListBase;
 struct Menu;
 struct Panel;
@@ -47,7 +48,6 @@ struct bContextDataResult;
 struct bScreen;
 struct uiLayout;
 struct uiList;
-struct uiMenuItem;
 struct wmKeyConfig;
 struct wmNotifier;
 struct wmWindow;
@@ -98,6 +98,9 @@ typedef struct SpaceType {
 
 	/* return context data */
 	int (*context)(const struct bContext *, const char *, struct bContextDataResult *);
+
+	/* Used when we want to replace an ID by another (or NULL). */
+	void (*id_remap)(struct ScrArea *, struct SpaceLink *, struct ID *, struct ID *);
 
 	/* region type definitions */
 	ListBase regiontypes;
@@ -274,6 +277,9 @@ void BKE_spacedata_freelist(ListBase *lb);
 void BKE_spacedata_copylist(ListBase *lb1, ListBase *lb2);
 void BKE_spacedata_draw_locks(int set);
 
+void BKE_spacedata_callback_id_remap_set(void (*func)(struct ScrArea *, struct SpaceLink *, struct ID *, struct ID *));
+void BKE_spacedata_id_unref(struct ScrArea *sa, struct SpaceLink *sl, struct ID *id);
+
 /* area/regions */
 struct ARegion *BKE_area_region_copy(struct SpaceType *st, struct ARegion *ar);
 void            BKE_area_region_free(struct SpaceType *st, struct ARegion *ar);
@@ -281,6 +287,7 @@ void            BKE_screen_area_free(struct ScrArea *sa);
 
 struct ARegion *BKE_area_find_region_type(struct ScrArea *sa, int type);
 struct ARegion *BKE_area_find_region_active_win(struct ScrArea *sa);
+struct ARegion *BKE_area_find_region_xy(struct ScrArea *sa, const int regiontype, int x, int y);
 struct ScrArea *BKE_screen_find_area_from_space(struct bScreen *sc, struct SpaceLink *sl) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL(1, 2);
 struct ScrArea *BKE_screen_find_big_area(struct bScreen *sc, const int spacetype, const short min);
 struct ScrArea *BKE_screen_find_area_xy(struct bScreen *sc, const int spacetype, int x, int y);
@@ -289,6 +296,8 @@ unsigned int BKE_screen_view3d_layer_active_ex(
         const struct View3D *v3d, const struct Scene *scene, bool use_localvd) ATTR_NONNULL(2);
 unsigned int BKE_screen_view3d_layer_active(
         const struct View3D *v3d, const struct Scene *scene) ATTR_NONNULL(2);
+
+unsigned int BKE_screen_view3d_layer_all(const struct bScreen *sc) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL(1);
 
 void BKE_screen_view3d_sync(struct View3D *v3d, struct Scene *scene);
 void BKE_screen_view3d_scene_sync(struct bScreen *sc);

@@ -70,7 +70,7 @@ void ScreenLensDistortionOperation::initExecution()
 	}
 }
 
-void *ScreenLensDistortionOperation::initializeTileData(rcti *rect)
+void *ScreenLensDistortionOperation::initializeTileData(rcti * /*rect*/)
 {
 	void *buffer = this->m_inputProgram->initializeTileData(NULL);
 
@@ -149,9 +149,10 @@ void ScreenLensDistortionOperation::accumulate(MemoryBuffer *buffer,
 		distort_uv(uv, t, xy);
 		buffer->readBilinear(color, xy[0], xy[1]);
 		
-		sum[a] += (1.0f - tz) * color[a], sum[b] += tz * color[b];
-		++count[a];
-		++count[b];
+		sum[a] += (1.0f - tz) * color[a];
+		sum[b] += (tz       ) * color[b];
+		count[a]++;
+		count[b]++;
 	}
 }
 
@@ -208,7 +209,7 @@ void ScreenLensDistortionOperation::determineUV(float result[6], float x, float 
 	get_delta(uv_dot, m_k4[2], uv, result + 4);
 }
 
-bool ScreenLensDistortionOperation::determineDependingAreaOfInterest(rcti *input, ReadBufferOperation *readOperation, rcti *output)
+bool ScreenLensDistortionOperation::determineDependingAreaOfInterest(rcti * /*input*/, ReadBufferOperation *readOperation, rcti *output)
 {
 	rcti newInputValue;
 	newInputValue.xmin = 0;

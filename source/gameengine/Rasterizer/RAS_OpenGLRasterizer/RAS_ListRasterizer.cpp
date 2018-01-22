@@ -30,7 +30,7 @@
 #include <windows.h>
 #endif // WIN32
 
-#include "glew-mx.h"
+#include "GPU_glew.h"
 
 #include "RAS_MaterialBucket.h"
 #include "RAS_TexVert.h"
@@ -79,10 +79,6 @@ void RAS_ListSlot::RemoveList()
 
 void RAS_ListSlot::DrawList()
 {
-	if (m_flag &LIST_STREAM || m_flag& LIST_NOCREATE) {
-		RemoveList();
-		return;
-	}
 	if (m_flag &LIST_MODIFY) {
 		if (m_flag &LIST_CREATE) {
 			if (m_list == 0) {
@@ -115,7 +111,7 @@ void RAS_ListSlot::SetModified(bool mod)
 	if (mod && !(m_flag & LIST_MODIFY)) {
 		spit("Modifying list (" << m_list << ")");
 		m_flag = m_flag &~ LIST_END;
-		m_flag |= LIST_STREAM;
+		m_flag |= LIST_MODIFY;
 	}
 }
 
@@ -126,7 +122,7 @@ bool RAS_ListSlot::End()
 
 
 
-RAS_ListRasterizer::RAS_ListRasterizer(RAS_ICanvas* canvas, bool lock, int storage)
+RAS_ListRasterizer::RAS_ListRasterizer(RAS_ICanvas* canvas, bool lock, RAS_STORAGE_TYPE storage)
 :	RAS_OpenGLRasterizer(canvas, storage)
 {
 }
@@ -247,6 +243,7 @@ void RAS_ListRasterizer::IndexPrimitives(RAS_MeshSlot& ms)
 	if (ms.m_bDisplayList) {
 		localSlot = FindOrAdd(ms);
 		localSlot->DrawList();
+
 		if (localSlot->End()) {
 			// save slot here too, needed for replicas and object using same mesh
 			// => they have the same vertexarray but different mesh slot
@@ -254,33 +251,8 @@ void RAS_ListRasterizer::IndexPrimitives(RAS_MeshSlot& ms)
 			return;
 		}
 	}
-	
+
 	RAS_OpenGLRasterizer::IndexPrimitives(ms);
-
-	if (ms.m_bDisplayList) {
-		localSlot->EndList();
-		ms.m_DisplayList = localSlot;
-	}
-}
-
-
-void RAS_ListRasterizer::IndexPrimitivesMulti(RAS_MeshSlot& ms)
-{
-	RAS_ListSlot* localSlot =0;
-
-	if (ms.m_bDisplayList) {
-		localSlot = FindOrAdd(ms);
-		localSlot->DrawList();
-
-		if (localSlot->End()) {
-			// save slot here too, needed for replicas and object using same mesh
-			// => they have the same vertexarray but different mesh slot
-			ms.m_DisplayList = localSlot;
-			return;
-		}
-	}
-
-	RAS_OpenGLRasterizer::IndexPrimitivesMulti(ms);
 
 	if (ms.m_bDisplayList) {
 		localSlot->EndList();
