@@ -17,6 +17,7 @@ import ctypes
 import time
 import random
 import bpy
+import numpy
 from mathutils import Vector, Euler,geometry, Matrix
 from blensor import advanced_error_model
 from blensor import gaussian_error_model
@@ -158,9 +159,6 @@ def scan_advanced(scanner_object, simulation_fps=24, evd_file=None,noise_mu=0.0,
 
     returns = blensor.scan_interface.scan_rays(rays, max_distance, inv_scan_x = inv_scan_x, inv_scan_y = inv_scan_y, inv_scan_z = inv_scan_z)
 
-    verts = []
-    verts_noise = []
-
     reusable_vector = Vector([0.0,0.0,0.0,0.0])
     if len(laser_angles) != len(laser_noise):
       randomize_distance_bias(len(laser_angles), noise_mu,noise_sigma)
@@ -170,7 +168,6 @@ def scan_advanced(scanner_object, simulation_fps=24, evd_file=None,noise_mu=0.0,
         reusable_vector.xyzw = [returns[i][1],returns[i][2],returns[i][3],1.0]
         vt = (world_transformation * reusable_vector).xyz
         v = [returns[i][1],returns[i][2],returns[i][3]]
-        verts.append ( vt )
 
         vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
         distance_noise =  laser_noise[idx%len(laser_noise)] + model.drawErrorFromModel(vector_length) 
@@ -178,7 +175,6 @@ def scan_advanced(scanner_object, simulation_fps=24, evd_file=None,noise_mu=0.0,
         vector_length_noise = vector_length+distance_noise
         reusable_vector.xyzw = [norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0]
         v_noise = (world_transformation * reusable_vector).xyz
-        verts_noise.append( v_noise )
 
         evd_storage.addEntry(timestamp = ray_info[idx][2], yaw =(ray_info[idx][0]+math.pi)%(2*math.pi), pitch=ray_info[idx][1], distance=vector_length, distance_noise=vector_length_noise, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=returns[i][4], color=returns[i][5])
 
@@ -188,11 +184,12 @@ def scan_advanced(scanner_object, simulation_fps=24, evd_file=None,noise_mu=0.0,
     if evd_file:
         evd_storage.appendEvdFile()
 
+    scan_data = numpy.array(evd_storage.buffer)
     if add_blender_mesh:
-        mesh_utils.add_mesh_from_points_tf(verts, "Scan", world_transformation)
+        mesh_utils.add_mesh_from_points_tf(scan_data[:,5:8], "Scan", world_transformation, buffer=evd_storage.buffer)
 
     if add_noisy_blender_mesh:
-        mesh_utils.add_mesh_from_points_tf(verts_noise, "NoisyScan", world_transformation) 
+        mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "NoisyScan", world_transformation,buffer = evd_storage.buffer) 
 
     bpy.context.scene.update()
 

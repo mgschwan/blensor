@@ -6,6 +6,7 @@ import ctypes
 import time
 import random
 import bpy
+import bmesh
 from mathutils import Vector, Euler, Matrix
 
 from blensor import evd
@@ -44,10 +45,26 @@ def add_mesh_from_points(points, name="mesh"):
 """Add a mesh from points or from a flattened list and transform it according to
    world_transformation, or according to the transformation of the camera
 """
-def add_mesh_from_points_tf(points, name="Scan", world_transformation = Matrix()):
+def add_mesh_from_points_tf(points, name="Scan", world_transformation = Matrix(), buffer = None):
+    bm = bmesh.new()
+    for p in points:
+        bm.verts.new(p)
+
+    bm.verts.ensure_lookup_table()
+
+    if buffer:
+        color_red_id = bm.verts.layers.float.new("color_red")
+        color_green_id = bm.verts.layers.float.new("color_green")
+        color_blue_id = bm.verts.layers.float.new("color_blue")
+        for idx,c in enumerate(buffer):
+            v = bm.verts[idx]
+            v[color_red_id] = c[12]
+            v[color_green_id] = c[13]
+            v[color_blue_id] = c[14]
+
     mesh = bpy.data.meshes.new(name+"_mesh")
-    mesh.vertices.add(len(points))
-    mesh.vertices.foreach_set("co", tuples_to_list(points))
+    bm.to_mesh(mesh)
+    bm.free()
     mesh.update()
     mesh_object = bpy.data.objects.new("{0}.{1}".format(name,bpy.context.scene.frame_current), mesh)
     bpy.context.scene.objects.link(mesh_object)

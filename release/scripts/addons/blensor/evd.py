@@ -102,14 +102,10 @@ class evd_file:
           if idx >=0 and idx < len(self.image):
             self.image[idx]=distance
             self.image_noisy[idx]=distance_noise
-        elif self.mode == WRITER_MODE_NUMPY:
-          #Add flattened row    
-          self.buffer.append([timestamp, yaw, pitch, distance,distance_noise,
+        
+        
+        self.buffer.append([timestamp, yaw, pitch, distance,distance_noise,
                        x,y,z,x_noise,y_noise,z_noise,object_id,int(255*color[0]),int(255*color[1]),int(255*color[2]),idx])
-        else:
-          #Add row wit color as a 3-tuple
-          self.buffer.append([timestamp, yaw, pitch, distance,distance_noise,
-                       x,y,z,x_noise,y_noise,z_noise,object_id,(int(255*color[0]),int(255*color[1]),int(255*color[2])),idx])
 
     def writeEvdFile(self):
         if self.mode == WRITER_MODE_PCL:
@@ -123,7 +119,7 @@ class evd_file:
           evd.buffer.write(struct.pack("i", len(self.buffer)))
 
           for e in self.buffer:
-              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12][0]),float(e[12][1]),float(e[12][2]),int(e[11])))
+              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12]),float(e[13]),float(e[14]),int(e[11])))
           evd.close()
 
     def appendEvdFile(self):
@@ -139,14 +135,14 @@ class evd_file:
           idx = 0
           for e in self.buffer:
               idx = idx + 1
-              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12][0]),float(e[12][1]),float(e[12][2]),int(e[11])))
+              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12]),float(e[13]),float(e[14]),int(e[11])))
           print ("Written: %d entries"%idx)
           evd.close()
   
     def write_point(self, pcl, pcl_noisy, e, output_labels):
       #Storing color values packed into a single floating point number??? 
       #That is really required by the pcl library!
-      color_uint32 = (e[12][0]<<16) | (e[12][1]<<8) | (e[12][2])
+      color_uint32 = (e[12]<<16) | (e[13]<<8) | (e[14])
       values=struct.unpack("f",struct.pack("I",color_uint32))
 
       if output_labels:
@@ -179,8 +175,8 @@ class evd_file:
           pcl_noisy.write(PCL_HEADER%(width,height,width*height))
         idx = 0
         for e in self.buffer:
-          if e[13] > idx and not sparse_mode: # e[13] is the idx of the point
-            for i in range(idx, e[13]):
+          if e[15] > idx and not sparse_mode: # e[15] is the idx of the point
+            for i in range(idx, e[15]):
               self.write_point(pcl, pcl_noisy, INVALID_POINT, self.output_labels)
               idx += 1
           

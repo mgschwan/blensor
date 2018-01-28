@@ -272,8 +272,6 @@ def scan_advanced(scanner_object, evd_file=None,
 
     camera_returns = blensor.scan_interface.scan_rays(camera_rays, 2*max_distance, False,False,False)
     
-    verts = []
-    verts_noise = []
     evd_storage = evd.evd_file(evd_file, res_x, res_y, max_distance)
 
     all_quantized_disparities = numpy.empty(res_x*res_y)
@@ -353,14 +351,12 @@ def scan_advanced(scanner_object, evd_file=None,
             vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
 
             vt = (world_transformation * v.to_4d()).xyz
-            verts.append ( vt )
 
             vn.xyz = [x_multiplier*X_quantized,y_multiplier*Y_quantized,z_multiplier*Z_quantized]
             vector_length_noise = vn.magnitude
             
             #TODO@mgschwan: prevent object creation here too
             v_noise = (world_transformation * vn.to_4d()).xyz 
-            verts_noise.append( v_noise )
              
             kinect_image[projector_idx] = [ray_info[projector_idx][2], 
                0.0, 0.0, -returns[idx][3], -Z_quantized, vt[0], 
@@ -381,12 +377,13 @@ def scan_advanced(scanner_object, evd_file=None,
 
     if evd_file:
         evd_storage.appendEvdFile()
-
+    
+    scan_data = numpy.array(evd_storage.buffer)
     if add_blender_mesh:
-        mesh_utils.add_mesh_from_points_tf(verts, "Scan", world_transformation)
+        mesh_utils.add_mesh_from_points_tf(scan_data[:,5:8], "Scan", world_transformation, buffer=evd_storage.buffer)
 
     if add_noisy_blender_mesh:
-        mesh_utils.add_mesh_from_points_tf(verts_noise, "NoisyScan", world_transformation)            
+        mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "NoisyScan", world_transformation, buffer=evd_storage.buffer)            
 
     bpy.context.scene.update()  
     
