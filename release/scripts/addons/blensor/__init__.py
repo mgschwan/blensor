@@ -440,6 +440,8 @@ class OBJECT_PT_sensor(bpy.types.Panel):
             col = row.column()
             col.prop(obj, "show_in_frame")
             row = layout.row()
+            row.prop(obj, "store_data_in_mesh")
+            row = layout.row()
             col = row.column()
             col.prop(obj, "inv_scan_x")
             col = row.column()
@@ -839,6 +841,8 @@ def register():
 
     cType.scan_frame_start = bpy.props.IntProperty( name = "Start frame", default = 1, min = 0, description = "First frame to be scanned" )
     cType.scan_frame_end = bpy.props.IntProperty( name = "End frame", default = 250, min = 0, description = "Last frame to be scanned" )
+
+    cType.store_data_in_mesh = bpy.props.BoolProperty( name = "Store data in mesh", default = True, description = "Add scan data to the Blender mesh, for later export (high memory usage!)" )
 
     cType.inv_scan_x = bpy.props.BoolProperty( name = "Inv X", default = False, description = "Invert the X coordinate" )
     cType.inv_scan_y = bpy.props.BoolProperty( name = "Inv Y", default = False, description = "Invert the X coordinate" )

@@ -94,6 +94,50 @@ class evd_file:
         except:
           pass
 
+    def fromMesh(self, mesh):
+      import bmesh
+      bm = bmesh.new()
+      bm.from_mesh(mesh)
+      bm.verts.ensure_lookup_table()
+      
+      data_layers = {"timestamp": None,
+                     "yaw": None,
+                     "pitch": None,
+                     "distance": None,
+                     "color_red": None, 
+                     "color_green": None, 
+                     "color_blue": None,
+                     "object_id": None, 
+                     "point_index": None}
+
+
+      data = dict.fromkeys(data_layers.keys(), 0.0)
+
+      for i in range(len(bm.verts.layers.float)):
+        l = bm.verts.layers.float[i]
+        if l.name in data_layers:
+              data_layers[l.name] = l
+      
+      print ("Data layers: %s"%str(data_layers))
+
+      for v in bm.verts:
+        (x,y,z) = v.co
+        for dk in data_layers.keys():
+          if data_layers[dk]:
+            data[dk] = v[data_layers[dk]]
+        self.addEntry(timestamp=data.get("timestamp",0.0),
+                      yaw=data.get("yaw",0.0),
+                      pitch=data.get("pitch",0.0),
+                      distance=data.get("distance",0.0),
+                      x=x,y=y,z=z,
+                      object_id=data.get("object_id",0.0),
+                      color=(data.get("color_red",0.0),
+                             data.get("color_green",0.0),
+                             data.get("color_blue",0.0)),
+                      idx=data.get("point_index"))
+
+      bm.free()
+
     def addEntry(self, timestamp=0.0, yaw=0.0, pitch=0.0, distance=0.0, 
                  distance_noise=0.0, x=0.0, y=0.0, z=0.0,
                  x_noise = 0.0, y_noise = 0.0, z_noise = 0.0, object_id=0, color=(1.0,1.0,1.0), idx=0):

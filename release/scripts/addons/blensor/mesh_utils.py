@@ -56,12 +56,26 @@ def add_mesh_from_points_tf(points, name="Scan", world_transformation = Matrix()
         color_red_id = bm.verts.layers.float.new("color_red")
         color_green_id = bm.verts.layers.float.new("color_green")
         color_blue_id = bm.verts.layers.float.new("color_blue")
-        for idx,c in enumerate(buffer):
-            v = bm.verts[idx]
-            v[color_red_id] = c[12]
-            v[color_green_id] = c[13]
-            v[color_blue_id] = c[14]
+        object_id = bm.verts.layers.float.new("object_id")
+        object_id = bm.verts.layers.float.new("object_id")
+        point_idx_id = bm.verts.layers.float.new("point_index")
+        timestamp_id = bm.verts.layers.float.new("timestamp")
+        yaw_id = bm.verts.layers.float.new("yaw")
+        pitch_id = bm.verts.layers.float.new("pitch")
+        distance_id = bm.verts.layers.float.new("distance")
 
+        for idx,e in enumerate(buffer):
+            v = bm.verts[idx]
+            v[color_red_id] = e[12]
+            v[color_green_id] = e[13]
+            v[color_blue_id] = e[14]
+            v[object_id] = e[11]
+            v[point_idx_id] = e[15]
+            v[timestamp_id] = e[0]
+            v[yaw_id] = e[1]
+            v[pitch_id] = e[2]
+            v[distance_id] = e[3]
+            
     mesh = bpy.data.meshes.new(name+"_mesh")
     bm.to_mesh(mesh)
     bm.free()
