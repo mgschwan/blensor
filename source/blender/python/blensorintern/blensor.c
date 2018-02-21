@@ -36,7 +36,7 @@
 #include "BLI_utildefines.h"
 #include "BLI_dynstr.h"
 #include "bpy_rna.h"
-#include "bpy_util.h"
+#include "bpy_capi_utils.h"
 
 
 #include "blensor_native_code.h"

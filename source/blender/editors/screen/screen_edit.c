@@ -467,7 +467,7 @@ bScreen *ED_screen_add(wmWindow *win, Scene *scene, const char *name)
 	bScreen *sc;
 	ScrVert *sv1, *sv2, *sv3, *sv4;
 	
-	sc = BKE_libblock_alloc(G.main, ID_SCR, name);
+	sc = BKE_libblock_alloc(G.main, ID_SCR, name, 0);
 	sc->scene = scene;
 	sc->do_refresh = true;
 	sc->redraws_flag = TIME_ALL_3D_WIN | TIME_ALL_ANIM_WIN;
@@ -582,8 +582,6 @@ int screen_area_join(bContext *C, bScreen *scr, ScrArea *sa1, ScrArea *sa2)
 	/*printf("dir is : %i\n", dir);*/
 	
 	if (dir == -1) {
-		if (sa1) sa1->flag &= ~AREA_FLAG_DRAWJOINFROM;
-		if (sa2) sa2->flag &= ~AREA_FLAG_DRAWJOINTO;
 		return 0;
 	}
 	
@@ -614,8 +612,7 @@ int screen_area_join(bContext *C, bScreen *scr, ScrArea *sa1, ScrArea *sa2)
 	
 	screen_delarea(C, scr, sa2);
 	removedouble_scrverts(scr);
-	sa1->flag &= ~AREA_FLAG_DRAWJOINFROM;
-	
+
 	return 1;
 }
 
@@ -838,218 +835,6 @@ static void screen_test_scale(bScreen *sc, int winsize_x, int winsize_y)
 	
 }
 
-/* *********************** DRAWING **************************************** */
-
-/* draw vertical shape visualizing future joining (left as well
- * right direction of future joining) */
-static void draw_horizontal_join_shape(ScrArea *sa, char dir)
-{
-	vec2f points[10];
-	short i;
-	float w, h;
-	float width = sa->v3->vec.x - sa->v1->vec.x;
-	float height = sa->v3->vec.y - sa->v1->vec.y;
-
-	if (height < width) {
-		h = height / 8;
-		w = height / 4;
-	}
-	else {
-		h = width / 8;
-		w = width / 4;
-	}
-
-	points[0].x = sa->v1->vec.x;
-	points[0].y = sa->v1->vec.y + height / 2;
-
-	points[1].x = sa->v1->vec.x;
-	points[1].y = sa->v1->vec.y;
-
-	points[2].x = sa->v4->vec.x - w;
-	points[2].y = sa->v4->vec.y;
-
-	points[3].x = sa->v4->vec.x - w;
-	points[3].y = sa->v4->vec.y + height / 2 - 2 * h;
-
-	points[4].x = sa->v4->vec.x - 2 * w;
-	points[4].y = sa->v4->vec.y + height / 2;
-
-	points[5].x = sa->v4->vec.x - w;
-	points[5].y = sa->v4->vec.y + height / 2 + 2 * h;
-
-	points[6].x = sa->v3->vec.x - w;
-	points[6].y = sa->v3->vec.y;
-
-	points[7].x = sa->v2->vec.x;
-	points[7].y = sa->v2->vec.y;
-
-	points[8].x = sa->v4->vec.x;
-	points[8].y = sa->v4->vec.y + height / 2 - h;
-
-	points[9].x = sa->v4->vec.x;
-	points[9].y = sa->v4->vec.y + height / 2 + h;
-
-	if (dir == 'l') {
-		/* when direction is left, then we flip direction of arrow */
-		float cx = sa->v1->vec.x + width;
-		for (i = 0; i < 10; i++) {
-			points[i].x -= cx;
-			points[i].x = -points[i].x;
-			points[i].x += sa->v1->vec.x;
-		}
-	}
-
-	glBegin(GL_POLYGON);
-	for (i = 0; i < 5; i++)
-		glVertex2f(points[i].x, points[i].y);
-	glEnd();
-	glBegin(GL_POLYGON);
-	for (i = 4; i < 8; i++)
-		glVertex2f(points[i].x, points[i].y);
-	glVertex2f(points[0].x, points[0].y);
-	glEnd();
-
-	glRectf(points[2].x, points[2].y, points[8].x, points[8].y);
-	glRectf(points[6].x, points[6].y, points[9].x, points[9].y);
-}
-
-/* draw vertical shape visualizing future joining (up/down direction) */
-static void draw_vertical_join_shape(ScrArea *sa, char dir)
-{
-	vec2f points[10];
-	short i;
-	float w, h;
-	float width = sa->v3->vec.x - sa->v1->vec.x;
-	float height = sa->v3->vec.y - sa->v1->vec.y;
-
-	if (height < width) {
-		h = height / 4;
-		w = height / 8;
-	}
-	else {
-		h = width / 4;
-		w = width / 8;
-	}
-
-	points[0].x = sa->v1->vec.x + width / 2;
-	points[0].y = sa->v3->vec.y;
-
-	points[1].x = sa->v2->vec.x;
-	points[1].y = sa->v2->vec.y;
-
-	points[2].x = sa->v1->vec.x;
-	points[2].y = sa->v1->vec.y + h;
-
-	points[3].x = sa->v1->vec.x + width / 2 - 2 * w;
-	points[3].y = sa->v1->vec.y + h;
-
-	points[4].x = sa->v1->vec.x + width / 2;
-	points[4].y = sa->v1->vec.y + 2 * h;
-
-	points[5].x = sa->v1->vec.x + width / 2 + 2 * w;
-	points[5].y = sa->v1->vec.y + h;
-
-	points[6].x = sa->v4->vec.x;
-	points[6].y = sa->v4->vec.y + h;
-	
-	points[7].x = sa->v3->vec.x;
-	points[7].y = sa->v3->vec.y;
-
-	points[8].x = sa->v1->vec.x + width / 2 - w;
-	points[8].y = sa->v1->vec.y;
-
-	points[9].x = sa->v1->vec.x + width / 2 + w;
-	points[9].y = sa->v1->vec.y;
-
-	if (dir == 'u') {
-		/* when direction is up, then we flip direction of arrow */
-		float cy = sa->v1->vec.y + height;
-		for (i = 0; i < 10; i++) {
-			points[i].y -= cy;
-			points[i].y = -points[i].y;
-			points[i].y += sa->v1->vec.y;
-		}
-	}
-
-	glBegin(GL_POLYGON);
-	for (i = 0; i < 5; i++)
-		glVertex2f(points[i].x, points[i].y);
-	glEnd();
-	glBegin(GL_POLYGON);
-	for (i = 4; i < 8; i++)
-		glVertex2f(points[i].x, points[i].y);
-	glVertex2f(points[0].x, points[0].y);
-	glEnd();
-
-	glRectf(points[2].x, points[2].y, points[8].x, points[8].y);
-	glRectf(points[6].x, points[6].y, points[9].x, points[9].y);
-}
-
-/* draw join shape due to direction of joining */
-static void draw_join_shape(ScrArea *sa, char dir)
-{
-	if (dir == 'u' || dir == 'd')
-		draw_vertical_join_shape(sa, dir);
-	else
-		draw_horizontal_join_shape(sa, dir);
-}
-
-/* draw screen area darker with arrow (visualization of future joining) */
-static void scrarea_draw_shape_dark(ScrArea *sa, char dir)
-{
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glColor4ub(0, 0, 0, 50);
-	draw_join_shape(sa, dir);
-}
-
-/* draw screen area ligher with arrow shape ("eraser" of previous dark shape) */
-static void scrarea_draw_shape_light(ScrArea *sa, char UNUSED(dir))
-{
-	glBlendFunc(GL_DST_COLOR, GL_SRC_ALPHA);
-	/* value 181 was hardly computed: 181~105 */
-	glColor4ub(255, 255, 255, 50);
-	/* draw_join_shape(sa, dir); */
-	glRecti(sa->v1->vec.x, sa->v1->vec.y, sa->v3->vec.x, sa->v3->vec.y);
-}
-
-static void drawscredge_area_draw(int sizex, int sizey, short x1, short y1, short x2, short y2)
-{
-	/* right border area */
-	if (x2 < sizex - 1) {
-		glVertex2s(x2, y1);
-		glVertex2s(x2, y2);
-	}
-
-	/* left border area */
-	if (x1 > 0) { /* otherwise it draws the emboss of window over */
-		glVertex2s(x1, y1);
-		glVertex2s(x1, y2);
-	}
-
-	/* top border area */
-	if (y2 < sizey - 1) {
-		glVertex2s(x1, y2);
-		glVertex2s(x2, y2);
-	}
-
-	/* bottom border area */
-	if (y1 > 0) {
-		glVertex2s(x1, y1);
-		glVertex2s(x2, y1);
-	}
-}
-
-/** screen edges drawing **/
-static void drawscredge_area(ScrArea *sa, int sizex, int sizey)
-{
-	short x1 = sa->v1->vec.x;
-	short y1 = sa->v1->vec.y;
-	short x2 = sa->v3->vec.x;
-	short y2 = sa->v3->vec.y;
-	
-	drawscredge_area_draw(sizex, sizey, x1, y1, x2, y2);
-}
-
 /* ****************** EXPORTED API TO OTHER MODULES *************************** */
 
 bScreen *ED_screen_duplicate(wmWindow *win, bScreen *sc)
@@ -1103,100 +888,6 @@ void ED_screen_do_listen(bContext *C, wmNotifier *note)
 				region_cursor_set(win, note->swinid, true);
 			break;
 	}
-}
-
-/* only for edge lines between areas, and the blended join arrows */
-void ED_screen_draw(wmWindow *win)
-{
-	const int winsize_x = WM_window_pixels_x(win);
-	const int winsize_y = WM_window_pixels_y(win);
-
-	ScrArea *sa;
-	ScrArea *sa1 = NULL;
-	ScrArea *sa2 = NULL;
-	ScrArea *sa3 = NULL;
-
-	wmSubWindowSet(win, win->screen->mainwin);
-	
-	/* Note: first loop only draws if U.pixelsize > 1, skip otherwise */
-	if (U.pixelsize > 1.0f) {
-		/* FIXME: doesn't our glLineWidth already scale by U.pixelsize? */
-		glLineWidth((2.0f * U.pixelsize) - 1);
-		glColor3ub(0x50, 0x50, 0x50);
-		glBegin(GL_LINES);
-		for (sa = win->screen->areabase.first; sa; sa = sa->next)
-			drawscredge_area(sa, winsize_x, winsize_y);
-		glEnd();
-	}
-
-	glLineWidth(1);
-	glColor3ub(0, 0, 0);
-	glBegin(GL_LINES);
-	for (sa = win->screen->areabase.first; sa; sa = sa->next) {
-		drawscredge_area(sa, winsize_x, winsize_y);
-
-		/* gather area split/join info */
-		if (sa->flag & AREA_FLAG_DRAWJOINFROM) sa1 = sa;
-		if (sa->flag & AREA_FLAG_DRAWJOINTO) sa2 = sa;
-		if (sa->flag & (AREA_FLAG_DRAWSPLIT_H | AREA_FLAG_DRAWSPLIT_V)) sa3 = sa;
-	}
-	glEnd();
-
-	/* blended join arrow */
-	if (sa1 && sa2) {
-		int dir = area_getorientation(sa1, sa2);
-		int dira = -1;
-		if (dir != -1) {
-			switch (dir) {
-				case 0: /* W */
-					dir = 'r';
-					dira = 'l';
-					break;
-				case 1: /* N */
-					dir = 'd';
-					dira = 'u';
-					break;
-				case 2: /* E */
-					dir = 'l';
-					dira = 'r';
-					break;
-				case 3: /* S */
-					dir = 'u';
-					dira = 'd';
-					break;
-			}
-		}
-		glEnable(GL_BLEND);
-		scrarea_draw_shape_dark(sa2, dir);
-		scrarea_draw_shape_light(sa1, dira);
-		glDisable(GL_BLEND);
-	}
-	
-	/* splitpoint */
-	if (sa3) {
-		glEnable(GL_BLEND);
-		glBegin(GL_LINES);
-		glColor4ub(255, 255, 255, 100);
-		
-		if (sa3->flag & AREA_FLAG_DRAWSPLIT_H) {
-			glVertex2s(sa3->totrct.xmin, win->eventstate->y);
-			glVertex2s(sa3->totrct.xmax, win->eventstate->y);
-			glColor4ub(0, 0, 0, 100);
-			glVertex2s(sa3->totrct.xmin, win->eventstate->y + 1);
-			glVertex2s(sa3->totrct.xmax, win->eventstate->y + 1);
-		}
-		else {
-			glVertex2s(win->eventstate->x, sa3->totrct.ymin);
-			glVertex2s(win->eventstate->x, sa3->totrct.ymax);
-			glColor4ub(0, 0, 0, 100);
-			glVertex2s(win->eventstate->x + 1, sa3->totrct.ymin);
-			glVertex2s(win->eventstate->x + 1, sa3->totrct.ymax);
-		}
-		glEnd();
-		glDisable(GL_BLEND);
-	}
-	
-	win->screen->do_draw = false;
 }
 
 /* helper call for below, dpi changes headers */
@@ -1363,7 +1054,7 @@ void ED_screen_exit(bContext *C, wmWindow *window, bScreen *screen)
 /* *********************************** */
 
 /* case when on area-edge or in azones, or outside window */
-static void screen_cursor_set(wmWindow *win, wmEvent *event)
+static void screen_cursor_set(wmWindow *win, const wmEvent *event)
 {
 	const int winsize_x = WM_window_pixels_x(win);
 	const int winsize_y = WM_window_pixels_y(win);
@@ -1402,7 +1093,7 @@ static void screen_cursor_set(wmWindow *win, wmEvent *event)
 
 /* called in wm_event_system.c. sets state vars in screen, cursors */
 /* event type is mouse move */
-void ED_screen_set_subwinactive(bContext *C, wmEvent *event)
+void ED_screen_set_subwinactive(bContext *C, const wmEvent *event)
 {
 	wmWindow *win = CTX_wm_window(C);
 	
@@ -1763,7 +1454,10 @@ bool ED_screen_delete_scene(bContext *C, Scene *scene)
 
 	BKE_libblock_remap(bmain, scene, newscene, ID_REMAP_SKIP_INDIRECT_USAGE | ID_REMAP_SKIP_NEVER_NULL_USAGE);
 
-	BKE_libblock_free_us(bmain, scene);
+	id_us_clear_real(&scene->id);
+	if (scene->id.us == 0) {
+		BKE_libblock_free(bmain, scene);
+	}
 
 	return true;
 }
@@ -1894,17 +1588,28 @@ ScrArea *ED_screen_state_toggle(bContext *C, wmWindow *win, ScrArea *sa, const s
 
 	if (sa && sa->full) {
 		/* restoring back to SCREENNORMAL */
-		ScrArea *old;
-
 		sc = sa->full;       /* the old screen to restore */
 		oldscreen = win->screen; /* the one disappearing */
 
 		sc->state = SCREENNORMAL;
 
-		/* find old area */
-		for (old = sc->areabase.first; old; old = old->next)
-			if (old->full) break;
-		if (old == NULL) {
+		/* find old area to restore from */
+		ScrArea *fullsa = NULL;
+		for (ScrArea *old = sc->areabase.first; old; old = old->next) {
+			/* area to restore from is always first */
+			if (old->full && !fullsa) {
+				fullsa = old;
+			}
+
+			/* clear full screen state */
+			old->full = NULL;
+			old->flag &= ~AREA_TEMP_INFO;
+		}
+
+		sa->flag &= ~AREA_TEMP_INFO;
+		sa->full = NULL;
+
+		if (fullsa == NULL) {
 			if (G.debug & G_DEBUG)
 				printf("%s: something wrong in areafullscreen\n", __func__);
 			return NULL;
@@ -1917,9 +1622,7 @@ ScrArea *ED_screen_state_toggle(bContext *C, wmWindow *win, ScrArea *sa, const s
 			}
 		}
 
-		ED_area_data_swap(old, sa);
-		if (sa->flag & AREA_TEMP_INFO) sa->flag &= ~AREA_TEMP_INFO;
-		old->full = NULL;
+		ED_area_data_swap(fullsa, sa);
 
 		/* animtimer back */
 		sc->animtimer = oldscreen->animtimer;

@@ -39,45 +39,11 @@
 extern "C" {
 #endif
 
-struct GHash;
-struct ID;
-
 struct Depsgraph;
-
-/* ************************************************ */
-/* Statistics */
-
-typedef struct DepsgraphStatsTimes {
-	float duration_last;
-} DepsgraphStatsTimes;
-
-typedef struct DepsgraphStatsComponent {
-	struct DepsgraphStatsComponent *next, *prev;
-	
-	char name[64];
-	DepsgraphStatsTimes times;
-} DepsgraphStatsComponent;
-
-typedef struct DepsgraphStatsID {
-	struct ID *id;
-	
-	DepsgraphStatsTimes times;
-	ListBase components;
-} DepsgraphStatsID;
-
-typedef struct DepsgraphStats {
-	struct GHash *id_stats;
-} DepsgraphStats;
-
-struct DepsgraphStats *DEG_stats(void);
-
-void DEG_stats_verify(void);
-
-struct DepsgraphStatsID *DEG_stats_id(struct ID *id);
 
 /* ------------------------------------------------ */
 
-void DEG_stats_simple(const struct Depsgraph *graph, 
+void DEG_stats_simple(const struct Depsgraph *graph,
                       size_t *r_outer,
                       size_t *r_operations,
                       size_t *r_relations);
@@ -85,7 +51,14 @@ void DEG_stats_simple(const struct Depsgraph *graph,
 /* ************************************************ */
 /* Diagram-Based Graph Debugging */
 
-void DEG_debug_graphviz(const struct Depsgraph *graph, FILE *stream, const char *label, bool show_eval);
+void DEG_debug_relations_graphviz(const struct Depsgraph *graph,
+                                  FILE *stream,
+                                  const char *label);
+
+void DEG_debug_stats_gnuplot(const struct Depsgraph *graph,
+                             FILE *stream,
+                             const char *label,
+                             const char *output_filename);
 
 /* ************************************************ */
 

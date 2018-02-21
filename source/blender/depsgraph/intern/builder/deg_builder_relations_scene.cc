@@ -58,6 +58,7 @@ extern "C" {
 
 #include "intern/nodes/deg_node.h"
 #include "intern/nodes/deg_node_component.h"
+#include "intern/nodes/deg_node_id.h"
 #include "intern/nodes/deg_node_operation.h"
 
 #include "intern/depsgraph_intern.h"
@@ -67,55 +68,48 @@ extern "C" {
 
 namespace DEG {
 
-void DepsgraphRelationBuilder::build_scene(Main *bmain, Scene *scene)
+void DepsgraphRelationBuilder::build_scene(Scene *scene)
 {
-	if (scene->set) {
-		build_scene(bmain, scene->set);
+	if (scene->set != NULL) {
+		build_scene(scene->set);
 	}
-
-	/* scene objects */
-	LINKLIST_FOREACH (Base *, base, &scene->base) {
-		Object *ob = base->object;
-		build_object(bmain, scene, ob);
+	/* Setup currently building context. */
+	scene_ = scene;
+	/* Scene objects. */
+	LISTBASE_FOREACH (Base *, base, &scene->base) {
+		Object *object = base->object;
+		build_object(object);
 	}
-
-	/* rigidbody */
-	if (scene->rigidbody_world) {
+	/* Rigidbody. */
+	if (scene->rigidbody_world != NULL) {
 		build_rigidbody(scene);
 	}
-
-	/* scene's animation and drivers */
-	if (scene->adt) {
+	/* Scene's animation and drivers. */
+	if (scene->adt != NULL) {
 		build_animdata(&scene->id);
 	}
-
-	/* world */
-	if (scene->world) {
+	/* World. */
+	if (scene->world != NULL) {
 		build_world(scene->world);
 	}
-
-	/* compo nodes */
-	if (scene->nodetree) {
+	/* Compositor nodes. */
+	if (scene->nodetree != NULL) {
 		build_compositor(scene);
 	}
-
-	/* grease pencil */
-	if (scene->gpd) {
+	/* Grease pencil. */
+	if (scene->gpd != NULL) {
 		build_gpencil(scene->gpd);
 	}
-
 	/* Masks. */
-	LINKLIST_FOREACH (Mask *, mask, &bmain->mask) {
+	LISTBASE_FOREACH (Mask *, mask, &bmain_->mask) {
 		build_mask(mask);
 	}
-
 	/* Movie clips. */
-	LINKLIST_FOREACH (MovieClip *, clip, &bmain->movieclip) {
+	LISTBASE_FOREACH (MovieClip *, clip, &bmain_->movieclip) {
 		build_movieclip(clip);
 	}
-
-	for (Depsgraph::OperationNodes::const_iterator it_op = m_graph->operations.begin();
-	     it_op != m_graph->operations.end();
+	for (Depsgraph::OperationNodes::const_iterator it_op = graph_->operations.begin();
+	     it_op != graph_->operations.end();
 	     ++it_op)
 	{
 		OperationDepsNode *node = *it_op;

@@ -54,6 +54,7 @@
 #include "BKE_node.h"
 
 #include "BKE_animsys.h"
+#include "BKE_colorband.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_global.h"
 #include "BKE_main.h"
@@ -161,15 +162,15 @@ static void tex_normal_derivate(Tex *tex, TexResult *texres)
 {
 	if (tex->flag & TEX_COLORBAND) {
 		float col[4];
-		if (do_colorband(tex->coba, texres->tin, col)) {
+		if (BKE_colorband_evaluate(tex->coba, texres->tin, col)) {
 			float fac0, fac1, fac2, fac3;
 			
 			fac0= (col[0]+col[1]+col[2]);
-			do_colorband(tex->coba, texres->nor[0], col);
+			BKE_colorband_evaluate(tex->coba, texres->nor[0], col);
 			fac1= (col[0]+col[1]+col[2]);
-			do_colorband(tex->coba, texres->nor[1], col);
+			BKE_colorband_evaluate(tex->coba, texres->nor[1], col);
 			fac2= (col[0]+col[1]+col[2]);
-			do_colorband(tex->coba, texres->nor[2], col);
+			BKE_colorband_evaluate(tex->coba, texres->nor[2], col);
 			fac3= (col[0]+col[1]+col[2]);
 			
 			texres->nor[0]= (fac0 - fac1) / 3.0f;
@@ -781,7 +782,8 @@ static int cubemap_glob(const float n[3], float x, float y, float z, float *adr1
 /* ------------------------------------------------------------------------- */
 
 /* mtex argument only for projection switches */
-static int cubemap(MTex *mtex, VlakRen *vlr, const float n[3], float x, float y, float z, float *adr1, float *adr2)
+static int cubemap(
+        const MTex *mtex, VlakRen *vlr, const float n[3], float x, float y, float z, float *adr1, float *adr2)
 {
 	int proj[4]={0, ME_PROJXY, ME_PROJXZ, ME_PROJYZ}, ret= 0;
 	
@@ -873,7 +875,8 @@ static int cubemap_ob(Object *ob, const float n[3], float x, float y, float z, f
 
 /* ------------------------------------------------------------------------- */
 
-static void do_2d_mapping(MTex *mtex, float texvec[3], VlakRen *vlr, const float n[3], float dxt[3], float dyt[3])
+static void do_2d_mapping(
+        const MTex *mtex, float texvec[3], VlakRen *vlr, const float n[3], float dxt[3], float dyt[3])
 {
 	Tex *tex;
 	Object *ob= NULL;
@@ -1216,7 +1219,7 @@ static int multitex(Tex *tex,
 
 	if (tex->flag & TEX_COLORBAND) {
 		float col[4];
-		if (do_colorband(tex->coba, texres->tin, col)) {
+		if (BKE_colorband_evaluate(tex->coba, texres->tin, col)) {
 			texres->talpha = true;
 			texres->tr= col[0];
 			texres->tg= col[1];
@@ -3594,7 +3597,7 @@ void do_lamp_tex(LampRen *la, const float lavec[3], ShadeInput *shi, float col_r
 
 /* ------------------------------------------------------------------------- */
 
-int externtex(MTex *mtex,
+int externtex(const MTex *mtex,
               const float vec[3],
               float *tin, float *tr, float *tg, float *tb, float *ta,
               const int thread,
@@ -3672,7 +3675,7 @@ void render_realtime_texture(ShadeInput *shi, Image *ima)
 	if (R.r.scemode & R_NO_TEX) return;
 
 	if (firsttime) {
-		BLI_lock_thread(LOCK_IMAGE);
+		BLI_thread_lock(LOCK_IMAGE);
 		if (firsttime) {
 			const int num_threads = BLI_system_thread_count();
 			for (a = 0; a < num_threads; a++) {
@@ -3683,7 +3686,7 @@ void render_realtime_texture(ShadeInput *shi, Image *ima)
 
 			firsttime= 0;
 		}
-		BLI_unlock_thread(LOCK_IMAGE);
+		BLI_thread_unlock(LOCK_IMAGE);
 	}
 	
 	tex= &imatex[shi->thread];
@@ -3751,7 +3754,7 @@ Material *RE_sample_material_init(Material *orig_mat, Scene *scene)
 	if (!orig_mat) return NULL;
 
 	/* copy material */
-	mat = localize_material(orig_mat);
+	mat = BKE_material_localize(orig_mat);
 
 	/* update material anims */
 	BKE_animsys_evaluate_animdata(scene, &mat->id, mat->adt, BKE_scene_frame_get(scene), ADT_RECALC_ANIM);

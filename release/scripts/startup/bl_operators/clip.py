@@ -210,7 +210,7 @@ class CLIP_OT_set_active_clip(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         space = context.space_data
-        return space.type == 'CLIP_EDITOR'
+        return space.type == 'CLIP_EDITOR' and space.clip
 
     def execute(self, context):
         clip = context.space_data.clip
@@ -253,6 +253,11 @@ class CLIP_OT_track_to_empty(Operator):
         constraint.use_3d_position = False
         constraint.object = tracking_object.name
         constraint.camera = CLIP_camera_for_clip(context, clip)
+
+    @classmethod
+    def poll(cls, context):
+        space = context.space_data
+        return space.type == 'CLIP_EDITOR' and space.clip
 
     def execute(self, context):
         sc = context.space_data
@@ -298,7 +303,7 @@ class CLIP_OT_bundles_to_mesh(Operator):
 
         mesh = bpy.data.meshes.new(name="Tracks")
         for track in tracking_object.tracks:
-            if track.has_bundle:
+            if track.has_bundle and track.select == True:
                 new_verts.append(track.bundle)
 
         if new_verts:

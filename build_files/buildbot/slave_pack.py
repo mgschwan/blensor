@@ -101,13 +101,9 @@ if builder.find('cmake') != -1:
         platform = builder.split('_')[0]
         if platform == 'mac':
             # Special exception for OSX
-            platform = 'OSX-10.6-'
-            if builder.endswith('x86_64_10_6_cmake'):
+            platform = 'OSX-10.9-'
+            if builder.endswith('x86_64_10_9_cmake'):
                 platform += 'x86_64'
-            elif builder.endswith('i386_10_6_cmake'):
-                platform += 'i386'
-            elif builder.endswith('ppc_10_6_cmake'):
-                platform += 'ppc'
         if builder.endswith('vc2015'):
             platform += "-vc14"
         builderified_name = 'blender-{}-{}-{}'.format(blender_full_version, git_hash, platform)
@@ -142,11 +138,11 @@ if builder.find('cmake') != -1:
         blender_glibc = builder.split('_')[1]
 
         if builder.endswith('x86_64_cmake'):
-            chroot_name = 'buildbot_squeeze_x86_64'
+            chroot_name = 'buildbot_jessie_x86_64'
             bits = 64
             blender_arch = 'x86_64'
         elif builder.endswith('i686_cmake'):
-            chroot_name = 'buildbot_squeeze_i686'
+            chroot_name = 'buildbot_jessie_i686'
             bits = 32
             blender_arch = 'i686'
 

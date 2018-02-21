@@ -26,9 +26,45 @@
 #include "bvh/bvh_node.h"
 
 #include "util/util_foreach.h"
+#include "util/util_logging.h"
 #include "util/util_progress.h"
 
 CCL_NAMESPACE_BEGIN
+
+/* BVH Parameters. */
+
+const char *bvh_layout_name(BVHLayout layout)
+{
+	switch(layout) {
+		case BVH_LAYOUT_BVH2: return "BVH2";
+		case BVH_LAYOUT_BVH4: return "BVH4";
+		case BVH_LAYOUT_NONE: return "NONE";
+		case BVH_LAYOUT_ALL:  return "ALL";
+	}
+	LOG(DFATAL) << "Unsupported BVH layout was passed.";
+	return "";
+}
+
+BVHLayout BVHParams::best_bvh_layout(BVHLayout requested_layout,
+                                     BVHLayoutMask supported_layouts)
+{
+	const BVHLayoutMask requested_layout_mask = (BVHLayoutMask)requested_layout;
+	/* Check whether requested layout is supported, if so -- no need to do
+	 * any extra computation.
+	 */
+	if(supported_layouts & requested_layout_mask) {
+		return requested_layout;
+	}
+	/* Some bit magic to get widest supported BVH layout. */
+	/* This is a mask of supported BVH layouts which are narrower than the
+	 * requested one.
+	 */
+	const BVHLayoutMask allowed_layouts_mask =
+	        (supported_layouts & (requested_layout_mask - 1));
+	/* We get widest from allowed ones and convert mask to actual layout. */
+	const BVHLayoutMask widest_allowed_layout_mask = __bsr(allowed_layouts_mask);
+	return (BVHLayout)(1 << widest_allowed_layout_mask);
+}
 
 /* Pack Utility */
 
@@ -51,10 +87,17 @@ BVH::BVH(const BVHParams& params_, const vector<Object*>& objects_)
 
 BVH *BVH::create(const BVHParams& params, const vector<Object*>& objects)
 {
-	if(params.use_qbvh)
-		return new BVH4(params, objects);
-	else
-		return new BVH2(params, objects);
+	switch(params.bvh_layout) {
+		case BVH_LAYOUT_BVH2:
+			return new BVH2(params, objects);
+		case BVH_LAYOUT_BVH4:
+			return new BVH4(params, objects);
+		case BVH_LAYOUT_NONE:
+		case BVH_LAYOUT_ALL:
+			break;
+	}
+	LOG(DFATAL) << "Requested unsupported BVH layout.";
+	return NULL;
 }
 
 /* Building */
@@ -108,6 +151,73 @@ void BVH::refit(Progress& progress)
 	refit_nodes();
 }
 
+void BVH::refit_primitives(int start, int end, BoundBox& bbox, uint& visibility)
+{
+	/* Refit range of primitives. */
+	for(int prim = start; prim < end; prim++) {
+		int pidx = pack.prim_index[prim];
+		int tob = pack.prim_object[prim];
+		Object *ob = objects[tob];
+
+		if(pidx == -1) {
+			/* Object instance. */
+			bbox.grow(ob->bounds);
+		}
+		else {
+			/* Primitives. */
+			const Mesh *mesh = ob->mesh;
+
+			if(pack.prim_type[prim] & PRIMITIVE_ALL_CURVE) {
+				/* Curves. */
+				int str_offset = (params.top_level)? mesh->curve_offset: 0;
+				Mesh::Curve curve = mesh->get_curve(pidx - str_offset);
+				int k = PRIMITIVE_UNPACK_SEGMENT(pack.prim_type[prim]);
+
+				curve.bounds_grow(k, &mesh->curve_keys[0], &mesh->curve_radius[0], bbox);
+
+				visibility |= PATH_RAY_CURVE;
+
+				/* Motion curves. */
+				if(mesh->use_motion_blur) {
+					Attribute *attr = mesh->curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
+
+					if(attr) {
+						size_t mesh_size = mesh->curve_keys.size();
+						size_t steps = mesh->motion_steps - 1;
+						float3 *key_steps = attr->data_float3();
+
+						for(size_t i = 0; i < steps; i++)
+							curve.bounds_grow(k, key_steps + i*mesh_size, &mesh->curve_radius[0], bbox);
+					}
+				}
+			}
+			else {
+				/* Triangles. */
+				int tri_offset = (params.top_level)? mesh->tri_offset: 0;
+				Mesh::Triangle triangle = mesh->get_triangle(pidx - tri_offset);
+				const float3 *vpos = &mesh->verts[0];
+
+				triangle.bounds_grow(vpos, bbox);
+
+				/* Motion triangles. */
+				if(mesh->use_motion_blur) {
+					Attribute *attr = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
+
+					if(attr) {
+						size_t mesh_size = mesh->verts.size();
+						size_t steps = mesh->motion_steps - 1;
+						float3 *vert_steps = attr->data_float3();
+
+						for(size_t i = 0; i < steps; i++)
+							triangle.bounds_grow(vert_steps + i*mesh_size, bbox);
+					}
+				}
+			}
+		}
+		visibility |= ob->visibility_for_tracing();
+	}
+}
+
 /* Triangles */
 
 void BVH::pack_triangle(int idx, float4 tri_verts[3])
@@ -153,7 +263,6 @@ void BVH::pack_primitives()
 		if(pack.prim_index[i] != -1) {
 			int tob = pack.prim_object[i];
 			Object *ob = objects[tob];
-
 			if((pack.prim_type[i] & PRIMITIVE_ALL_TRIANGLE) != 0) {
 				pack_triangle(i, (float4*)&pack.prim_tri_verts[3 * prim_triangle_index]);
 				pack.prim_tri_index[i] = 3 * prim_triangle_index;
@@ -162,11 +271,10 @@ void BVH::pack_primitives()
 			else {
 				pack.prim_tri_index[i] = -1;
 			}
-
-			pack.prim_visibility[i] = ob->visibility;
-
-			if(pack.prim_type[i] & PRIMITIVE_ALL_CURVE)
+			pack.prim_visibility[i] = ob->visibility_for_tracing();
+			if(pack.prim_type[i] & PRIMITIVE_ALL_CURVE) {
 				pack.prim_visibility[i] |= PATH_RAY_CURVE;
+			}
 		}
 		else {
 			pack.prim_tri_index[i] = -1;
@@ -183,7 +291,8 @@ void BVH::pack_instances(size_t nodes_size, size_t leaf_nodes_size)
 	 * BVH's are stored in global arrays. This function merges them into the
 	 * top level BVH, adjusting indexes and offsets where appropriate.
 	 */
-	const bool use_qbvh = params.use_qbvh;
+	/* TODO(sergey): This code needs adjustment for wider BVH than 4. */
+	const bool use_qbvh = (params.bvh_layout == BVH_LAYOUT_BVH4);
 
 	/* Adjust primitive index to point to the triangle in the global array, for
 	 * meshes with transform applied and already in the top level BVH.

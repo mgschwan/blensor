@@ -129,6 +129,13 @@ MINLINE int max_iii(int a, int b, int c);
 MINLINE int min_iiii(int a, int b, int c, int d);
 MINLINE int max_iiii(int a, int b, int c, int d);
 
+MINLINE size_t min_zz(size_t a, size_t b);
+MINLINE size_t max_zz(size_t a, size_t b);
+
+MINLINE int clamp_i(int value, int min, int max);
+MINLINE float clamp_f(float value, float min, float max);
+MINLINE size_t clamp_z(size_t value, size_t min, size_t max);
+
 MINLINE int compare_ff(float a, float b, const float max_diff);
 MINLINE int compare_ff_relative(float a, float b, const float max_diff, const int max_ulps);
 
@@ -140,6 +147,7 @@ MINLINE float power_of_2(float f);
 
 MINLINE int integer_digits_f(const float f);
 MINLINE int integer_digits_d(const double d);
+MINLINE int integer_digits_i(const int i);
 
 /* these don't really fit anywhere but were being copied about a lot */
 MINLINE int is_power_of_2_i(int n);
@@ -149,9 +157,36 @@ MINLINE int power_of_2_min_i(int n);
 MINLINE unsigned int power_of_2_max_u(unsigned int x);
 MINLINE unsigned int power_of_2_min_u(unsigned int x);
 
-MINLINE int iroundf(float a);
 MINLINE int divide_round_i(int a, int b);
 MINLINE int mod_i(int i, int n);
+
+MINLINE signed char    round_fl_to_char(float a);
+MINLINE unsigned char  round_fl_to_uchar(float a);
+MINLINE short          round_fl_to_short(float a);
+MINLINE unsigned short round_fl_to_ushort(float a);
+MINLINE int            round_fl_to_int(float a);
+MINLINE unsigned int   round_fl_to_uint(float a);
+
+MINLINE signed char    round_db_to_char(double a);
+MINLINE unsigned char  round_db_to_uchar(double a);
+MINLINE short          round_db_to_short(double a);
+MINLINE unsigned short round_db_to_ushort(double a);
+MINLINE int            round_db_to_int(double a);
+MINLINE unsigned int   round_db_to_uint(double a);
+
+MINLINE signed char    round_fl_to_char_clamp(float a);
+MINLINE unsigned char  round_fl_to_uchar_clamp(float a);
+MINLINE short          round_fl_to_short_clamp(float a);
+MINLINE unsigned short round_fl_to_ushort_clamp(float a);
+MINLINE int            round_fl_to_int_clamp(float a);
+MINLINE unsigned int   round_fl_to_uint_clamp(float a);
+
+MINLINE signed char    round_db_to_char_clamp(double a);
+MINLINE unsigned char  round_db_to_uchar_clamp(double a);
+MINLINE short          round_db_to_short_clamp(double a);
+MINLINE unsigned short round_db_to_ushort_clamp(double a);
+MINLINE int            round_db_to_int_clamp(double a);
+MINLINE unsigned int   round_db_to_uint_clamp(double a);
 
 int pow_i(int base, int exp);
 double double_round(double x, int ndigits);

@@ -30,7 +30,10 @@
 
 extern PyTypeObject matrix_Type;
 extern PyTypeObject matrix_access_Type;
-#define MatrixObject_Check(_v) PyObject_TypeCheck((_v), &matrix_Type)
+
+#define MatrixObject_Check(v) PyObject_TypeCheck((v), &matrix_Type)
+#define MatrixObject_CheckExact(v) (Py_TYPE(v) == &matrix_Type)
+
 #define MATRIX_MAX_DIM 4
 
 /* matrix[row][col] == MATRIX_ITEM_INDEX(matrix, row, col) */
@@ -76,6 +79,11 @@ PyObject *Matrix_CreatePyObject_cb(
         const unsigned short num_col, const unsigned short num_row,
         unsigned char cb_type, unsigned char cb_subtype
         ) ATTR_WARN_UNUSED_RESULT;
+
+/* PyArg_ParseTuple's "O&" formatting helpers. */
+int Matrix_ParseAny(PyObject *o, void *p);
+int Matrix_Parse3x3(PyObject *o, void *p);
+int Matrix_Parse4x4(PyObject *o, void *p);
 
 extern unsigned char mathutils_matrix_row_cb_index; /* default */
 extern unsigned char mathutils_matrix_col_cb_index;

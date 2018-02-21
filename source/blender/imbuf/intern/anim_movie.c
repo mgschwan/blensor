@@ -55,6 +55,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <limits.h>
 #ifndef _WIN32
 #include <dirent.h>
 #else
@@ -72,12 +73,6 @@
 #ifdef WITH_AVI
 #  include "AVI_avi.h"
 #endif
-
-#ifdef WITH_QUICKTIME
-#if defined(_WIN32) || defined(__APPLE__)
-#include "quicktime_import.h"
-#endif /* _WIN32 || __APPLE__ */
-#endif /* WITH_QUICKTIME */
 
 #include "IMB_imbuf_types.h"
 #include "IMB_imbuf.h"
@@ -221,9 +216,6 @@ void IMB_free_anim(struct anim *anim)
 	free_anim_avi(anim);
 #endif
 
-#ifdef WITH_QUICKTIME
-	free_anim_quicktime(anim);
-#endif
 #ifdef WITH_FFMPEG
 	free_anim_ffmpeg(anim);
 #endif
@@ -510,6 +502,11 @@ static int startffmpeg(struct anim *anim)
 	pCodecCtx->workaround_bugs = 1;
 
 	if (avcodec_open2(pCodecCtx, pCodec, NULL) < 0) {
+		avformat_close_input(&pFormatCtx);
+		return -1;
+	}
+	if (pCodecCtx->pix_fmt == AV_PIX_FMT_NONE) {
+		avcodec_close(anim->pCodecCtx);
 		avformat_close_input(&pFormatCtx);
 		return -1;
 	}
@@ -1214,9 +1211,6 @@ static ImBuf *anim_getnew(struct anim *anim)
 	free_anim_avi(anim);
 #endif
 
-#ifdef WITH_QUICKTIME
-	free_anim_quicktime(anim);
-#endif
 #ifdef WITH_FFMPEG
 	free_anim_ffmpeg(anim);
 #endif
@@ -1242,12 +1236,6 @@ static ImBuf *anim_getnew(struct anim *anim)
 				printf("couldnt start avi\n");
 				return (NULL);
 			}
-			ibuf = IMB_allocImBuf(anim->x, anim->y, 24, 0);
-			break;
-#endif
-#ifdef WITH_QUICKTIME
-		case ANIM_QTIME:
-			if (startquicktime(anim)) return (0);
 			ibuf = IMB_allocImBuf(anim->x, anim->y, 24, 0);
 			break;
 #endif
@@ -1340,21 +1328,6 @@ struct ImBuf *IMB_anim_absolute(struct anim *anim, int position,
 				anim->curposition = position;
 			break;
 #endif
-#ifdef WITH_QUICKTIME
-		case ANIM_QTIME:
-			ibuf = qtime_fetchibuf(anim, position);
-			if (ibuf) {
-				if (ibuf->rect) {
-					/* OCIO_TODO: should happen in quicktime module, but it currently doesn't have access
-					 *            to color management's internals
-					 */
-					ibuf->rect_colorspace = colormanage_colorspace_get_named(anim->colorspace);
-				}
-
-				anim->curposition = position;
-			}
-			break;
-#endif
 #ifdef WITH_FFMPEG
 		case ANIM_FFMPEG:
 			ibuf = ffmpeg_fetchibuf(anim, position, tc);
@@ -1393,16 +1366,32 @@ int IMB_anim_get_duration(struct anim *anim, IMB_Timecode_Type tc)
 bool IMB_anim_get_fps(struct anim *anim,
                      short *frs_sec, float *frs_sec_base, bool no_av_base)
 {
+	double frs_sec_base_double;
 	if (anim->frs_sec) {
-		*frs_sec = anim->frs_sec;
-		*frs_sec_base = anim->frs_sec_base;
+		if (anim->frs_sec > SHRT_MAX) {
+			/* We cannot store original rational in our short/float format,
+			 * we need to approximate it as best as we can... */
+			*frs_sec = SHRT_MAX;
+			frs_sec_base_double = anim->frs_sec_base * (double)SHRT_MAX / (double)anim->frs_sec;
+		}
+		else {
+			*frs_sec = anim->frs_sec;
+			frs_sec_base_double = anim->frs_sec_base;
+		}
 #ifdef WITH_FFMPEG
 		if (no_av_base) {
-			*frs_sec_base /= AV_TIME_BASE;
+			*frs_sec_base = (float)(frs_sec_base_double / AV_TIME_BASE);
+		}
+		else {
+			*frs_sec_base = (float)frs_sec_base_double;
 		}
 #else
 		UNUSED_VARS(no_av_base);
+		*frs_sec_base = (float)frs_sec_base_double;
 #endif
+		BLI_assert(*frs_sec > 0);
+		BLI_assert(*frs_sec_base > 0.0f);
+
 		return true;
 	}
 	return false;

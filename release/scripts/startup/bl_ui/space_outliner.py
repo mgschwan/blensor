@@ -56,7 +56,7 @@ class OUTLINER_HT_header(Header):
                 row.operator("anim.keyframe_delete", text="", icon='KEY_DEHLT')
             else:
                 row = layout.row()
-                row.label(text="No Keying Set active")
+                row.label(text="No Keying Set Active")
         elif space.display_mode == 'ORPHAN_DATA':
             layout.operator("outliner.orphans_purge")
 
@@ -87,7 +87,7 @@ class OUTLINER_MT_view(Menu):
 
         space = context.space_data
 
-        if space.display_mode not in {'DATABLOCKS', 'USER_PREFERENCES', 'KEYMAPS'}:
+        if space.display_mode not in {'DATABLOCKS', 'USER_PREFERENCES'}:
             layout.prop(space, "use_sort_alpha")
             layout.prop(space, "show_restrict_columns")
             layout.separator()

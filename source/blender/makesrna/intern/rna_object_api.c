@@ -47,7 +47,7 @@
 
 #include "rna_internal.h"  /* own include */
 
-static EnumPropertyItem space_items[] = {
+static const EnumPropertyItem space_items[] = {
 	{CONSTRAINT_SPACE_WORLD,    "WORLD", 0, "World Space",
 	                            "The most gobal space in Blender"},
 	{CONSTRAINT_SPACE_POSE,     "POSE", 0, "Pose Space",
@@ -476,10 +476,7 @@ void rna_Object_dm_info(struct Object *ob, int type, char *result)
 
 static int rna_Object_update_from_editmode(Object *ob)
 {
-	if (ob->mode & OB_MODE_EDIT) {
-		return ED_object_editmode_load(ob);
-	}
-	return false;
+	return ED_object_editmode_load(ob);
 }
 #else /* RNA_RUNTIME */
 
@@ -488,13 +485,13 @@ void RNA_api_object(StructRNA *srna)
 	FunctionRNA *func;
 	PropertyRNA *parm;
 
-	static EnumPropertyItem mesh_type_items[] = {
+	static const EnumPropertyItem mesh_type_items[] = {
 		{eModifierMode_Realtime, "PREVIEW", 0, "Preview", "Apply modifier preview settings"},
 		{eModifierMode_Render, "RENDER", 0, "Render", "Apply modifier render settings"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem dupli_eval_mode_items[] = {
+	static const EnumPropertyItem dupli_eval_mode_items[] = {
 		{DAG_EVAL_VIEWPORT, "VIEWPORT", 0, "Viewport", "Generate duplis using viewport settings"},
 		{DAG_EVAL_PREVIEW, "PREVIEW", 0, "Preview", "Generate duplis using preview settings"},
 		{DAG_EVAL_RENDER, "RENDER", 0, "Render", "Generate duplis using render settings"},
@@ -502,7 +499,7 @@ void RNA_api_object(StructRNA *srna)
 	};
 
 #ifndef NDEBUG
-	static EnumPropertyItem mesh_dm_info_items[] = {
+	static const EnumPropertyItem mesh_dm_info_items[] = {
 		{0, "SOURCE", 0, "Source", "Source mesh"},
 		{1, "DEFORM", 0, "Deform", "Objects deform mesh"},
 		{2, "FINAL", 0, "Final", "Objects final mesh"},

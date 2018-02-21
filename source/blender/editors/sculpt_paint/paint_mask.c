@@ -69,7 +69,7 @@
 
 #include <stdlib.h>
 
-static EnumPropertyItem mode_items[] = {
+static const EnumPropertyItem mode_items[] = {
 	{PAINT_MASK_FLOOD_VALUE, "VALUE", 0, "Value", "Set mask to the level specified by the 'value' property"},
 	{PAINT_MASK_FLOOD_VALUE_INVERSE, "VALUE_INVERSE", 0, "Value Inverted", "Set mask to the level specified by the inverted 'value' property"},
 	{PAINT_MASK_INVERT, "INVERT", 0, "Invert", "Invert the mask"},
@@ -104,7 +104,10 @@ typedef struct MaskTaskData {
 	float (*clip_planes_final)[4];
 } MaskTaskData;
 
-static void mask_flood_fill_task_cb(void *userdata, const int i)
+static void mask_flood_fill_task_cb(
+        void *__restrict userdata,
+        const int i,
+        const ParallelRangeTLS *__restrict UNUSED(tls))
 {
 	MaskTaskData *data = userdata;
 
@@ -155,9 +158,12 @@ static int mask_flood_fill_exec(bContext *C, wmOperator *op)
 	    .mode = mode, .value = value,
 	};
 
+	ParallelRangeSettings settings;
+	BLI_parallel_range_settings_defaults(&settings);
+	settings.use_threading = ((sd->flags & SCULPT_USE_OPENMP) && totnode > SCULPT_THREADED_LIMIT);
 	BLI_task_parallel_range(
 	            0, totnode, &data, mask_flood_fill_task_cb,
-	            ((sd->flags & SCULPT_USE_OPENMP) && totnode > SCULPT_THREADED_LIMIT));
+	            &settings);
 
 	if (multires)
 		multires_mark_as_modified(ob, MULTIRES_COORDS_MODIFIED);
@@ -218,7 +224,10 @@ static void flip_plane(float out[4], const float in[4], const char symm)
 	out[3] = in[3];
 }
 
-static void mask_box_select_task_cb(void *userdata, const int i)
+static void mask_box_select_task_cb(
+        void *__restrict userdata,
+        const int i,
+        const ParallelRangeTLS *__restrict UNUSED(tls))
 {
 	MaskTaskData *data = userdata;
 
@@ -299,9 +308,12 @@ int ED_sculpt_mask_box_select(struct bContext *C, ViewContext *vc, const rcti *r
 			    .mode = mode, .value = value, .clip_planes_final = clip_planes_final,
 			};
 
+			ParallelRangeSettings settings;
+			BLI_parallel_range_settings_defaults(&settings);
+			settings.use_threading = ((sd->flags & SCULPT_USE_OPENMP) && totnode > SCULPT_THREADED_LIMIT);
 			BLI_task_parallel_range(
 			            0, totnode, &data, mask_box_select_task_cb,
-			            ((sd->flags & SCULPT_USE_OPENMP) && totnode > SCULPT_THREADED_LIMIT));
+			            &settings);
 
 			if (nodes)
 				MEM_freeN(nodes);
@@ -373,7 +385,10 @@ static void mask_lasso_px_cb(int x, int x_end, int y, void *user_data)
 	} while (++index != index_end);
 }
 
-static void mask_gesture_lasso_task_cb(void *userdata, const int i)
+static void mask_gesture_lasso_task_cb(
+        void *__restrict userdata,
+        const int i,
+        const ParallelRangeTLS *__restrict UNUSED(tls))
 {
 	LassoMaskData *lasso_data = userdata;
 	MaskTaskData *data = &lasso_data->task_data;
@@ -479,9 +494,12 @@ static int paint_mask_gesture_lasso_exec(bContext *C, wmOperator *op)
 				data.task_data.mode = mode;
 				data.task_data.value = value;
 
+				ParallelRangeSettings settings;
+				BLI_parallel_range_settings_defaults(&settings);
+				settings.use_threading = ((sd->flags & SCULPT_USE_OPENMP) && (totnode > SCULPT_THREADED_LIMIT));
 				BLI_task_parallel_range(
 				            0, totnode, &data, mask_gesture_lasso_task_cb,
-				            ((sd->flags & SCULPT_USE_OPENMP) && (totnode > SCULPT_THREADED_LIMIT)));
+				            &settings);
 
 				if (nodes)
 					MEM_freeN(nodes);
@@ -506,8 +524,6 @@ static int paint_mask_gesture_lasso_exec(bContext *C, wmOperator *op)
 
 void PAINT_OT_mask_lasso_gesture(wmOperatorType *ot)
 {
-	PropertyRNA *prop;
-
 	ot->name = "Mask Lasso Gesture";
 	ot->idname = "PAINT_OT_mask_lasso_gesture";
 	ot->description = "Add mask within the lasso as you move the brush";
@@ -520,8 +536,8 @@ void PAINT_OT_mask_lasso_gesture(wmOperatorType *ot)
 
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
-	prop = RNA_def_property(ot->srna, "path", PROP_COLLECTION, PROP_NONE);
-	RNA_def_property_struct_runtime(prop, &RNA_OperatorMousePath);
+	/* properties */
+	WM_operator_properties_gesture_lasso(ot);
 
 	RNA_def_enum(ot->srna, "mode", mode_items, PAINT_MASK_FLOOD_VALUE, "Mode", NULL);
 	RNA_def_float(ot->srna, "value", 1.0, 0, 1.0, "Value",

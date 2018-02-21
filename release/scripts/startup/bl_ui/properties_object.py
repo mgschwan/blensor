@@ -40,7 +40,7 @@ class OBJECT_PT_context_object(ObjectButtonsPanel, Panel):
             layout.template_ID(space, "pin_id")
         else:
             row = layout.row()
-            row.template_ID(context.scene.objects, "active")
+            row.template_ID(context.scene.objects, "active", filter='AVAILABLE')
 
 
 class OBJECT_PT_transform(ObjectButtonsPanel, Panel):
@@ -323,10 +323,10 @@ class OBJECT_PT_duplication(ObjectButtonsPanel, Panel):
             layout.prop(ob, "dupli_group", text="Group")
 
 
-from bl_ui.properties_animviz import (
-        MotionPathButtonsPanel,
-        OnionSkinButtonsPanel,
-        )
+from .properties_animviz import (
+    MotionPathButtonsPanel,
+    OnionSkinButtonsPanel,
+)
 
 
 class OBJECT_PT_motion_paths(MotionPathButtonsPanel, Panel):

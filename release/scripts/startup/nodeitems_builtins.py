@@ -207,6 +207,7 @@ shader_node_categories = [
         NodeItem("ShaderNodeTangent"),
         NodeItem("ShaderNodeNewGeometry"),
         NodeItem("ShaderNodeWireframe"),
+        NodeItem("ShaderNodeBevel"),
         NodeItem("ShaderNodeObjectInfo"),
         NodeItem("ShaderNodeHairInfo"),
         NodeItem("ShaderNodeParticleInfo"),
@@ -270,6 +271,8 @@ shader_node_categories = [
     ShaderNewNodeCategory("SH_NEW_OP_VECTOR", "Vector", items=[
         NodeItem("ShaderNodeMapping"),
         NodeItem("ShaderNodeBump"),
+        NodeItem("ShaderNodeDisplacement"),
+        NodeItem("ShaderNodeVectorDisplacement"),
         NodeItem("ShaderNodeNormalMap"),
         NodeItem("ShaderNodeNormal"),
         NodeItem("ShaderNodeVectorCurve"),

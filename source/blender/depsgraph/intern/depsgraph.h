@@ -84,6 +84,8 @@ struct DepsRelation {
 	             const char *description);
 
 	~DepsRelation();
+
+	void unlink();
 };
 
 /* ********* */
@@ -91,7 +93,9 @@ struct DepsRelation {
 
 /* Dependency Graph object */
 struct Depsgraph {
+	// TODO(sergey): Go away from C++ container and use some native BLI.
 	typedef vector<OperationDepsNode *> OperationNodes;
+	typedef vector<IDDepsNode *> IDDepsNodes;
 
 	Depsgraph();
 	~Depsgraph();
@@ -117,11 +121,21 @@ struct Depsgraph {
 	/* Add new relationship between two nodes. */
 	DepsRelation *add_new_relation(OperationDepsNode *from,
 	                               OperationDepsNode *to,
-	                               const char *description);
+	                               const char *description,
+	                               bool check_unique = false);
 
 	DepsRelation *add_new_relation(DepsNode *from,
 	                               DepsNode *to,
-	                               const char *description);
+	                               const char *description,
+	                               bool check_unique = false);
+
+	/* Check whether two nodes are connected by relation with given
+	 * description. Description might be NULL to check ANY relation between
+	 * given nodes.
+	 */
+	DepsRelation *check_nodes_connected(const DepsNode *from,
+	                                    const DepsNode *to,
+	                                    const char *description);
 
 	/* Tag a specific node as needing updates. */
 	void add_entry_tag(OperationDepsNode *node);
@@ -131,9 +145,16 @@ struct Depsgraph {
 
 	/* Core Graph Functionality ........... */
 
-	/* <ID : IDDepsNode> mapping from ID blocks to nodes representing these blocks
-	 * (for quick lookups). */
+	/* <ID : IDDepsNode> mapping from ID blocks to nodes representing these
+	 * blocks, used for quick lookups.
+	 */
 	GHash *id_hash;
+
+	/* Ordered list of ID nodes, order matches ID allocation order.
+	 * Used for faster iteration, especially for areas which are critical to
+	 * keep exact order of iteration.
+	 */
+	IDDepsNodes id_nodes;
 
 	/* Top-level time source node. */
 	TimeSourceDepsNode *time_source;

@@ -53,10 +53,10 @@ void BKE_object_workob_clear(struct Object *workob);
 void BKE_object_workob_calc_parent(struct Scene *scene, struct Object *ob, struct Object *workob);
 
 void BKE_object_transform_copy(struct Object *ob_tar, const struct Object *ob_src);
-struct SoftBody *copy_softbody(const struct SoftBody *sb, bool copy_caches);
-struct BulletSoftBody *copy_bulletsoftbody(const struct BulletSoftBody *sb);
-struct ParticleSystem *BKE_object_copy_particlesystem(struct ParticleSystem *psys);
-void BKE_object_copy_particlesystems(struct Object *ob_dst, const struct Object *ob_src);
+struct SoftBody *copy_softbody(const struct SoftBody *sb, const int flag);
+struct BulletSoftBody *copy_bulletsoftbody(const struct BulletSoftBody *sb, const int flag);
+struct ParticleSystem *BKE_object_copy_particlesystem(struct ParticleSystem *psys, const int flag);
+void BKE_object_copy_particlesystems(struct Object *ob_dst, const struct Object *ob_src, const int flag);
 void BKE_object_copy_softbody(struct Object *ob_dst, const struct Object *ob_src);
 void BKE_object_free_particlesystems(struct Object *ob);
 void BKE_object_free_softbody(struct Object *ob);
@@ -105,7 +105,7 @@ bool BKE_object_lod_is_usable(struct Object *ob, struct Scene *scene);
 struct Object *BKE_object_lod_meshob_get(struct Object *ob, struct Scene *scene);
 struct Object *BKE_object_lod_matob_get(struct Object *ob, struct Scene *scene);
 
-struct Object *BKE_object_copy_ex(struct Main *bmain, const struct Object *ob, bool copy_caches);
+void BKE_object_copy_data(struct Main *bmain, struct Object *ob_dst, const struct Object *ob_src, const int flag);
 struct Object *BKE_object_copy(struct Main *bmain, const struct Object *ob);
 void BKE_object_make_local(struct Main *bmain, struct Object *ob, const bool lib_local);
 void BKE_object_make_local_ex(struct Main *bmain, struct Object *ob, const bool lib_local, const bool clear_proxy);
@@ -179,7 +179,6 @@ void BKE_object_tfm_protected_restore(struct Object *ob,
 
 /* Dependency graph evaluation callbacks. */
 void BKE_object_eval_local_transform(struct EvaluationContext *eval_ctx,
-                                     struct Scene *scene,
                                      struct Object *ob);
 void BKE_object_eval_parent(struct EvaluationContext *eval_ctx,
                             struct Scene *scene,
@@ -189,8 +188,9 @@ void BKE_object_eval_constraints(struct EvaluationContext *eval_ctx,
                                  struct Object *ob);
 void BKE_object_eval_done(struct EvaluationContext *eval_ctx, struct Object *ob);
 
+bool BKE_object_eval_proxy_copy(struct EvaluationContext *eval_ctx,
+                                struct Object *object);
 void BKE_object_eval_uber_transform(struct EvaluationContext *eval_ctx,
-                                    struct Scene *scene,
                                     struct Object *ob);
 void BKE_object_eval_uber_data(struct EvaluationContext *eval_ctx,
                                struct Scene *scene,
@@ -200,6 +200,10 @@ void BKE_object_eval_cloth(struct EvaluationContext *eval_ctx,
                            struct Scene *scene,
                            struct Object *object);
 
+
+void BKE_object_eval_transform_all(struct EvaluationContext *eval_ctx,
+                                   struct Scene *scene,
+                                   struct Object *object);
 
 void BKE_object_handle_data_update(struct EvaluationContext *eval_ctx,
                                    struct Scene *scene,

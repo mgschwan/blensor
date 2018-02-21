@@ -52,6 +52,7 @@ ALLOWED_LIBS = (
     "libXrender.so",
     "libXxf86vm.so",
     "libXi.so",
+    "libXfixes.so",
 
     # OpenGL libraries.
     "libGL.so",

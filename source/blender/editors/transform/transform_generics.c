@@ -82,7 +82,6 @@
 #include "BKE_editmesh.h"
 #include "BKE_tracking.h"
 #include "BKE_mask.h"
-#include "BKE_utildefines.h"
 
 #include "ED_anim_api.h"
 #include "ED_armature.h"
@@ -1208,7 +1207,7 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 		if (prop_id && (prop = RNA_struct_find_property(op->ptr, prop_id)) &&
 		    RNA_property_is_set(op->ptr, prop))
 		{
-			BKE_BIT_TEST_SET(t->flag, RNA_property_boolean_get(op->ptr, prop), T_ALT_TRANSFORM);
+			SET_FLAG_FROM_TEST(t->flag, RNA_property_boolean_get(op->ptr, prop), T_ALT_TRANSFORM);
 		}
 	}
 
@@ -1331,7 +1330,7 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 			t->current_orientation = V3D_MANIP_GLOBAL;
 		}
 	}
-	
+
 	if (op && ((prop = RNA_struct_find_property(op->ptr, "release_confirm")) &&
 	           RNA_property_is_set(op->ptr, prop)))
 	{
@@ -1435,6 +1434,13 @@ void initTransInfo(bContext *C, TransInfo *t, wmOperator *op, const wmEvent *eve
 #endif
 
 	setTransformViewAspect(t, t->aspect);
+
+	if (op && (prop = RNA_struct_find_property(op->ptr, "center_override")) && RNA_property_is_set(op->ptr, prop)) {
+		RNA_property_float_get_array(op->ptr, prop, t->center);
+		mul_v3_v3(t->center, t->aspect);
+		t->flag |= T_OVERRIDE_CENTER;
+	}
+
 	setTransformViewMatrices(t);
 	initNumInput(&t->num);
 }
@@ -1835,7 +1841,9 @@ static void calculateCenter_FromAround(TransInfo *t, int around, float r_center[
 
 void calculateCenter(TransInfo *t)
 {
-	calculateCenter_FromAround(t, t->around, t->center);
+	if ((t->flag & T_OVERRIDE_CENTER) == 0) {
+		calculateCenter_FromAround(t, t->around, t->center);
+	}
 	calculateCenterGlobal(t, t->center, t->center_global);
 
 	/* avoid calculating again */
@@ -1849,7 +1857,7 @@ void calculateCenter(TransInfo *t)
 	calculateCenter2D(t);
 
 	/* for panning from cameraview */
-	if (t->flag & T_OBJECT) {
+	if ((t->flag & T_OBJECT) && (t->flag & T_OVERRIDE_CENTER) == 0) {
 		if (t->spacetype == SPACE_VIEW3D && t->ar && t->ar->regiontype == RGN_TYPE_WINDOW) {
 			
 			if (t->flag & T_CAMERA) {

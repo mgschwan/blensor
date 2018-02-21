@@ -33,6 +33,8 @@
 #ifndef __DNA_OBJECT_TYPES_H__
 #define __DNA_OBJECT_TYPES_H__
 
+#include "DNA_object_enums.h"
+
 #include "DNA_defs.h"
 #include "DNA_listBase.h"
 #include "DNA_ID.h"
@@ -137,6 +139,7 @@ typedef struct Object {
 	
 	bAnimVizSettings avs;	/* settings for visualization of object-transform animation */
 	bMotionPath *mpath;		/* motion path cache for this object */
+	void *pad1;
 	
 	ListBase constraintChannels  DNA_DEPRECATED; // XXX deprecated... old animation system
 	ListBase effect  DNA_DEPRECATED;             // XXX deprecated... keep for readfile
@@ -253,8 +256,6 @@ typedef struct Object {
 	int gameflag;
 	int gameflag2;
 
-	struct BulletSoftBody *bsoft;	/* settings for game engine bullet soft body */
-
 	char restrictflag;		/* for restricting view, select, render etc. accessible in outliner */
 	char recalc;			/* dependency flag */
 	short softflag;			/* softbody settings */
@@ -265,6 +266,7 @@ typedef struct Object {
 	ListBase hooks  DNA_DEPRECATED;				// XXX deprecated... old animation system
 	ListBase particlesystem;	/* particle systems */
 	
+	struct BulletSoftBody *bsoft;	/* settings for game engine bullet soft body */
 	struct PartDeflect *pd;		/* particle deflector/attractor/collision data */
 	struct SoftBody *soft;		/* if exists, saved in file */
 	struct Group *dup_group;	/* object duplicator for group */
@@ -294,6 +296,7 @@ typedef struct Object {
 
 	float ima_ofs[2];		/* offset for image empties */
 	ImageUser *iuser;		/* must be non-null when oject is an empty image */
+	void *pad3;
 
 	ListBase lodlevels;		/* contains data for levels of detail */
 	LodLevel *currentlod;
@@ -496,9 +499,13 @@ enum {
 
 /* also needed for base!!!!! or rather, they interfere....*/
 /* base->flag and ob->flag */
-#define BA_WAS_SEL          (1 << 1)
-#define BA_HAS_RECALC_OB    (1 << 2)
-#define BA_HAS_RECALC_DATA  (1 << 3)
+enum {
+	BA_WAS_SEL = (1 << 1),
+	/* NOTE: BA_HAS_RECALC_DATA can be re-used later if freed in readfile.c. */
+	// BA_HAS_RECALC_OB = (1 << 2),  /* DEPRECATED */
+	// BA_HAS_RECALC_DATA =  (1 << 3),  /* DEPRECATED */
+	BA_SNAP_FIX_DEPS_FIASCO = (1 << 2),  /* Yes, re-use deprecated bit, all fine since it's runtime only. */
+};
 
 	/* NOTE: this was used as a proper setting in past, so nullify before using */
 #define BA_TEMP_TAG         (1 << 5)
@@ -666,23 +673,7 @@ enum {
 	OB_LOCK_ROTW    = 1 << 9,
 	OB_LOCK_ROT4D   = 1 << 10,
 };
-
-/* ob->mode */
-typedef enum ObjectMode {
-	OB_MODE_OBJECT        = 0,
-	OB_MODE_EDIT          = 1 << 0,
-	OB_MODE_SCULPT        = 1 << 1,
-	OB_MODE_VERTEX_PAINT  = 1 << 2,
-	OB_MODE_WEIGHT_PAINT  = 1 << 3,
-	OB_MODE_TEXTURE_PAINT = 1 << 4,
-	OB_MODE_PARTICLE_EDIT = 1 << 5,
-	OB_MODE_POSE          = 1 << 6,
-	OB_MODE_GPENCIL       = 1 << 7,  /* NOTE: Just a dummy to make the UI nicer */
-} ObjectMode;
-
-/* any mode where the brush system is used */
-#define OB_MODE_ALL_PAINT (OB_MODE_SCULPT | OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT | OB_MODE_TEXTURE_PAINT)
-
+	
 #define MAX_DUPLI_RECUR 8
 
 #ifdef __cplusplus

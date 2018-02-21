@@ -39,7 +39,7 @@
 #ifdef __GNUC__
 #  pragma GCC diagnostic push
 /* XXX suppress verbose warnings in eigen */
-#  pragma GCC diagnostic ignored "-Wlogical-op"
+//#  pragma GCC diagnostic ignored "-Wlogical-op"
 #endif
 
 #ifndef IMPLICIT_ENABLE_EIGEN_DEBUG
@@ -73,7 +73,7 @@
 extern "C" {
 #include "DNA_scene_types.h"
 #include "DNA_object_types.h"
-#include "DNA_object_force.h"
+#include "DNA_object_force_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_texture_types.h"
 

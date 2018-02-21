@@ -51,6 +51,7 @@ CompositorOperation::CompositorOperation() : NodeOperation()
 	this->m_useAlphaInput = false;
 	this->m_active = false;
 
+	this->m_scene = NULL;
 	this->m_sceneName[0] = '\0';
 	this->m_viewName = NULL;
 }
@@ -78,7 +79,7 @@ void CompositorOperation::deinitExecution()
 		return;
 
 	if (!isBreaked()) {
-		Render *re = RE_GetRender(this->m_sceneName);
+		Render *re = RE_GetSceneRender(this->m_scene);
 		RenderResult *rr = RE_AcquireResultWrite(re);
 
 		if (rr) {
@@ -107,9 +108,9 @@ void CompositorOperation::deinitExecution()
 			re = NULL;
 		}
 
-		BLI_lock_thread(LOCK_DRAW_IMAGE);
+		BLI_thread_lock(LOCK_DRAW_IMAGE);
 		BKE_image_signal(BKE_image_verify_viewer(IMA_TYPE_R_RESULT, "Render Result"), NULL, IMA_SIGNAL_FREE);
-		BLI_unlock_thread(LOCK_DRAW_IMAGE);
+		BLI_thread_unlock(LOCK_DRAW_IMAGE);
 	}
 	else {
 		if (this->m_outputBuffer) {
@@ -217,7 +218,7 @@ void CompositorOperation::determineResolution(unsigned int resolution[2], unsign
 
 	// check actual render resolution with cropping it may differ with cropped border.rendering
 	// FIX for: [31777] Border Crop gives black (easy)
-	Render *re = RE_GetRender(this->m_sceneName);
+	Render *re = RE_GetSceneRender(this->m_scene);
 	if (re) {
 		RenderResult *rr = RE_AcquireResultRead(re);
 		if (rr) {

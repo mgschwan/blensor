@@ -35,6 +35,7 @@ struct ID;
 struct ListBase;
 struct Main;
 struct AnimData;
+struct FCurve;
 struct KeyingSet;
 struct KS_Path;
 struct PathResolvedRNA;
@@ -67,10 +68,10 @@ bool BKE_animdata_set_action(struct ReportList *reports, struct ID *id, struct b
 void BKE_animdata_free(struct ID *id, const bool do_id_user);
 
 /* Copy AnimData */
-struct AnimData *BKE_animdata_copy(struct AnimData *adt, const bool do_action);
+struct AnimData *BKE_animdata_copy(struct Main *bmain, struct AnimData *adt, const bool do_action);
 
 /* Copy AnimData */
-bool BKE_animdata_copy_id(struct ID *id_to, struct ID *id_from, const bool do_action);
+bool BKE_animdata_copy_id(struct Main *bmain, struct ID *id_to, struct ID *id_from, const bool do_action);
 
 /* Copy AnimData Actions */
 void BKE_animdata_copy_id_action(struct ID *id, const bool set_newid);
@@ -102,7 +103,7 @@ struct KS_Path *BKE_keyingset_add_path(struct KeyingSet *ks, struct ID *id, cons
 struct KS_Path *BKE_keyingset_find_path(struct KeyingSet *ks, struct ID *id, const char group_name[], const char rna_path[], int array_index, int group_mode);
 
 /* Copy all KeyingSets in the given list */
-void BKE_keyingsets_copy(struct ListBase *newlist, struct ListBase *list);
+void BKE_keyingsets_copy(struct ListBase *newlist, const struct ListBase *list);
 
 /* Free the given Keying Set path */
 void BKE_keyingset_free_path(struct KeyingSet *ks, struct KS_Path *ksp);
@@ -152,9 +153,15 @@ char *BKE_animdata_driver_path_hack(struct bContext *C, struct PointerRNA *ptr, 
 /* Define for callback looper used in BKE_animdata_main_cb */
 typedef void (*ID_AnimData_Edit_Callback)(struct ID *id, struct AnimData *adt, void *user_data);
 
+/* Define for callback looper used in BKE_fcurves_main_cb */
+typedef void (*ID_FCurve_Edit_Callback)(struct ID *id, struct FCurve *fcu, void *user_data);
+
 
 /* Loop over all datablocks applying callback */
-void BKE_animdata_main_cb(struct Main *main, ID_AnimData_Edit_Callback func, void *user_data);
+void BKE_animdata_main_cb(struct Main *bmain, ID_AnimData_Edit_Callback func, void *user_data);
+
+/* Loop over all datablocks applying callback to all its F-Curves */
+void BKE_fcurves_main_cb(struct Main *bmain, ID_FCurve_Edit_Callback func, void *user_data);
 
 /* ************************************* */
 // TODO: overrides, remapping, and path-finding api's

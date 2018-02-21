@@ -33,25 +33,25 @@
 #include "BLI_strict_flags.h"
 
 typedef struct KDTreeNode_head {
-	unsigned int left, right;
+	uint left, right;
 	float co[3];
 	int index;
 } KDTreeNode_head;
 
 typedef struct KDTreeNode {
-	unsigned int left, right;
+	uint left, right;
 	float co[3];
 	int index;
-	unsigned int d;  /* range is only (0-2) */
+	uint d;  /* range is only (0-2) */
 } KDTreeNode;
 
 struct KDTree {
 	KDTreeNode *nodes;
-	unsigned int totnode;
-	unsigned int root;
+	uint totnode;
+	uint root;
 #ifdef DEBUG
 	bool is_balanced;  /* ensure we call balance first */
-	unsigned int maxsize;   /* max size of the tree */
+	uint maxsize;   /* max size of the tree */
 #endif
 };
 
@@ -59,12 +59,12 @@ struct KDTree {
 #define KD_NEAR_ALLOC_INC 100  /* alloc increment for collecting nearest */
 #define KD_FOUND_ALLOC_INC 50  /* alloc increment for collecting nearest */
 
-#define KD_NODE_UNSET ((unsigned int)-1)
+#define KD_NODE_UNSET ((uint)-1)
 
 /**
  * Creates or free a kdtree
  */
-KDTree *BLI_kdtree_new(unsigned int maxsize)
+KDTree *BLI_kdtree_new(uint maxsize)
 {
 	KDTree *tree;
 
@@ -113,11 +113,11 @@ void BLI_kdtree_insert(KDTree *tree, int index, const float co[3])
 #endif
 }
 
-static unsigned int kdtree_balance(KDTreeNode *nodes, unsigned int totnode, unsigned int axis, const unsigned int ofs)
+static uint kdtree_balance(KDTreeNode *nodes, uint totnode, uint axis, const uint ofs)
 {
 	KDTreeNode *node;
 	float co;
-	unsigned int left, right, median, i, j;
+	uint left, right, median, i, j;
 
 	if (totnode <= 0)
 		return KD_NODE_UNSET;
@@ -188,11 +188,11 @@ static float squared_distance(const float v2[3], const float v1[3], const float 
 	return dist;
 }
 
-static unsigned int *realloc_nodes(unsigned int *stack, unsigned int *totstack, const bool is_alloc)
+static uint *realloc_nodes(uint *stack, uint *totstack, const bool is_alloc)
 {
-	unsigned int *stack_new = MEM_mallocN((*totstack + KD_NEAR_ALLOC_INC) * sizeof(unsigned int), "KDTree.treestack");
-	memcpy(stack_new, stack, *totstack * sizeof(unsigned int));
-	// memset(stack_new + *totstack, 0, sizeof(unsigned int) * KD_NEAR_ALLOC_INC);
+	uint *stack_new = MEM_mallocN((*totstack + KD_NEAR_ALLOC_INC) * sizeof(uint), "KDTree.treestack");
+	memcpy(stack_new, stack, *totstack * sizeof(uint));
+	// memset(stack_new + *totstack, 0, sizeof(uint) * KD_NEAR_ALLOC_INC);
 	if (is_alloc)
 		MEM_freeN(stack);
 	*totstack += KD_NEAR_ALLOC_INC;
@@ -208,9 +208,9 @@ int BLI_kdtree_find_nearest(
 {
 	const KDTreeNode *nodes = tree->nodes;
 	const KDTreeNode *root, *min_node;
-	unsigned int *stack, defaultstack[KD_STACK_INIT];
+	uint *stack, defaultstack[KD_STACK_INIT];
 	float min_dist, cur_dist;
-	unsigned int totstack, cur = 0;
+	uint totstack, cur = 0;
 
 #ifdef DEBUG
 	BLI_assert(tree->is_balanced == true);
@@ -307,9 +307,9 @@ int BLI_kdtree_find_nearest_cb(
 	const KDTreeNode *nodes = tree->nodes;
 	const KDTreeNode *min_node = NULL;
 
-	unsigned int *stack, defaultstack[KD_STACK_INIT];
+	uint *stack, defaultstack[KD_STACK_INIT];
 	float min_dist = FLT_MAX, cur_dist;
-	unsigned int totstack, cur = 0;
+	uint totstack, cur = 0;
 
 #ifdef DEBUG
 	BLI_assert(tree->is_balanced == true);
@@ -397,10 +397,10 @@ finally:
 	}
 }
 
-static void add_nearest(KDTreeNearest *ptn, unsigned int *found, unsigned int n, int index,
+static void add_nearest(KDTreeNearest *ptn, uint *found, uint n, int index,
                         float dist, const float *co)
 {
-	unsigned int i;
+	uint i;
 
 	if (*found < n) (*found)++;
 
@@ -425,14 +425,14 @@ static void add_nearest(KDTreeNearest *ptn, unsigned int *found, unsigned int n,
 int BLI_kdtree_find_nearest_n__normal(
         const KDTree *tree, const float co[3], const float nor[3],
         KDTreeNearest r_nearest[],
-        unsigned int n)
+        uint n)
 {
 	const KDTreeNode *nodes = tree->nodes;
 	const KDTreeNode *root;
-	unsigned int *stack, defaultstack[KD_STACK_INIT];
+	uint *stack, defaultstack[KD_STACK_INIT];
 	float cur_dist;
-	unsigned int totstack, cur = 0;
-	unsigned int i, found = 0;
+	uint totstack, cur = 0;
+	uint i, found = 0;
 
 #ifdef DEBUG
 	BLI_assert(tree->is_balanced == true);
@@ -524,8 +524,8 @@ static int range_compare(const void *a, const void *b)
 }
 static void add_in_range(
         KDTreeNearest **r_foundstack,
-        unsigned int   *r_foundstack_tot_alloc,
-        unsigned int      found,
+        uint   *r_foundstack_tot_alloc,
+        uint      found,
         const int index, const float dist, const float *co)
 {
 	KDTreeNearest *to;
@@ -554,10 +554,10 @@ int BLI_kdtree_range_search__normal(
         KDTreeNearest **r_nearest, float range)
 {
 	const KDTreeNode *nodes = tree->nodes;
-	unsigned int *stack, defaultstack[KD_STACK_INIT];
+	uint *stack, defaultstack[KD_STACK_INIT];
 	KDTreeNearest *foundstack = NULL;
 	float range_sq = range * range, dist_sq;
-	unsigned int totstack, cur = 0, found = 0, totfoundstack = 0;
+	uint totstack, cur = 0, found = 0, totfoundstack = 0;
 
 #ifdef DEBUG
 	BLI_assert(tree->is_balanced == true);
@@ -624,9 +624,9 @@ void BLI_kdtree_range_search_cb(
 {
 	const KDTreeNode *nodes = tree->nodes;
 
-	unsigned int *stack, defaultstack[KD_STACK_INIT];
+	uint *stack, defaultstack[KD_STACK_INIT];
 	float range_sq = range * range, dist_sq;
-	unsigned int totstack, cur = 0;
+	uint totstack, cur = 0;
 
 #ifdef DEBUG
 	BLI_assert(tree->is_balanced == true);
@@ -674,3 +674,123 @@ finally:
 	if (stack != defaultstack)
 		MEM_freeN(stack);
 }
+
+/**
+ * Use when we want to loop over nodes ordered by index.
+ * Requires indices to be aligned with nodes.
+ */
+static uint *kdtree_order(const KDTree *tree)
+{
+	const KDTreeNode *nodes = tree->nodes;
+	uint *order = MEM_mallocN(sizeof(uint) * tree->totnode, __func__);
+	for (uint i = 0; i < tree->totnode; i++) {
+		order[nodes[i].index] = i;
+	}
+	return order;
+}
+
+/* -------------------------------------------------------------------- */
+/** \name BLI_kdtree_calc_duplicates_fast
+ * \{ */
+
+struct DeDuplicateParams {
+	/* Static */
+	const KDTreeNode *nodes;
+	float range;
+	float range_sq;
+	int *duplicates;
+	int *duplicates_found;
+
+	/* Per Search */
+	float search_co[3];
+	int search;
+};
+
+static void deduplicate_recursive(const struct DeDuplicateParams *p, uint i)
+{
+	const KDTreeNode *node = &p->nodes[i];
+	if (p->search_co[node->d] + p->range <= node->co[node->d]) {
+		if (node->left != KD_NODE_UNSET) {
+			deduplicate_recursive(p, node->left);
+		}
+	}
+	else if (p->search_co[node->d] - p->range >= node->co[node->d]) {
+		if (node->right != KD_NODE_UNSET) {
+			deduplicate_recursive(p, node->right);
+		}
+	}
+	else {
+		if ((p->search != node->index) && (p->duplicates[node->index] == -1)) {
+			if (compare_len_squared_v3v3(node->co, p->search_co, p->range_sq)) {
+				p->duplicates[node->index] = (int)p->search;
+				*p->duplicates_found += 1;
+			}
+		}
+		if (node->left != KD_NODE_UNSET) {
+			deduplicate_recursive(p, node->left);
+		}
+		if (node->right != KD_NODE_UNSET) {
+			deduplicate_recursive(p, node->right);
+		}
+	}
+}
+
+/**
+ * Find duplicate points in \a range.
+ * Favors speed over quality since it doesn't find the best target vertex for merging.
+ * Nodes are looped over, duplicates are added when found.
+ * Nevertheless results are predictable.
+ *
+ * \param range: Coordinates in this range are candidates to be merged.
+ * \param use_index_order: Loop over the coordinates ordered by #KDTreeNode.index
+ * At the expense of some performance, this ensures the layout of the tree doesn't influence
+ * the iteration order.
+ * \param duplicates: An array of int's the length of #KDTree.totnode
+ * Values initialized to -1 are candidates to me merged.
+ * Setting the index to it's own position in the array prevents it from being touched,
+ * although it can still be used as a target.
+ * \returns The numebr of merges found (includes any merges already in the \a duplicates array).
+ *
+ * \note Merging is always a single step (target indices wont be marked for merging). 
+ */
+int BLI_kdtree_calc_duplicates_fast(
+        const KDTree *tree, const float range, bool use_index_order,
+        int *duplicates)
+{
+	int found = 0;
+	struct DeDuplicateParams p = {
+		.nodes = tree->nodes,
+		.range = range,
+		.range_sq = range * range,
+		.duplicates = duplicates,
+		.duplicates_found = &found,
+	};
+
+	if (use_index_order) {
+		uint *order = kdtree_order(tree);
+		for (uint i = 0; i < tree->totnode; i++) {
+			const uint node_index = order[i];
+			const int index = (int)i;
+			if (ELEM(duplicates[index], -1, index)) {
+				p.search = index;
+				copy_v3_v3(p.search_co, tree->nodes[node_index].co);
+				deduplicate_recursive(&p, tree->root);
+			}
+		}
+		MEM_freeN(order);
+	}
+	else {
+		for (uint i = 0; i < tree->totnode; i++) {
+			const uint node_index = i;
+			const int index = p.nodes[node_index].index;
+			if (ELEM(duplicates[index], -1, index)) {
+				p.search = index;
+				copy_v3_v3(p.search_co, tree->nodes[node_index].co);
+				deduplicate_recursive(&p, tree->root);
+			}
+		}
+	}
+	return found;
+}
+
+/** \} */

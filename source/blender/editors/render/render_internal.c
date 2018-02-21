@@ -305,7 +305,7 @@ static int screen_render_exec(bContext *C, wmOperator *op)
 		return OPERATOR_CANCELLED;
 	}
 
-	re = RE_NewRender(scene->id.name);
+	re = RE_NewSceneRender(scene);
 	lay_override = (v3d && v3d->lay != scene->lay) ? v3d->lay : 0;
 
 	G.is_break = false;
@@ -323,12 +323,12 @@ static int screen_render_exec(bContext *C, wmOperator *op)
 
 	RE_SetReports(re, op->reports);
 
-	BLI_begin_threaded_malloc();
+	BLI_threaded_malloc_begin();
 	if (is_animation)
 		RE_BlenderAnim(re, mainp, scene, camera_override, lay_override, scene->r.sfra, scene->r.efra, scene->r.frame_step);
 	else
 		RE_BlenderFrame(re, mainp, scene, srl, camera_override, lay_override, scene->r.cfra, is_write_still);
-	BLI_end_threaded_malloc();
+	BLI_threaded_malloc_end();
 
 	RE_SetReports(re, NULL);
 
@@ -964,7 +964,7 @@ static int screen_render_invoke(bContext *C, wmOperator *op, const wmEvent *even
 	rj->image = ima;
 
 	/* setup new render */
-	re = RE_NewRender(scene->id.name);
+	re = RE_NewSceneRender(scene);
 	RE_test_break_cb(re, rj, render_breakjob);
 	RE_draw_lock_cb(re, rj, render_drawlock);
 	RE_display_update_cb(re, rj, image_rect_update);
@@ -1015,9 +1015,11 @@ void RENDER_OT_render(wmOperatorType *ot)
 
 	/*ot->poll = ED_operator_screenactive;*/ /* this isn't needed, causes failer in background mode */
 
-	RNA_def_boolean(ot->srna, "animation", 0, "Animation", "Render files from the animation range of this scene");
+	prop = RNA_def_boolean(ot->srna, "animation", 0, "Animation", "Render files from the animation range of this scene");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 	RNA_def_boolean(ot->srna, "write_still", 0, "Write Image", "Save rendered the image to the output path (used only when animation is disabled)");
-	RNA_def_boolean(ot->srna, "use_viewport", 0, "Use 3D Viewport", "When inside a 3D viewport, use layers and camera of the viewport");
+	prop = RNA_def_boolean(ot->srna, "use_viewport", 0, "Use 3D Viewport", "When inside a 3D viewport, use layers and camera of the viewport");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 	prop = RNA_def_string(ot->srna, "layer", NULL, RE_MAXNAME, "Render Layer", "Single render layer to re-render (used only when animation is disabled)");
 	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 	prop = RNA_def_string(ot->srna, "scene", NULL, MAX_ID_NAME - 2, "Scene", "Scene to render, current scene if not specified");
@@ -1171,7 +1173,7 @@ static void render_update_resolution(Render *re, const RenderPreview *rp,
 	}
 
 	if (rp->has_freestyle) {
-		if (rp->resolution_divider == 1) {
+		if (rp->resolution_divider == BKE_render_preview_pixel_size(&rp->scene->r)) {
 			RE_ChangeModeFlag(re, R_EDGE_FRS, false);
 		}
 		else {
@@ -1312,11 +1314,12 @@ static void render_view3d_startjob(void *customdata, short *stop, short *do_upda
 		RE_updateRenderInstances(re, ob_inst_update_flag);
 
 		for (;;) {
+			int pixel_size = BKE_render_preview_pixel_size(&rp->scene->r);
 			if (first_time == false) {
 				if (restore)
 					RE_DataBase_IncrementalView(re, rp->viewmat, 1);
 
-				rp->resolution_divider /= 2;
+				rp->resolution_divider = MAX2(rp->resolution_divider / 2, pixel_size);
 				*do_update = 1;
 
 				render_update_resolution(re, rp, use_border, &cliprct);
@@ -1333,7 +1336,7 @@ static void render_view3d_startjob(void *customdata, short *stop, short *do_upda
 
 			first_time = false;
 
-			if (*stop || rp->resolution_divider == 1) {
+			if (*stop || rp->resolution_divider == pixel_size) {
 				break;
 			}
 		}
@@ -1435,7 +1438,7 @@ static void render_view3d_do(RenderEngine *engine, const bContext *C)
 	Scene *scene = CTX_data_scene(C);
 	ARegion *ar = CTX_wm_region(C);
 	int width = ar->winx, height = ar->winy;
-	int divider = 1;
+	int divider = BKE_render_preview_pixel_size(&scene->r);
 	int resolution_threshold = scene->r.preview_start_resolution *
 	                           scene->r.preview_start_resolution;
 
@@ -1676,7 +1679,7 @@ static int render_shutter_curve_preset_exec(bContext *C, wmOperator *op)
 void RENDER_OT_shutter_curve_preset(wmOperatorType *ot)
 {
 	PropertyRNA *prop;
-	static EnumPropertyItem prop_shape_items[] = {
+	static const EnumPropertyItem prop_shape_items[] = {
 		{CURVE_PRESET_SHARP, "SHARP", 0, "Sharp", ""},
 		{CURVE_PRESET_SMOOTH, "SMOOTH", 0, "Smooth", ""},
 		{CURVE_PRESET_MAX, "MAX", 0, "Max", ""},

@@ -88,10 +88,10 @@ public:
 	int num_samples;
 
 	TileManager(bool progressive, int num_samples, int2 tile_size, int start_resolution,
-	            bool preserve_tile_device, bool background, TileOrder tile_order, int num_devices = 1);
+	            bool preserve_tile_device, bool background, TileOrder tile_order, int num_devices = 1, int pixel_size = 1);
 	~TileManager();
 
-	void free_device();
+	void device_free();
 	void reset(BufferParams& params, int num_samples);
 	void set_samples(int num_samples);
 	bool next();
@@ -122,6 +122,7 @@ protected:
 	int2 tile_size;
 	TileOrder tile_order;
 	int start_resolution;
+	int pixel_size;
 	int num_devices;
 
 	/* in some cases it is important that the same tile will be returned for the same
@@ -145,6 +146,7 @@ protected:
 
 	/* Generate tile list, return number of tiles. */
 	int gen_tiles(bool sliced);
+	void gen_render_tiles();
 
 	int get_neighbor_index(int index, int neighbor);
 	bool check_neighbor_state(int index, Tile::State state);

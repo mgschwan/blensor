@@ -17,6 +17,8 @@
 #ifndef __SCENE_H__
 #define __SCENE_H__
 
+#include "bvh/bvh_params.h"
+
 #include "render/image.h"
 #include "render/shader.h"
 
@@ -60,15 +62,15 @@ class BakeData;
 class DeviceScene {
 public:
 	/* BVH */
-	device_vector<float4> bvh_nodes;
-	device_vector<float4> bvh_leaf_nodes;
-	device_vector<uint> object_node;
+	device_vector<int4> bvh_nodes;
+	device_vector<int4> bvh_leaf_nodes;
+	device_vector<int> object_node;
 	device_vector<uint> prim_tri_index;
 	device_vector<float4> prim_tri_verts;
-	device_vector<uint> prim_type;
+	device_vector<int> prim_type;
 	device_vector<uint> prim_visibility;
-	device_vector<uint> prim_index;
-	device_vector<uint> prim_object;
+	device_vector<int> prim_index;
+	device_vector<int> prim_object;
 	device_vector<float2> prim_time;
 
 	/* mesh */
@@ -103,7 +105,7 @@ public:
 	device_vector<float4> particles;
 
 	/* shaders */
-	device_vector<uint4> svm_nodes;
+	device_vector<int4> svm_nodes;
 	device_vector<uint> shader_flag;
 	device_vector<uint> object_flag;
 
@@ -113,61 +115,72 @@ public:
 	/* integrator */
 	device_vector<uint> sobol_directions;
 
-	/* cpu images */
-	vector<device_vector<float4>* > tex_float4_image;
-	vector<device_vector<uchar4>* > tex_byte4_image;
-	vector<device_vector<half4>* > tex_half4_image;
-	vector<device_vector<float>* > tex_float_image;
-	vector<device_vector<uchar>* > tex_byte_image;
-	vector<device_vector<half>* > tex_half_image;
-
-	/* opencl images */
-	device_vector<float4> tex_image_float4_packed;
-	device_vector<uchar4> tex_image_byte4_packed;
-	device_vector<float> tex_image_float_packed;
-	device_vector<uchar> tex_image_byte_packed;
-	device_vector<uint4> tex_image_packed_info;
-
 	KernelData data;
+
+	DeviceScene(Device *device);
 };
 
 /* Scene Parameters */
 
 class SceneParams {
 public:
-	ShadingSystem shadingsystem;
+	/* Type of BVH, in terms whether it is supported dynamic updates of meshes
+	 * or whether modifying geometry requires full BVH rebuild.
+	 */
 	enum BVHType {
+		/* BVH supports dynamic updates of geometry.
+		 *
+		 * Faster for updating BVH tree when doing modifications in viewport,
+		 * but slower for rendering.
+		 */
 		BVH_DYNAMIC = 0,
+		/* BVH tree is calculated for specific scene, updates in geometry
+		 * requires full tree rebuild.
+		 *
+		 * Slower to update BVH tree when modifying objects in viewport, also
+		 * slower to build final BVH tree but gives best possible render speed.
+		 */
 		BVH_STATIC = 1,
 
 		BVH_NUM_TYPES,
-	} bvh_type;
+	};
+
+	ShadingSystem shadingsystem;
+
+	/* Requested BVH layout.
+	 *
+	 * If it's not supported by the device, the widest one from supported ones
+	 * will be used, but BVH wider than this one will never be used.
+	 */
+	BVHLayout bvh_layout;
+
+	BVHType bvh_type;
 	bool use_bvh_spatial_split;
 	bool use_bvh_unaligned_nodes;
 	int num_bvh_time_steps;
-	bool use_qbvh;
+
 	bool persistent_data;
 	int texture_limit;
 
 	SceneParams()
 	{
 		shadingsystem = SHADINGSYSTEM_SVM;
+		bvh_layout = BVH_LAYOUT_BVH2;
 		bvh_type = BVH_DYNAMIC;
 		use_bvh_spatial_split = false;
 		use_bvh_unaligned_nodes = true;
 		num_bvh_time_steps = 0;
-		use_qbvh = false;
 		persistent_data = false;
 		texture_limit = 0;
 	}
 
 	bool modified(const SceneParams& params)
 	{ return !(shadingsystem == params.shadingsystem
+		&& bvh_layout == params.bvh_layout
 		&& bvh_type == params.bvh_type
 		&& use_bvh_spatial_split == params.use_bvh_spatial_split
 		&& use_bvh_unaligned_nodes == params.use_bvh_unaligned_nodes
 		&& num_bvh_time_steps == params.num_bvh_time_steps
-		&& use_qbvh == params.use_qbvh
 		&& persistent_data == params.persistent_data
 		&& texture_limit == params.texture_limit); }
 };
@@ -178,6 +191,7 @@ class Scene {
 public:
 	/* data */
 	Camera *camera;
+	Camera *dicing_camera;
 	LookupTables *lookup_tables;
 	Film *film;
 	Background *background;
@@ -216,7 +230,7 @@ public:
 	/* mutex must be locked manually by callers */
 	thread_mutex mutex;
 
-	Scene(const SceneParams& params, const DeviceInfo& device_info);
+	Scene(const SceneParams& params, Device *device);
 	~Scene();
 
 	void device_update(Device *device, Progress& progress);
@@ -225,7 +239,7 @@ public:
 	void need_global_attributes(AttributeRequestSet& attributes);
 
 	enum MotionType { MOTION_NONE = 0, MOTION_PASS, MOTION_BLUR };
-	MotionType need_motion(bool advanced_shading = true);
+	MotionType need_motion();
 	float motion_shutter_time();
 
 	bool need_update();

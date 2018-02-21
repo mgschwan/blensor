@@ -38,44 +38,47 @@
 
 #include "BKE_depsgraph.h"
 
+#define STATS_MAX_SIZE 16384
+
 #ifdef RNA_RUNTIME
 
-#include "BKE_report.h"
-
+#include "DEG_depsgraph_build.h"
 #include "DEG_depsgraph_debug.h"
 
-static void rna_Depsgraph_debug_graphviz(Depsgraph *graph, const char *filename)
+static void rna_Depsgraph_debug_relations_graphviz(Depsgraph *depsgraph,
+                                                   const char *filename)
 {
 	FILE *f = fopen(filename, "w");
-	if (f == NULL)
+	if (f == NULL) {
 		return;
-	
-	DEG_debug_graphviz(graph, f, "Depsgraph", false);
-	
+	}
+	DEG_debug_relations_graphviz(depsgraph, f, "Depsgraph");
 	fclose(f);
 }
 
-static void rna_Depsgraph_debug_rebuild(Depsgraph *UNUSED(graph), Main *bmain)
+static void rna_Depsgraph_debug_stats_gnuplot(Depsgraph *depsgraph,
+                                              const char *filename,
+                                              const char *output_filename)
 {
-	Scene *sce;
-	DAG_relations_tag_update(bmain);
-	for (sce = bmain->scene.first; sce; sce = sce->id.next) {
-		DAG_scene_relations_rebuild(bmain, sce);
-		DEG_graph_on_visible_update(bmain, sce);
+	FILE *f = fopen(filename, "w");
+	if (f == NULL) {
+		return;
 	}
+	DEG_debug_stats_gnuplot(depsgraph, f, "Timing Statistics", output_filename);
+	fclose(f);
 }
 
-static void rna_Depsgraph_debug_stats(Depsgraph *graph, ReportList *reports)
+static void rna_Depsgraph_debug_tag_update(Depsgraph *depsgraph)
+{
+	DEG_graph_tag_relations_update(depsgraph);
+}
+
+static void rna_Depsgraph_debug_stats(Depsgraph *depsgraph, char *result)
 {
 	size_t outer, ops, rels;
-	
-	DEG_stats_simple(graph, &outer, &ops, &rels);
-	
-	// XXX: report doesn't seem to work
-	printf("Approx %lu Operations, %lu Relations, %lu Outer Nodes\n",
-	       ops, rels, outer);
-		   
-	BKE_reportf(reports, RPT_WARNING, "Approx. %lu Operations, %lu Relations, %lu Outer Nodes",
+	DEG_stats_simple(depsgraph, &outer, &ops, &rels);
+	BLI_snprintf(result, STATS_MAX_SIZE,
+	            "Approx %lu Operations, %lu Relations, %lu Outer Nodes",
 	            ops, rels, outer);
 }
 
@@ -89,18 +92,28 @@ static void rna_def_depsgraph(BlenderRNA *brna)
 
 	srna = RNA_def_struct(brna, "Depsgraph", NULL);
 	RNA_def_struct_ui_text(srna, "Dependency Graph", "");
-	
-	func = RNA_def_function(srna, "debug_graphviz", "rna_Depsgraph_debug_graphviz");
+
+	func = RNA_def_function(srna, "debug_relations_graphviz", "rna_Depsgraph_debug_relations_graphviz");
 	parm = RNA_def_string_file_path(func, "filename", NULL, FILE_MAX, "File Name",
 	                                "File in which to store graphviz debug output");
 	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 
-	func = RNA_def_function(srna, "debug_rebuild", "rna_Depsgraph_debug_rebuild");
-	RNA_def_function_flag(func, FUNC_USE_MAIN);
+	func = RNA_def_function(srna, "debug_stats_gnuplot", "rna_Depsgraph_debug_stats_gnuplot");
+	parm = RNA_def_string_file_path(func, "filename", NULL, FILE_MAX, "File Name",
+	                                "File in which to store graphviz debug output");
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+	parm = RNA_def_string_file_path(func, "output_filename", NULL, FILE_MAX, "Output File Name",
+	                                "File name where gnuplot script will save the result");
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+
+	func = RNA_def_function(srna, "debug_tag_update", "rna_Depsgraph_debug_tag_update");
 
 	func = RNA_def_function(srna, "debug_stats", "rna_Depsgraph_debug_stats");
 	RNA_def_function_ui_description(func, "Report the number of elements in the Dependency Graph");
-	RNA_def_function_flag(func, FUNC_USE_REPORTS);
+	/* weak!, no way to return dynamic string type */
+	parm = RNA_def_string(func, "result", NULL, STATS_MAX_SIZE, "result", "");
+	RNA_def_parameter_flags(parm, PROP_THICK_WRAP, 0); /* needed for string return value */
+	RNA_def_function_output(func, parm);
 }
 
 void RNA_def_depsgraph(BlenderRNA *brna)

@@ -1522,6 +1522,10 @@ static bool is_ibuf_rect_in_display_space(ImBuf *ibuf, const ColorManagedViewSet
 	{
 		const char *from_colorspace = ibuf->rect_colorspace->name;
 		const char *to_colorspace = IMB_colormanagement_get_display_colorspace_name(view_settings, display_settings);
+		ColorManagedLook *look_descr = colormanage_look_get_named(view_settings->look);
+		if (look_descr != NULL && !STREQ(look_descr->process_space, "")) {
+			return false;
+		}
 
 		if (to_colorspace && STREQ(from_colorspace, to_colorspace))
 			return true;
@@ -2172,7 +2176,7 @@ unsigned char *IMB_display_buffer_acquire(ImBuf *ibuf, const ColorManagedViewSet
 		BLI_rcti_init(&ibuf->invalid_rect, 0, 0, 0, 0);
 	}
 
-	BLI_lock_thread(LOCK_COLORMANAGE);
+	BLI_thread_lock(LOCK_COLORMANAGE);
 
 	/* ensure color management bit fields exists */
 	if (!ibuf->display_buffer_flags) {
@@ -2190,7 +2194,7 @@ unsigned char *IMB_display_buffer_acquire(ImBuf *ibuf, const ColorManagedViewSet
 	display_buffer = colormanage_cache_get(ibuf, &cache_view_settings, &cache_display_settings, cache_handle);
 
 	if (display_buffer) {
-		BLI_unlock_thread(LOCK_COLORMANAGE);
+		BLI_thread_unlock(LOCK_COLORMANAGE);
 		return display_buffer;
 	}
 
@@ -2201,7 +2205,7 @@ unsigned char *IMB_display_buffer_acquire(ImBuf *ibuf, const ColorManagedViewSet
 
 	colormanage_cache_put(ibuf, &cache_view_settings, &cache_display_settings, display_buffer, cache_handle);
 
-	BLI_unlock_thread(LOCK_COLORMANAGE);
+	BLI_thread_unlock(LOCK_COLORMANAGE);
 
 	return display_buffer;
 }
@@ -2240,11 +2244,11 @@ void IMB_display_buffer_transform_apply(unsigned char *display_buffer, float *li
 void IMB_display_buffer_release(void *cache_handle)
 {
 	if (cache_handle) {
-		BLI_lock_thread(LOCK_COLORMANAGE);
+		BLI_thread_lock(LOCK_COLORMANAGE);
 
 		colormanage_cache_handle_release(cache_handle);
 
-		BLI_unlock_thread(LOCK_COLORMANAGE);
+		BLI_thread_unlock(LOCK_COLORMANAGE);
 	}
 }
 
@@ -2960,7 +2964,7 @@ static void imb_partial_display_buffer_update_ex(ImBuf *ibuf,
 		view_flag = 1 << (cache_view_settings.view - 1);
 		display_index = cache_display_settings.display - 1;
 
-		BLI_lock_thread(LOCK_COLORMANAGE);
+		BLI_thread_lock(LOCK_COLORMANAGE);
 
 		if ((ibuf->userflags & IB_DISPLAY_BUFFER_INVALID) == 0) {
 			display_buffer = colormanage_cache_get(ibuf,
@@ -2979,7 +2983,7 @@ static void imb_partial_display_buffer_update_ex(ImBuf *ibuf,
 		memset(ibuf->display_buffer_flags, 0, global_tot_display * sizeof(unsigned int));
 		ibuf->display_buffer_flags[display_index] |= view_flag;
 
-		BLI_unlock_thread(LOCK_COLORMANAGE);
+		BLI_thread_unlock(LOCK_COLORMANAGE);
 	}
 
 	if (display_buffer == NULL) {

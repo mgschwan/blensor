@@ -44,6 +44,7 @@ struct PanelType;
 struct Scene;
 struct uiLayout;
 struct wmTimer;
+struct wmTooltipState;
 
 typedef struct bScreen {
 	ID id;
@@ -76,6 +77,8 @@ typedef struct bScreen {
 
 	struct wmTimer *animtimer;			/* if set, screen has timer handler added in window */
 	void *context;						/* context callback */
+
+	struct wmTooltipState *tool_tip;	/* runtime */
 } bScreen;
 
 typedef struct ScrVert {
@@ -280,11 +283,11 @@ typedef struct ARegion {
 /* area->flag */
 enum {
 	HEADER_NO_PULLDOWN           = (1 << 0),
-	AREA_FLAG_DRAWJOINTO         = (1 << 1),
-	AREA_FLAG_DRAWJOINFROM       = (1 << 2),
+//	AREA_FLAG_DEPRECATED_1       = (1 << 1),
+//	AREA_FLAG_DEPRECATED_2       = (1 << 2),
 	AREA_TEMP_INFO               = (1 << 3),
-	AREA_FLAG_DRAWSPLIT_H        = (1 << 4),
-	AREA_FLAG_DRAWSPLIT_V        = (1 << 5),
+//	AREA_FLAG_DEPRECATED_4       = (1 << 4),
+//	AREA_FLAG_DEPRECATED_5       = (1 << 5),
 	/* used to check if we should switch back to prevspace (of a different type) */
 	AREA_FLAG_TEMP_TYPE          = (1 << 6),
 	/* for temporary fullscreens (file browser, image editor render) that are opened above user set fullscreens */

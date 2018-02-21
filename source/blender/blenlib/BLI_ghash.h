@@ -20,16 +20,18 @@
  *
  * The Original Code is: all of this file.
  *
- * Contributor(s): none yet.
- *
  * ***** END GPL LICENSE BLOCK *****
  */
- 
+
 #ifndef __BLI_GHASH_H__
 #define __BLI_GHASH_H__
 
 /** \file BLI_ghash.h
  *  \ingroup bli
+ *
+ * GHash is a hash-map implementation (unordered key, value pairs).
+ *
+ * This is also used to implement a 'set' (see #GSet below).
  */
 
 #include "BLI_sys_types.h" /* for bool */
@@ -43,7 +45,7 @@ extern "C" {
 #ifndef GHASH_INTERNAL_API
 #  ifdef __GNUC__
 #    undef  _GHASH_INTERNAL_ATTR
-#    define _GHASH_INTERNAL_ATTR __attribute__ ((deprecated))
+#    define _GHASH_INTERNAL_ATTR __attribute__ ((deprecated))  /* not deprecated, just private. */
 #  endif
 #endif
 
@@ -81,28 +83,34 @@ enum {
 
 /* *** */
 
-GHash *BLI_ghash_new_ex(GHashHashFP hashfp, GHashCmpFP cmpfp, const char *info,
-                        const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
-GHash *BLI_ghash_new(GHashHashFP hashfp, GHashCmpFP cmpfp, const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
-GHash *BLI_ghash_copy(GHash *gh, GHashKeyCopyFP keycopyfp,
-                      GHashValCopyFP valcopyfp) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_new_ex(
+        GHashHashFP hashfp, GHashCmpFP cmpfp, const char *info,
+        const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_new(
+        GHashHashFP hashfp, GHashCmpFP cmpfp, const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_copy(
+        GHash *gh, GHashKeyCopyFP keycopyfp,
+        GHashValCopyFP valcopyfp) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
 void   BLI_ghash_free(GHash *gh, GHashKeyFreeFP keyfreefp, GHashValFreeFP valfreefp);
 void   BLI_ghash_reserve(GHash *gh, const unsigned int nentries_reserve);
 void   BLI_ghash_insert(GHash *gh, void *key, void *val);
 bool   BLI_ghash_reinsert(GHash *gh, void *key, void *val, GHashKeyFreeFP keyfreefp, GHashValFreeFP valfreefp);
+void  *BLI_ghash_replace_key(GHash *gh, void *key);
 void  *BLI_ghash_lookup(GHash *gh, const void *key) ATTR_WARN_UNUSED_RESULT;
 void  *BLI_ghash_lookup_default(GHash *gh, const void *key, void *val_default) ATTR_WARN_UNUSED_RESULT;
 void **BLI_ghash_lookup_p(GHash *gh, const void *key) ATTR_WARN_UNUSED_RESULT;
 bool   BLI_ghash_ensure_p(GHash *gh, void *key, void ***r_val) ATTR_WARN_UNUSED_RESULT;
 bool   BLI_ghash_ensure_p_ex(GHash *gh, const void *key, void ***r_key, void ***r_val) ATTR_WARN_UNUSED_RESULT;
 bool   BLI_ghash_remove(GHash *gh, const void *key, GHashKeyFreeFP keyfreefp, GHashValFreeFP valfreefp);
-void   BLI_ghash_clear(GHash *gh, GHashKeyFreeFP keyfreefp, GHashValFreeFP valfreefp);
-void   BLI_ghash_clear_ex(GHash *gh, GHashKeyFreeFP keyfreefp, GHashValFreeFP valfreefp,
-                          const unsigned int nentries_reserve);
+void   BLI_ghash_clear(
+        GHash *gh, GHashKeyFreeFP keyfreefp, GHashValFreeFP valfreefp);
+void   BLI_ghash_clear_ex(
+        GHash *gh, GHashKeyFreeFP keyfreefp, GHashValFreeFP valfreefp,
+        const unsigned int nentries_reserve);
 void  *BLI_ghash_popkey(GHash *gh, const void *key, GHashKeyFreeFP keyfreefp) ATTR_WARN_UNUSED_RESULT;
 bool   BLI_ghash_haskey(GHash *gh, const void *key) ATTR_WARN_UNUSED_RESULT;
 bool   BLI_ghash_pop(GHash *gh, GHashIterState *state, void **r_key, void **r_val) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
-unsigned int BLI_ghash_size(GHash *gh) ATTR_WARN_UNUSED_RESULT;
+unsigned int BLI_ghash_len(GHash *gh) ATTR_WARN_UNUSED_RESULT;
 void   BLI_ghash_flag_set(GHash *gh, unsigned int flag);
 void   BLI_ghash_flag_clear(GHash *gh, unsigned int flag);
 
@@ -192,18 +200,26 @@ bool            BLI_ghashutil_uinthash_v4_cmp(const void *a, const void *b);
 
 /** \} */
 
-GHash          *BLI_ghash_ptr_new_ex(const char *info,
-                                     const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
-GHash          *BLI_ghash_ptr_new(const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
-GHash          *BLI_ghash_str_new_ex(const char *info,
-                                     const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
-GHash          *BLI_ghash_str_new(const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
-GHash          *BLI_ghash_int_new_ex(const char *info,
-                                     const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
-GHash          *BLI_ghash_int_new(const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
-GHash          *BLI_ghash_pair_new_ex(const char *info,
-                                      const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
-GHash          *BLI_ghash_pair_new(const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_ptr_new_ex(
+        const char *info,
+        const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_ptr_new(
+        const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_str_new_ex(
+        const char *info,
+        const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_str_new(
+        const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_int_new_ex(
+        const char *info,
+        const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_int_new(
+        const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_pair_new_ex(
+        const char *info,
+        const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GHash *BLI_ghash_pair_new(
+        const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
 
 typedef struct GHashPair {
 	const void *first;
@@ -215,8 +231,12 @@ unsigned int    BLI_ghashutil_pairhash(const void *ptr);
 bool            BLI_ghashutil_paircmp(const void *a, const void *b);
 void            BLI_ghashutil_pairfree(void *ptr);
 
-
-/* *** */
+/**
+ * GSet is a 'set' implementation (unordered collection of unique elements).
+ *
+ * Internally this is a 'GHash' without any keys,
+ * which is why this API's are in the same header & source file.
+ */
 
 typedef struct GSet GSet;
 
@@ -236,11 +256,12 @@ typedef struct GSetIterator {
 	;
 } GSetIterator;
 
-GSet  *BLI_gset_new_ex(GSetHashFP hashfp, GSetCmpFP cmpfp, const char *info,
-                       const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
+GSet  *BLI_gset_new_ex(
+        GSetHashFP hashfp, GSetCmpFP cmpfp, const char *info,
+        const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
 GSet  *BLI_gset_new(GSetHashFP hashfp, GSetCmpFP cmpfp, const char *info) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
 GSet  *BLI_gset_copy(GSet *gs, GSetKeyCopyFP keycopyfp) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
-unsigned int BLI_gset_size(GSet *gs) ATTR_WARN_UNUSED_RESULT;
+unsigned int BLI_gset_len(GSet *gs) ATTR_WARN_UNUSED_RESULT;
 void   BLI_gset_flag_set(GSet *gs, unsigned int flag);
 void   BLI_gset_flag_clear(GSet *gs, unsigned int flag);
 void   BLI_gset_free(GSet *gs, GSetKeyFreeFP keyfreefp);
@@ -248,12 +269,17 @@ void   BLI_gset_insert(GSet *gh, void *key);
 bool   BLI_gset_add(GSet *gs, void *key);
 bool   BLI_gset_ensure_p_ex(GSet *gs, const void *key, void ***r_key);
 bool   BLI_gset_reinsert(GSet *gh, void *key, GSetKeyFreeFP keyfreefp);
+void  *BLI_gset_replace_key(GSet *gs, void *key);
 bool   BLI_gset_haskey(GSet *gs, const void *key) ATTR_WARN_UNUSED_RESULT;
 bool   BLI_gset_pop(GSet *gs, GSetIterState *state, void **r_key) ATTR_WARN_UNUSED_RESULT ATTR_NONNULL();
 bool   BLI_gset_remove(GSet *gs, const void *key, GSetKeyFreeFP keyfreefp);
 void   BLI_gset_clear_ex(GSet *gs, GSetKeyFreeFP keyfreefp,
                          const unsigned int nentries_reserve);
 void   BLI_gset_clear(GSet *gs, GSetKeyFreeFP keyfreefp);
+
+/* When set's are used for key & value. */
+void  *BLI_gset_lookup(GSet *gh, const void *key) ATTR_WARN_UNUSED_RESULT;
+void  *BLI_gset_pop_key(GSet *gs, const void *key) ATTR_WARN_UNUSED_RESULT;
 
 GSet *BLI_gset_ptr_new_ex(const char *info, const unsigned int nentries_reserve) ATTR_MALLOC ATTR_WARN_UNUSED_RESULT;
 GSet *BLI_gset_ptr_new(const char *info);
@@ -283,8 +309,8 @@ BLI_INLINE bool BLI_gsetIterator_done(GSetIterator *gsi) { return BLI_ghashItera
 
 /* For testing, debugging only */
 #ifdef GHASH_INTERNAL_API
-int BLI_ghash_buckets_size(GHash *gh);
-int BLI_gset_buckets_size(GSet *gs);
+int BLI_ghash_buckets_len(GHash *gh);
+int BLI_gset_buckets_len(GSet *gs);
 
 double BLI_ghash_calc_quality_ex(
         GHash *gh, double *r_load, double *r_variance,

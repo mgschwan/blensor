@@ -116,14 +116,21 @@ add_test(
 # ------------------------------------------------------------------------------
 # MODELING TESTS
 add_test(
-	NAME bevel
+	NAME bmesh_bevel
 	COMMAND "$<TARGET_FILE:blender>" ${TEST_BLENDER_EXE_PARAMS}
 	${TEST_SRC_DIR}/modeling/bevel_regression.blend
 	--python-text run_tests
 )
 
 add_test(
-	NAME split_faces
+	NAME bmesh_boolean
+	COMMAND "$<TARGET_FILE:blender>" ${TEST_BLENDER_EXE_PARAMS}
+	${TEST_SRC_DIR}/modeling/bool_regression.blend
+	--python-text run_tests
+)
+
+add_test(
+	NAME bmesh_split_faces
 	COMMAND "$<TARGET_FILE:blender>" ${TEST_BLENDER_EXE_PARAMS}
 	${TEST_SRC_DIR}/modeling/split_faces_test.blend
 	--python-text run_tests
@@ -132,7 +139,7 @@ add_test(
 # ------------------------------------------------------------------------------
 # MODIFIERS TESTS
 add_test(
-	NAME modifier_array
+	NAME object_modifier_array
 	COMMAND "$<TARGET_FILE:blender>" ${TEST_BLENDER_EXE_PARAMS}
 	${TEST_SRC_DIR}/modifier_stack/array_test.blend
 	--python-text run_tests
@@ -518,6 +525,7 @@ if(WITH_CYCLES)
 					-blender "$<TARGET_FILE:blender>"
 					-testdir "${TEST_SRC_DIR}/cycles/ctests/${subject}"
 					-idiff "${OPENIMAGEIO_IDIFF}"
+					-outdir "${TEST_OUT_DIR}/cycles"
 				)
 			else()
 				add_test(
@@ -526,17 +534,29 @@ if(WITH_CYCLES)
 					-blender "$<TARGET_FILE:blender>"
 					-testdir "${TEST_SRC_DIR}/cycles/ctests/${subject}"
 					-idiff "${OPENIMAGEIO_IDIFF}"
+					-outdir "${TEST_OUT_DIR}/cycles"
 				)
 			endif()
 		endmacro()
 		if(WITH_OPENGL_TESTS)
 			add_cycles_render_test(opengl)
 		endif()
-		add_cycles_render_test(image)
+		add_cycles_render_test(bake)
+		add_cycles_render_test(denoise)
+		add_cycles_render_test(displacement)
+		add_cycles_render_test(image_data_types)
+		add_cycles_render_test(image_mapping)
+		add_cycles_render_test(image_texture_limit)
+		add_cycles_render_test(light)
 		add_cycles_render_test(mblur)
 		add_cycles_render_test(reports)
 		add_cycles_render_test(render)
 		add_cycles_render_test(shader)
+		add_cycles_render_test(shader_tangent)
+		add_cycles_render_test(shadow_catcher)
+		add_cycles_render_test(sss)
+		add_cycles_render_test(texture_space)
+		add_cycles_render_test(volume)
 	else()
 		MESSAGE(STATUS "Disabling Cycles tests because tests folder does not exist")
 	endif()

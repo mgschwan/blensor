@@ -190,7 +190,7 @@ void BKE_tracking_free(MovieTracking *tracking)
 }
 
 /* Copy the whole list of tracks. */
-static void tracking_tracks_copy(ListBase *tracks_dst, const ListBase *tracks_src, GHash *tracks_mapping)
+static void tracking_tracks_copy(ListBase *tracks_dst, const ListBase *tracks_src, GHash *tracks_mapping, const int flag)
 {
 	MovieTrackingTrack *track_dst, *track_src;
 
@@ -202,7 +202,9 @@ static void tracking_tracks_copy(ListBase *tracks_dst, const ListBase *tracks_sr
 		if (track_src->markers) {
 			track_dst->markers = MEM_dupallocN(track_src->markers);
 		}
-		id_us_plus(&track_dst->gpd->id);
+		if ((flag & LIB_ID_CREATE_NO_USER_REFCOUNT) == 0) {
+			id_us_plus(&track_dst->gpd->id);
+		}
 		BLI_addtail(tracks_dst, track_dst);
 		BLI_ghash_insert(tracks_mapping, track_src, track_dst);
 	}
@@ -210,7 +212,8 @@ static void tracking_tracks_copy(ListBase *tracks_dst, const ListBase *tracks_sr
 
 /* copy the whole list of plane tracks (need whole MovieTracking structures due to embedded pointers to tracks).
  * WARNING: implies tracking_[dst/src] and their tracks have already been copied. */
-static void tracking_plane_tracks_copy(ListBase *plane_tracks_dst, const ListBase *plane_tracks_src, GHash *tracks_mapping)
+static void tracking_plane_tracks_copy(
+        ListBase *plane_tracks_dst, const ListBase *plane_tracks_src, GHash *tracks_mapping, const int flag)
 {
 	MovieTrackingPlaneTrack *plane_track_dst, *plane_track_src;
 
@@ -225,14 +228,17 @@ static void tracking_plane_tracks_copy(ListBase *plane_tracks_dst, const ListBas
 		for (int i = 0; i < plane_track_dst->point_tracksnr; i++) {
 			plane_track_dst->point_tracks[i] = BLI_ghash_lookup(tracks_mapping, plane_track_src->point_tracks[i]);
 		}
-		id_us_plus(&plane_track_dst->image->id);
+		if ((flag & LIB_ID_CREATE_NO_USER_REFCOUNT) == 0) {
+			id_us_plus(&plane_track_dst->image->id);
+		}
 		BLI_addtail(plane_tracks_dst, plane_track_dst);
 	}
 }
 
 /* Copy reconstruction structure. */
 static void tracking_reconstruction_copy(
-        MovieTrackingReconstruction *reconstruction_dst, const MovieTrackingReconstruction *reconstruction_src)
+        MovieTrackingReconstruction *reconstruction_dst, const MovieTrackingReconstruction *reconstruction_src,
+        const int UNUSED(flag))
 {
 	*reconstruction_dst = *reconstruction_src;
 	if (reconstruction_src->cameras) {
@@ -242,23 +248,25 @@ static void tracking_reconstruction_copy(
 
 /* Copy stabilization structure. */
 static void tracking_stabilization_copy(
-        MovieTrackingStabilization *stabilization_dst, const MovieTrackingStabilization *stabilization_src)
+        MovieTrackingStabilization *stabilization_dst, const MovieTrackingStabilization *stabilization_src,
+        const int UNUSED(flag))
 {
 	*stabilization_dst = *stabilization_src;
 }
 
 /* Copy tracking object. */
 static void tracking_object_copy(
-        MovieTrackingObject *object_dst, const MovieTrackingObject *object_src, GHash *tracks_mapping)
+        MovieTrackingObject *object_dst, const MovieTrackingObject *object_src, GHash *tracks_mapping, const int flag)
 {
 	*object_dst = *object_src;
-	tracking_tracks_copy(&object_dst->tracks, &object_src->tracks, tracks_mapping);
-	tracking_plane_tracks_copy(&object_dst->plane_tracks, &object_src->plane_tracks, tracks_mapping);
-	tracking_reconstruction_copy(&object_dst->reconstruction, &object_src->reconstruction);
+	tracking_tracks_copy(&object_dst->tracks, &object_src->tracks, tracks_mapping, flag);
+	tracking_plane_tracks_copy(&object_dst->plane_tracks, &object_src->plane_tracks, tracks_mapping, flag);
+	tracking_reconstruction_copy(&object_dst->reconstruction, &object_src->reconstruction, flag);
 }
 
 /* Copy list of tracking objects. */
-static void tracking_objects_copy(ListBase *objects_dst, const ListBase *objects_src, GHash *tracks_mapping)
+static void tracking_objects_copy(
+        ListBase *objects_dst, const ListBase *objects_src, GHash *tracks_mapping, const int flag)
 {
 	MovieTrackingObject *object_dst, *object_src;
 
@@ -266,22 +274,22 @@ static void tracking_objects_copy(ListBase *objects_dst, const ListBase *objects
 
 	for (object_src = objects_src->first; object_src != NULL; object_src = object_src->next) {
 		object_dst = MEM_mallocN(sizeof(*object_dst), __func__);
-		tracking_object_copy(object_dst, object_src, tracks_mapping);
+		tracking_object_copy(object_dst, object_src, tracks_mapping, flag);
 		BLI_addtail(objects_dst, object_dst);
 	}
 }
 
 /* Copy tracking structure content. */
-void BKE_tracking_copy(MovieTracking *tracking_dst, const MovieTracking *tracking_src)
+void BKE_tracking_copy(MovieTracking *tracking_dst, const MovieTracking *tracking_src, const int flag)
 {
 	GHash *tracks_mapping = BLI_ghash_ptr_new(__func__);
 
 	*tracking_dst = *tracking_src;
 
-	tracking_tracks_copy(&tracking_dst->tracks, &tracking_src->tracks, tracks_mapping);
-	tracking_plane_tracks_copy(&tracking_dst->plane_tracks, &tracking_src->plane_tracks, tracks_mapping);
-	tracking_reconstruction_copy(&tracking_dst->reconstruction, &tracking_src->reconstruction);
-	tracking_stabilization_copy(&tracking_dst->stabilization, &tracking_src->stabilization);
+	tracking_tracks_copy(&tracking_dst->tracks, &tracking_src->tracks, tracks_mapping, flag);
+	tracking_plane_tracks_copy(&tracking_dst->plane_tracks, &tracking_src->plane_tracks, tracks_mapping, flag);
+	tracking_reconstruction_copy(&tracking_dst->reconstruction, &tracking_src->reconstruction, flag);
+	tracking_stabilization_copy(&tracking_dst->stabilization, &tracking_src->stabilization, flag);
 	if (tracking_src->act_track) {
 		tracking_dst->act_track = BLI_ghash_lookup(tracks_mapping, tracking_src->act_track);
 	}
@@ -299,7 +307,7 @@ void BKE_tracking_copy(MovieTracking *tracking_dst, const MovieTracking *trackin
 	}
 
 	/* Warning! Will override tracks_mapping. */
-	tracking_objects_copy(&tracking_dst->objects, &tracking_src->objects, tracks_mapping);
+	tracking_objects_copy(&tracking_dst->objects, &tracking_src->objects, tracks_mapping, flag);
 
 	/* Those remaining are runtime data, they will be reconstructed as needed, do not bother copying them. */
 	tracking_dst->dopesheet.ok = false;
@@ -2895,4 +2903,156 @@ void BKE_tracking_dopesheet_update(MovieTracking *tracking)
 	tracking_dopesheet_calc_coverage(tracking);
 
 	dopesheet->ok = true;
+}
+
+/* NOTE: Returns NULL if the track comes from camera object, */
+MovieTrackingObject *BKE_tracking_find_object_for_track(
+        const MovieTracking *tracking,
+        const MovieTrackingTrack *track)
+{
+	const ListBase *tracksbase = &tracking->tracks;
+	if (BLI_findindex(tracksbase, track) != -1) {
+		return NULL;
+	}
+	MovieTrackingObject *object = tracking->objects.first;
+	while (object != NULL) {
+		if (BLI_findindex(&object->tracks, track) != -1) {
+			return object;
+		}
+		object = object->next;
+	}
+	return NULL;
+}
+
+ListBase *BKE_tracking_find_tracks_list_for_track(
+        MovieTracking *tracking,
+        const MovieTrackingTrack *track)
+{
+	MovieTrackingObject *object = BKE_tracking_find_object_for_track(tracking,
+	                                                                 track);
+	if (object != NULL) {
+		return &object->tracks;
+	}
+	return &tracking->tracks;
+}
+
+/* NOTE: Returns NULL if the track comes from camera object, */
+MovieTrackingObject *BKE_tracking_find_object_for_plane_track(
+        const MovieTracking *tracking,
+        const MovieTrackingPlaneTrack *plane_track)
+{
+	const ListBase *plane_tracks_base = &tracking->plane_tracks;
+	if (BLI_findindex(plane_tracks_base, plane_track) != -1) {
+		return NULL;
+	}
+	MovieTrackingObject *object = tracking->objects.first;
+	while (object != NULL) {
+		if (BLI_findindex(&object->plane_tracks, plane_track) != -1) {
+			return object;
+		}
+		object = object->next;
+	}
+	return NULL;
+}
+
+ListBase *BKE_tracking_find_tracks_list_for_plane_track(
+        MovieTracking *tracking,
+        const MovieTrackingPlaneTrack *plane_track)
+{
+	MovieTrackingObject *object =
+	        BKE_tracking_find_object_for_plane_track(tracking, plane_track);
+	if (object != NULL) {
+		return &object->plane_tracks;
+	}
+	return &tracking->plane_tracks;
+}
+
+void BKE_tracking_get_rna_path_for_track(
+        const struct MovieTracking *tracking,
+        const struct MovieTrackingTrack *track,
+        char *rna_path,
+        size_t rna_path_len)
+{
+	MovieTrackingObject *object =
+	        BKE_tracking_find_object_for_track(tracking, track);
+	char track_name_esc[MAX_NAME * 2];
+	BLI_strescape(track_name_esc, track->name, sizeof(track_name_esc));
+	if (object == NULL) {
+		BLI_snprintf(rna_path, rna_path_len,
+		             "tracking.tracks[\"%s\"]",
+		             track_name_esc);
+	}
+	else {
+		char object_name_esc[MAX_NAME * 2];
+		BLI_strescape(object_name_esc, object->name, sizeof(object_name_esc));
+		BLI_snprintf(rna_path, rna_path_len,
+		             "tracking.objects[\"%s\"].tracks[\"%s\"]",
+		             object_name_esc,
+		             track_name_esc);
+	}
+}
+
+void BKE_tracking_get_rna_path_prefix_for_track(
+        const struct MovieTracking *tracking,
+        const struct MovieTrackingTrack *track,
+        char *rna_path,
+        size_t rna_path_len)
+{
+	MovieTrackingObject *object =
+	        BKE_tracking_find_object_for_track(tracking, track);
+	if (object == NULL) {
+		BLI_snprintf(rna_path, rna_path_len, "tracking.tracks");
+	}
+	else {
+		char object_name_esc[MAX_NAME * 2];
+		BLI_strescape(object_name_esc, object->name, sizeof(object_name_esc));
+		BLI_snprintf(rna_path, rna_path_len,
+		             "tracking.objects[\"%s\"]",
+		             object_name_esc);
+	}
+}
+
+void BKE_tracking_get_rna_path_for_plane_track(
+        const struct MovieTracking *tracking,
+        const struct MovieTrackingPlaneTrack *plane_track,
+        char *rna_path,
+        size_t rna_path_len)
+{
+	MovieTrackingObject *object =
+	        BKE_tracking_find_object_for_plane_track(tracking, plane_track);
+	char track_name_esc[MAX_NAME * 2];
+	BLI_strescape(track_name_esc, plane_track->name, sizeof(track_name_esc));
+	if (object == NULL) {
+		BLI_snprintf(rna_path, rna_path_len,
+		             "tracking.plane_tracks[\"%s\"]",
+		             track_name_esc);
+	}
+	else {
+		char object_name_esc[MAX_NAME * 2];
+		BLI_strescape(object_name_esc, object->name, sizeof(object_name_esc));
+		BLI_snprintf(rna_path, rna_path_len,
+		             "tracking.objects[\"%s\"].plane_tracks[\"%s\"]",
+		             object_name_esc,
+		             track_name_esc);
+	}
+}
+
+void BKE_tracking_get_rna_path_prefix_for_plane_track(
+        const struct MovieTracking *tracking,
+        const struct MovieTrackingPlaneTrack *plane_track,
+        char *rna_path,
+        size_t rna_path_len)
+{
+	MovieTrackingObject *object =
+	        BKE_tracking_find_object_for_plane_track(tracking, plane_track);
+	if (object == NULL) {
+		BLI_snprintf(rna_path, rna_path_len, "tracking.plane_tracks");
+	}
+	else {
+		char object_name_esc[MAX_NAME * 2];
+		BLI_strescape(object_name_esc, object->name, sizeof(object_name_esc));
+		BLI_snprintf(rna_path, rna_path_len,
+		             "tracking.objects[\"%s\"].plane_tracks",
+		             object_name_esc);
+	}
 }

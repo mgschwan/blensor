@@ -26,6 +26,7 @@ set(SRC
 	device_cpu.cpp
 	device_cuda.cpp
 	device_denoising.cpp
+	device_memory.cpp
 	device_multi.cpp
 	device_opencl.cpp
 	device_split_kernel.cpp
@@ -34,11 +35,13 @@ set(SRC
 
 set(SRC_OPENCL
 	opencl/opencl.h
+	opencl/memory_manager.h
 
 	opencl/opencl_base.cpp
 	opencl/opencl_mega.cpp
 	opencl/opencl_split.cpp
 	opencl/opencl_util.cpp
+	opencl/memory_manager.cpp
 )
 
 if(WITH_CYCLES_NETWORK)
@@ -74,4 +77,4 @@ endif()
 include_directories(${INC})
 include_directories(SYSTEM ${INC_SYS})
 
-add_library(cycles_device ${SRC} ${SRC_OPENCL} ${SRC_HEADERS})
+cycles_add_library(cycles_device ${SRC} ${SRC_OPENCL} ${SRC_HEADERS})

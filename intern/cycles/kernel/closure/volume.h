@@ -19,13 +19,26 @@
 
 CCL_NAMESPACE_BEGIN
 
+/* VOLUME EXTINCTION */
+
+ccl_device void volume_extinction_setup(ShaderData *sd, float3 weight)
+{
+	if(sd->flag & SD_EXTINCTION) {
+		sd->closure_transparent_extinction += weight;
+	}
+	else {
+		sd->flag |= SD_EXTINCTION;
+		sd->closure_transparent_extinction = weight;
+	}
+}
+
+/* HENYEY-GREENSTEIN CLOSURE */
+
 typedef ccl_addr_space struct HenyeyGreensteinVolume {
 	SHADER_CLOSURE_BASE;
 
 	float g;
 } HenyeyGreensteinVolume;
-
-/* HENYEY-GREENSTEIN CLOSURE */
 
 /* Given cosine between rays, return probability density that a photon bounces
  * to that direction. The g parameter controls how different it is from the
@@ -70,35 +83,45 @@ ccl_device float3 volume_henyey_greenstein_eval_phase(const ShaderClosure *sc, c
 	return make_float3(*pdf, *pdf, *pdf);
 }
 
+ccl_device float3 henyey_greenstrein_sample(float3 D, float g, float randu, float randv, float *pdf)
+{
+	/* match pdf for small g */
+	float cos_theta;
+	bool isotropic = fabsf(g) < 1e-3f;
+
+	if(isotropic) {
+		cos_theta = (1.0f - 2.0f * randu);
+		if(pdf) {
+			*pdf = M_1_PI_F * 0.25f;
+		}
+	}
+	else {
+		float k = (1.0f - g * g) / (1.0f - g + 2.0f * g * randu);
+		cos_theta = (1.0f + g * g - k * k) / (2.0f * g);
+		if(pdf) {
+			*pdf = single_peaked_henyey_greenstein(cos_theta, g);
+		}
+	}
+
+	float sin_theta = safe_sqrtf(1.0f - cos_theta * cos_theta);
+	float phi = M_2PI_F * randv;
+	float3 dir = make_float3(sin_theta * cosf(phi), sin_theta * sinf(phi), cos_theta);
+
+	float3 T, B;
+	make_orthonormals(D, &T, &B);
+	dir = dir.x * T + dir.y * B + dir.z * D;
+
+	return dir;
+}
+
 ccl_device int volume_henyey_greenstein_sample(const ShaderClosure *sc, float3 I, float3 dIdx, float3 dIdy, float randu, float randv,
 	float3 *eval, float3 *omega_in, float3 *domega_in_dx, float3 *domega_in_dy, float *pdf)
 {
 	const HenyeyGreensteinVolume *volume = (const HenyeyGreensteinVolume*)sc;
 	float g = volume->g;
-	float cos_phi, sin_phi, cos_theta;
-
-	/* match pdf for small g */
-	if(fabsf(g) < 1e-3f) {
-		cos_theta = (1.0f - 2.0f * randu);
-		*pdf = M_1_PI_F * 0.25f;
-	}
-	else {
-		float k = (1.0f - g * g) / (1.0f - g + 2.0f * g * randu);
-		cos_theta = (1.0f + g * g - k * k) / (2.0f * g);
-		*pdf = single_peaked_henyey_greenstein(cos_theta, g);
-	}
-
-	float sin_theta = safe_sqrtf(1.0f - cos_theta * cos_theta);
-
-	float phi = M_2PI_F * randv;
-	cos_phi = cosf(phi);
-	sin_phi = sinf(phi);
 
 	/* note that I points towards the viewer and so is used negated */
-	float3 T, B;
-	make_orthonormals(-I, &T, &B);
-	*omega_in = sin_theta * cos_phi * T + sin_theta * sin_phi * B + cos_theta * (-I);
-
+	*omega_in = henyey_greenstrein_sample(-I, g, randu, randv, pdf);
 	*eval = make_float3(*pdf, *pdf, *pdf); /* perfect importance sampling */
 
 #ifdef __RAY_DIFFERENTIALS__
@@ -108,15 +131,6 @@ ccl_device int volume_henyey_greenstein_sample(const ShaderClosure *sc, float3 I
 #endif
 
 	return LABEL_VOLUME_SCATTER;
-}
-
-/* ABSORPTION VOLUME CLOSURE */
-
-ccl_device int volume_absorption_setup(ShaderClosure *sc)
-{
-	sc->type = CLOSURE_VOLUME_ABSORPTION_ID;
-
-	return SD_ABSORPTION;
 }
 
 /* VOLUME CLOSURE */

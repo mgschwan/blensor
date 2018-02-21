@@ -60,7 +60,7 @@ public:
 
 	ParticleSystem *particle_system;
 	int particle_index;
-	
+
 	Object();
 	~Object();
 
@@ -75,6 +75,11 @@ public:
 	 * kernel scene.
 	 */
 	bool is_traceable();
+
+	/* Combine object's visibility with all possible internal run-time
+	 * determined flags which denotes trace-time visibility.
+	 */
+	uint visibility_for_tracing() const;
 };
 
 /* Object Manager */
@@ -88,8 +93,7 @@ public:
 	~ObjectManager();
 
 	void device_update(Device *device, DeviceScene *dscene, Scene *scene, Progress& progress);
-	void device_update_transforms(Device *device,
-	                              DeviceScene *dscene,
+	void device_update_transforms(DeviceScene *dscene,
 	                              Scene *scene,
 	                              uint *object_flag,
 	                              Progress& progress);
@@ -99,7 +103,7 @@ public:
 	                         Scene *scene,
 	                         Progress& progress,
 	                         bool bounds_valid = true);
-	void device_update_patch_map_offsets(Device *device, DeviceScene *dscene, Scene *scene);
+	void device_update_mesh_offsets(Device *device, DeviceScene *dscene, Scene *scene);
 
 	void device_free(Device *device, DeviceScene *dscene);
 
@@ -109,7 +113,7 @@ public:
 
 protected:
 	/* Global state of object transform update. */
-	struct UpdateObejctTransformState {
+	struct UpdateObjectTransformState {
 		/* Global state used by device_update_object_transform().
 		 * Common for both threaded and non-threaded update.
 		 */
@@ -148,12 +152,12 @@ protected:
 		/* First unused object index in the queue. */
 		int queue_start_object;
 	};
-	void device_update_object_transform(UpdateObejctTransformState *state,
+	void device_update_object_transform(UpdateObjectTransformState *state,
 	                                    Object *ob,
 	                                    const int object_index);
-	void device_update_object_transform_task(UpdateObejctTransformState *state);
+	void device_update_object_transform_task(UpdateObjectTransformState *state);
 	bool device_update_object_transform_pop_work(
-	        UpdateObejctTransformState *state,
+	        UpdateObjectTransformState *state,
 	        int *start_index,
 	        int *num_objects);
 };

@@ -20,137 +20,67 @@ CCL_NAMESPACE_BEGIN
  *
  * BSSRDF Importance Sampling, SIGGRAPH 2013
  * http://library.imageworks.com/pdfs/imageworks-library-BSSRDF-sampling.pdf
- *
  */
-
-/* TODO:
- * - test using power heuristic for combing bssrdfs
- * - try to reduce one sample model variance
- */
-
-#define BSSRDF_MULTI_EVAL
-
-ccl_device ShaderClosure *subsurface_scatter_pick_closure(KernelGlobals *kg, ShaderData *sd, float *probability)
-{
-	/* sum sample weights of bssrdf and bsdf */
-	float bsdf_sum = 0.0f;
-	float bssrdf_sum = 0.0f;
-
-	for(int i = 0; i < sd->num_closure; i++) {
-		ShaderClosure *sc = &sd->closure[i];
-		
-		if(CLOSURE_IS_BSDF(sc->type))
-			bsdf_sum += sc->sample_weight;
-		else if(CLOSURE_IS_BSSRDF(sc->type))
-			bssrdf_sum += sc->sample_weight;
-	}
-
-	/* use bsdf or bssrdf? */
-	float r = sd->randb_closure*(bsdf_sum + bssrdf_sum);
-
-	if(r < bsdf_sum) {
-		/* use bsdf, and adjust randb so we can reuse it for picking a bsdf */
-		sd->randb_closure = r/bsdf_sum;
-		*probability = (bsdf_sum > 0.0f)? (bsdf_sum + bssrdf_sum)/bsdf_sum: 1.0f;
-		return NULL;
-	}
-
-	/* use bssrdf */
-	r -= bsdf_sum;
-
-	float sum = 0.0f;
-
-	for(int i = 0; i < sd->num_closure; i++) {
-		ShaderClosure *sc = &sd->closure[i];
-		
-		if(CLOSURE_IS_BSSRDF(sc->type)) {
-			sum += sc->sample_weight;
-
-			if(r <= sum) {
-				sd->randb_closure = (r - (sum - sc->sample_weight))/sc->sample_weight;
-
-#ifdef BSSRDF_MULTI_EVAL
-				*probability = (bssrdf_sum > 0.0f)? (bsdf_sum + bssrdf_sum)/bssrdf_sum: 1.0f;
-#else
-				*probability = (bssrdf_sum > 0.0f)? (bsdf_sum + bssrdf_sum)/sc->sample_weight: 1.0f;
-#endif
-				return sc;
-			}
-		}
-	}
-
-	/* should never happen */
-	sd->randb_closure = 0.0f;
-	*probability = 1.0f;
-	return NULL;
-}
 
 ccl_device_inline float3 subsurface_scatter_eval(ShaderData *sd,
-                                                 ShaderClosure *sc,
+                                                 const ShaderClosure *sc,
                                                  float disk_r,
                                                  float r,
                                                  bool all)
 {
-#ifdef BSSRDF_MULTI_EVAL
 	/* this is the veach one-sample model with balance heuristic, some pdf
 	 * factors drop out when using balance heuristic weighting */
 	float3 eval_sum = make_float3(0.0f, 0.0f, 0.0f);
 	float pdf_sum = 0.0f;
-	float sample_weight_sum = 0.0f;
-	int num_bssrdf = 0;
+	float sample_weight_inv = 0.0f;
 
-	for(int i = 0; i < sd->num_closure; i++) {
-		sc = &sd->closure[i];
-		
-		if(CLOSURE_IS_BSSRDF(sc->type)) {
-			float sample_weight = (all)? 1.0f: sc->sample_weight;
-			sample_weight_sum += sample_weight;
+	if(!all) {
+		float sample_weight_sum = 0.0f;
+
+		for(int i = 0; i < sd->num_closure; i++) {
+			sc = &sd->closure[i];
+
+			if(CLOSURE_IS_DISK_BSSRDF(sc->type)) {
+				sample_weight_sum += sc->sample_weight;
+			}
 		}
+
+		sample_weight_inv = 1.0f/sample_weight_sum;
 	}
 
-	float sample_weight_inv = 1.0f/sample_weight_sum;
-
 	for(int i = 0; i < sd->num_closure; i++) {
 		sc = &sd->closure[i];
 		
-		if(CLOSURE_IS_BSSRDF(sc->type)) {
+		if(CLOSURE_IS_DISK_BSSRDF(sc->type)) {
 			/* in case of branched path integrate we sample all bssrdf's once,
 			 * for path trace we pick one, so adjust pdf for that */
 			float sample_weight = (all)? 1.0f: sc->sample_weight * sample_weight_inv;
 
 			/* compute pdf */
-			float pdf = bssrdf_pdf(sc, r);
-			float disk_pdf = bssrdf_pdf(sc, disk_r);
+			float3 eval = bssrdf_eval(sc, r);
+			float pdf = bssrdf_pdf(sc, disk_r);
 
-			/* TODO power heuristic is not working correct here */
-			eval_sum += sc->weight*pdf; //*sample_weight*disk_pdf;
-			pdf_sum += sample_weight*disk_pdf; //*sample_weight*disk_pdf;
-
-			num_bssrdf++;
+			eval_sum += sc->weight * eval;
+			pdf_sum += sample_weight * pdf;
 		}
 	}
 
 	return (pdf_sum > 0.0f)? eval_sum / pdf_sum : make_float3(0.0f, 0.0f, 0.0f);
-#else
-	float pdf = bssrdf_pdf(pick_sc, r);
-	float disk_pdf = bssrdf_pdf(pick_sc, disk_r);
-
-	return pick_sc->weight * pdf / disk_pdf;
-#endif
 }
 
 /* replace closures with a single diffuse bsdf closure after scatter step */
-ccl_device void subsurface_scatter_setup_diffuse_bsdf(ShaderData *sd, ShaderClosure *sc, float3 weight, bool hit, float3 N)
+ccl_device void subsurface_scatter_setup_diffuse_bsdf(KernelGlobals *kg, ShaderData *sd, const ShaderClosure *sc, float3 weight, bool hit, float3 N)
 {
 	sd->flag &= ~SD_CLOSURE_FLAGS;
-	sd->randb_closure = 0.0f;
 	sd->num_closure = 0;
-	sd->num_closure_extra = 0;
+	sd->num_closure_left = kernel_data.integrator.max_closures;
 
 	if(hit) {
 		Bssrdf *bssrdf = (Bssrdf *)sc;
 #ifdef __PRINCIPLED__
-		if(bssrdf->type == CLOSURE_BSSRDF_PRINCIPLED_ID) {
+		if(bssrdf->type == CLOSURE_BSSRDF_PRINCIPLED_ID ||
+		   bssrdf->type == CLOSURE_BSSRDF_PRINCIPLED_RANDOM_WALK_ID)
+		{
 			PrincipledDiffuseBsdf *bsdf = (PrincipledDiffuseBsdf*)bsdf_alloc(sd, sizeof(PrincipledDiffuseBsdf), weight);
 
 			if(bsdf) {
@@ -206,7 +136,6 @@ ccl_device float3 subsurface_color_pow(float3 color, float exponent)
 ccl_device void subsurface_color_bump_blur(KernelGlobals *kg,
                                            ShaderData *sd,
                                            ccl_addr_space PathState *state,
-                                           int state_flag,
                                            float3 *eval,
                                            float3 *N)
 {
@@ -219,7 +148,7 @@ ccl_device void subsurface_color_bump_blur(KernelGlobals *kg,
 
 	if(bump || texture_blur > 0.0f) {
 		/* average color and normal at incoming point */
-		shader_eval_surface(kg, sd, NULL, state, 0.0f, state_flag, SHADER_CONTEXT_SSS);
+		shader_eval_surface(kg, sd, state, state->flag, kernel_data.integrator.max_closures);
 		float3 in_color = shader_bssrdf_sum(sd, (bump)? N: NULL, NULL);
 
 		/* we simply divide out the average color and multiply with the average
@@ -238,12 +167,12 @@ ccl_device void subsurface_color_bump_blur(KernelGlobals *kg,
 /* Subsurface scattering step, from a point on the surface to other
  * nearby points on the same object.
  */
-ccl_device_inline int subsurface_scatter_multi_intersect(
+ccl_device_inline int subsurface_scatter_disk(
         KernelGlobals *kg,
-        SubsurfaceIntersection *ss_isect,
+        LocalIntersection *ss_isect,
         ShaderData *sd,
-        ShaderClosure *sc,
-        RNG *lcg_state,
+        const ShaderClosure *sc,
+        uint *lcg_state,
         float disk_u,
         float disk_v,
         bool all)
@@ -255,26 +184,20 @@ ccl_device_inline int subsurface_scatter_multi_intersect(
 	disk_N = sd->Ng;
 	make_orthonormals(disk_N, &disk_T, &disk_B);
 
-	/* reusing variable for picking the closure gives a bit nicer stratification
-	 * for path tracer, for branched we do all closures so it doesn't help */
-	float axisu = (all)? disk_u: sd->randb_closure;
-
-	if(axisu < 0.5f) {
+	if(disk_v < 0.5f) {
 		pick_pdf_N = 0.5f;
 		pick_pdf_T = 0.25f;
 		pick_pdf_B = 0.25f;
-		if(all)
-			disk_u *= 2.0f;
+		disk_v *= 2.0f;
 	}
-	else if(axisu < 0.75f) {
+	else if(disk_v < 0.75f) {
 		float3 tmp = disk_N;
 		disk_N = disk_T;
 		disk_T = tmp;
 		pick_pdf_N = 0.25f;
 		pick_pdf_T = 0.5f;
 		pick_pdf_B = 0.25f;
-		if(all)
-			disk_u = (disk_u - 0.5f)*4.0f;
+		disk_v = (disk_v - 0.5f)*4.0f;
 	}
 	else {
 		float3 tmp = disk_N;
@@ -283,16 +206,14 @@ ccl_device_inline int subsurface_scatter_multi_intersect(
 		pick_pdf_N = 0.25f;
 		pick_pdf_T = 0.25f;
 		pick_pdf_B = 0.5f;
-		if(all)
-			disk_u = (disk_u - 0.75f)*4.0f;
+		disk_v = (disk_v - 0.75f)*4.0f;
 	}
 
 	/* sample point on disk */
-	float phi = M_2PI_F * disk_u;
-	float disk_r = disk_v;
-	float disk_height;
+	float phi = M_2PI_F * disk_v;
+	float disk_height, disk_r;
 
-	bssrdf_sample(sc, disk_r, &disk_r, &disk_height);
+	bssrdf_sample(sc, disk_u, &disk_r, &disk_height);
 
 	float3 disk_P = (disk_r*cosf(phi)) * disk_T + (disk_r*sinf(phi)) * disk_B;
 
@@ -312,22 +233,22 @@ ccl_device_inline int subsurface_scatter_multi_intersect(
 
 	/* intersect with the same object. if multiple intersections are found it
 	 * will use at most BSSRDF_MAX_HITS hits, a random subset of all hits */
-	scene_intersect_subsurface(kg,
-	                           *ray,
-	                           ss_isect,
-	                           sd->object,
-	                           lcg_state,
-	                           BSSRDF_MAX_HITS);
+	scene_intersect_local(kg,
+	                      *ray,
+	                      ss_isect,
+	                      sd->object,
+	                      lcg_state,
+	                      BSSRDF_MAX_HITS);
 	int num_eval_hits = min(ss_isect->num_hits, BSSRDF_MAX_HITS);
 
 	for(int hit = 0; hit < num_eval_hits; hit++) {
 		/* Quickly retrieve P and Ng without setting up ShaderData. */
 		float3 hit_P;
 		if(sd->type & PRIMITIVE_TRIANGLE) {
-			hit_P = triangle_refine_subsurface(kg,
-			                                   sd,
-			                                   &ss_isect->hits[hit],
-			                                   ray);
+			hit_P = triangle_refine_local(kg,
+			                              sd,
+			                              &ss_isect->hits[hit],
+			                              ray);
 		}
 #ifdef __OBJECT_MOTION__
 		else  if(sd->type & PRIMITIVE_MOTION_TRIANGLE) {
@@ -338,11 +259,11 @@ ccl_device_inline int subsurface_scatter_multi_intersect(
 			        kernel_tex_fetch(__prim_index, ss_isect->hits[hit].prim),
 			        sd->time,
 			        verts);
-			hit_P = motion_triangle_refine_subsurface(kg,
-			                                          sd,
-			                                          &ss_isect->hits[hit],
-			                                          ray,
-			                                          verts);
+			hit_P = motion_triangle_refine_local(kg,
+			                                     sd,
+			                                     &ss_isect->hits[hit],
+			                                     ray,
+			                                     verts);
 		}
 #endif  /* __OBJECT_MOTION__ */
 		else {
@@ -355,22 +276,23 @@ ccl_device_inline int subsurface_scatter_multi_intersect(
 			object_normal_transform(kg, sd, &hit_Ng);
 		}
 
-		/* probability densities for local frame axes */
+		/* Probability densities for local frame axes. */
 		float pdf_N = pick_pdf_N * fabsf(dot(disk_N, hit_Ng));
 		float pdf_T = pick_pdf_T * fabsf(dot(disk_T, hit_Ng));
 		float pdf_B = pick_pdf_B * fabsf(dot(disk_B, hit_Ng));
 
-		/* multiple importance sample between 3 axes, power heuristic
-		 * found to be slightly better than balance heuristic */
-		float mis_weight = power_heuristic_3(pdf_N, pdf_T, pdf_B);
+		/* Multiple importance sample between 3 axes, power heuristic
+		 * found to be slightly better than balance heuristic. pdf_N
+		 * in the MIS weight and denominator cancelled out. */
+		float w = pdf_N / (sqr(pdf_N) + sqr(pdf_T) + sqr(pdf_B));
+		if(ss_isect->num_hits > BSSRDF_MAX_HITS) {
+			w *= ss_isect->num_hits/(float)BSSRDF_MAX_HITS;
+		}
 
-		/* real distance to sampled point */
+		/* Real distance to sampled point. */
 		float r = len(hit_P - sd->P);
 
-		/* evaluate */
-		float w = mis_weight / pdf_N;
-		if(ss_isect->num_hits > BSSRDF_MAX_HITS)
-			w *= ss_isect->num_hits/(float)BSSRDF_MAX_HITS;
+		/* Evaluate profiles. */
 		float3 eval = subsurface_scatter_eval(sd, sc, disk_r, r, all) * w;
 
 		ss_isect->weight[hit] = eval;
@@ -385,13 +307,11 @@ ccl_device_inline int subsurface_scatter_multi_intersect(
 
 ccl_device_noinline void subsurface_scatter_multi_setup(
         KernelGlobals *kg,
-        SubsurfaceIntersection* ss_isect,
+        LocalIntersection* ss_isect,
         int hit,
         ShaderData *sd,
         ccl_addr_space PathState *state,
-        int state_flag,
-        ShaderClosure *sc,
-        bool all)
+        const ShaderClosure *sc)
 {
 #ifdef __SPLIT_KERNEL__
 	Ray ray_object = ss_isect->ray;
@@ -411,15 +331,15 @@ ccl_device_noinline void subsurface_scatter_multi_setup(
 	/* Optionally blur colors and bump mapping. */
 	float3 weight = ss_isect->weight[hit];
 	float3 N = sd->N;
-	subsurface_color_bump_blur(kg, sd, state, state_flag, &weight, &N);
+	subsurface_color_bump_blur(kg, sd, state, &weight, &N);
 
 	/* Setup diffuse BSDF. */
-	subsurface_scatter_setup_diffuse_bsdf(sd, sc, weight, true, N);
+	subsurface_scatter_setup_diffuse_bsdf(kg, sd, sc, weight, true, N);
 }
 
 /* subsurface scattering step, from a point on the surface to another nearby point on the same object */
 ccl_device void subsurface_scatter_step(KernelGlobals *kg, ShaderData *sd, ccl_addr_space PathState *state,
-	int state_flag, ShaderClosure *sc, uint *lcg_state, float disk_u, float disk_v, bool all)
+	const ShaderClosure *sc, uint *lcg_state, float disk_u, float disk_v, bool all)
 {
 	float3 eval = make_float3(0.0f, 0.0f, 0.0f);
 
@@ -430,18 +350,20 @@ ccl_device void subsurface_scatter_step(KernelGlobals *kg, ShaderData *sd, ccl_a
 	disk_N = sd->Ng;
 	make_orthonormals(disk_N, &disk_T, &disk_B);
 
-	if(sd->randb_closure < 0.5f) {
+	if(disk_v < 0.5f) {
 		pick_pdf_N = 0.5f;
 		pick_pdf_T = 0.25f;
 		pick_pdf_B = 0.25f;
+		disk_v *= 2.0f;
 	}
-	else if(sd->randb_closure < 0.75f) {
+	else if(disk_v < 0.75f) {
 		float3 tmp = disk_N;
 		disk_N = disk_T;
 		disk_T = tmp;
 		pick_pdf_N = 0.25f;
 		pick_pdf_T = 0.5f;
 		pick_pdf_B = 0.25f;
+		disk_v = (disk_v - 0.5f)*4.0f;
 	}
 	else {
 		float3 tmp = disk_N;
@@ -450,14 +372,14 @@ ccl_device void subsurface_scatter_step(KernelGlobals *kg, ShaderData *sd, ccl_a
 		pick_pdf_N = 0.25f;
 		pick_pdf_T = 0.25f;
 		pick_pdf_B = 0.5f;
+		disk_v = (disk_v - 0.75f)*4.0f;
 	}
 
 	/* sample point on disk */
-	float phi = M_2PI_F * disk_u;
-	float disk_r = disk_v;
-	float disk_height;
+	float phi = M_2PI_F * disk_v;
+	float disk_height, disk_r;
 
-	bssrdf_sample(sc, disk_r, &disk_r, &disk_height);
+	bssrdf_sample(sc, disk_u, &disk_r, &disk_height);
 
 	float3 disk_P = (disk_r*cosf(phi)) * disk_T + (disk_r*sinf(phi)) * disk_B;
 
@@ -472,8 +394,8 @@ ccl_device void subsurface_scatter_step(KernelGlobals *kg, ShaderData *sd, ccl_a
 
 	/* intersect with the same object. if multiple intersections are
 	 * found it will randomly pick one of them */
-	SubsurfaceIntersection ss_isect;
-	scene_intersect_subsurface(kg, ray, &ss_isect, sd->object, lcg_state, 1);
+	LocalIntersection ss_isect;
+	scene_intersect_local(kg, ray, &ss_isect, sd->object, lcg_state, 1);
 
 	/* evaluate bssrdf */
 	if(ss_isect.num_hits > 0) {
@@ -486,29 +408,227 @@ ccl_device void subsurface_scatter_step(KernelGlobals *kg, ShaderData *sd, ccl_a
 		/* setup new shading point */
 		shader_setup_from_subsurface(kg, sd, &ss_isect.hits[0], &ray);
 
-		/* probability densities for local frame axes */
+		/* Probability densities for local frame axes. */
 		float pdf_N = pick_pdf_N * fabsf(dot(disk_N, sd->Ng));
 		float pdf_T = pick_pdf_T * fabsf(dot(disk_T, sd->Ng));
 		float pdf_B = pick_pdf_B * fabsf(dot(disk_B, sd->Ng));
 
-		/* multiple importance sample between 3 axes, power heuristic
-		 * found to be slightly better than balance heuristic */
-		float mis_weight = power_heuristic_3(pdf_N, pdf_T, pdf_B);
+		/* Multiple importance sample between 3 axes, power heuristic
+		 * found to be slightly better than balance heuristic. pdf_N
+		 * in the MIS weight and denominator cancelled out. */
+		float w = pdf_N / (sqr(pdf_N) + sqr(pdf_T) + sqr(pdf_B));
+		w *= ss_isect.num_hits;
 
-		/* real distance to sampled point */
+		/* Real distance to sampled point. */
 		float r = len(sd->P - origP);
 
-		/* evaluate */
-		float w = (mis_weight * ss_isect.num_hits) / pdf_N;
+		/* Evaluate profiles. */
 		eval = subsurface_scatter_eval(sd, sc, disk_r, r, all) * w;
 	}
 
 	/* optionally blur colors and bump mapping */
 	float3 N = sd->N;
-	subsurface_color_bump_blur(kg, sd, state, state_flag, &eval, &N);
+	subsurface_color_bump_blur(kg, sd, state, &eval, &N);
 
 	/* setup diffuse bsdf */
-	subsurface_scatter_setup_diffuse_bsdf(sd, sc, eval, (ss_isect.num_hits > 0), N);
+	subsurface_scatter_setup_diffuse_bsdf(kg, sd, sc, eval, (ss_isect.num_hits > 0), N);
+}
+
+/* Random walk subsurface scattering.
+ *
+ * "Practical and Controllable Subsurface Scattering for Production Path
+ *  Tracing". Matt Jen-Yuan Chiang, Peter Kutz, Brent Burley. SIGGRAPH 2016. */
+
+ccl_device void subsurface_random_walk_remap(
+        const float A,
+        const float d,
+        float *sigma_t,
+        float *sigma_s)
+{
+	/* Compute attenuation and scattering coefficients from albedo. */
+	const float a = 1.0f - expf(A * (-5.09406f + A * (2.61188f - A * 4.31805f)));
+	const float s = 1.9f - A + 3.5f * sqr(A - 0.8f);
+
+	*sigma_t = 1.0f / fmaxf(d * s, 1e-16f);
+	*sigma_s = *sigma_t * a;
+}
+
+ccl_device void subsurface_random_walk_coefficients(
+        const ShaderClosure *sc,
+        float3 *sigma_t,
+        float3 *sigma_s,
+        float3 *weight)
+{
+	const Bssrdf *bssrdf = (const Bssrdf*)sc;
+	const float3 A = bssrdf->albedo;
+	const float3 d = bssrdf->radius;
+	float sigma_t_x, sigma_t_y, sigma_t_z;
+	float sigma_s_x, sigma_s_y, sigma_s_z;
+
+	subsurface_random_walk_remap(A.x, d.x, &sigma_t_x, &sigma_s_x);
+	subsurface_random_walk_remap(A.y, d.y, &sigma_t_y, &sigma_s_y);
+	subsurface_random_walk_remap(A.z, d.z, &sigma_t_z, &sigma_s_z);
+
+	*sigma_t = make_float3(sigma_t_x, sigma_t_y, sigma_t_z);
+	*sigma_s = make_float3(sigma_s_x, sigma_s_y, sigma_s_z);
+
+	/* Closure mixing and Fresnel weights separate from albedo. */
+	*weight = safe_divide_color(bssrdf->weight, A);
+}
+
+ccl_device_noinline bool subsurface_random_walk(
+        KernelGlobals *kg,
+        LocalIntersection *ss_isect,
+        ShaderData *sd,
+        ccl_addr_space PathState *state,
+        const ShaderClosure *sc,
+        const float bssrdf_u,
+        const float bssrdf_v)
+{
+	/* Sample diffuse surface scatter into the object. */
+	float3 D;
+	float pdf;
+	sample_cos_hemisphere(-sd->N, bssrdf_u, bssrdf_v, &D, &pdf);
+	if(dot(-sd->Ng, D) <= 0.0f) {
+		return 0;
+	}
+
+	/* Convert subsurface to volume coefficients. */
+	float3 sigma_t, sigma_s;
+	float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
+	subsurface_random_walk_coefficients(sc, &sigma_t, &sigma_s, &throughput);
+
+	/* Setup ray. */
+#ifdef __SPLIT_KERNEL__
+	Ray ray_object = ss_isect->ray;
+	Ray *ray = &ray_object;
+#else
+	Ray *ray = &ss_isect->ray;
+#endif
+	ray->P = ray_offset(sd->P, -sd->Ng);
+	ray->D = D;
+	ray->t = FLT_MAX;
+	ray->time = sd->time;
+
+	/* Modify state for RNGs, decorrelated from other paths. */
+	uint prev_rng_offset = state->rng_offset;
+	uint prev_rng_hash = state->rng_hash;
+	state->rng_hash = cmj_hash(state->rng_hash + state->rng_offset, 0xdeadbeef);
+
+	/* Random walk until we hit the surface again. */
+	bool hit = false;
+
+	for(int bounce = 0; bounce < BSSRDF_MAX_BOUNCES; bounce++) {
+		/* Advance random number offset. */
+		state->rng_offset += PRNG_BOUNCE_NUM;
+
+		if(bounce > 0) {
+			/* Sample scattering direction. */
+			const float anisotropy = 0.0f;
+			float scatter_u, scatter_v;
+			path_state_rng_2D(kg, state, PRNG_BSDF_U, &scatter_u, &scatter_v);
+			ray->D = henyey_greenstrein_sample(ray->D, anisotropy, scatter_u, scatter_v, NULL);
+		}
+
+		/* Sample color channel, use MIS with balance heuristic. */
+		float rphase = path_state_rng_1D(kg, state, PRNG_PHASE_CHANNEL);
+		float3 albedo = safe_divide_color(sigma_s, sigma_t);
+		float3 channel_pdf;
+		int channel = kernel_volume_sample_channel(albedo, throughput, rphase, &channel_pdf);
+
+		/* Distance sampling. */
+		float rdist = path_state_rng_1D(kg, state, PRNG_SCATTER_DISTANCE);
+		float sample_sigma_t = kernel_volume_channel_get(sigma_t, channel);
+		float t = -logf(1.0f - rdist)/sample_sigma_t;
+
+		ray->t = t;
+		scene_intersect_local(kg, *ray, ss_isect, sd->object, NULL, 1);
+		hit = (ss_isect->num_hits > 0);
+
+		if(hit) {
+			/* Compute world space distance to surface hit. */
+			float3 D = ray->D;
+			object_inverse_dir_transform(kg, sd, &D);
+			D = normalize(D) * ss_isect->hits[0].t;
+			object_dir_transform(kg, sd, &D);
+			t = len(D);
+		}
+
+		/* Advance to new scatter location. */
+		ray->P += t * ray->D;
+
+		/* Update throughput. */
+		float3 transmittance = volume_color_transmittance(sigma_t, t);
+		float pdf = dot(channel_pdf, (hit)? transmittance: sigma_t * transmittance);
+		throughput *= ((hit)? transmittance: sigma_s * transmittance) / pdf;
+
+		if(hit) {
+			/* If we hit the surface, we are done. */
+			break;
+		}
+
+		/* Russian roulette. */
+		float terminate = path_state_rng_1D(kg, state, PRNG_TERMINATE);
+		float probability = min(max3(fabs(throughput)), 1.0f);
+		if(terminate >= probability) {
+			break;
+		}
+		throughput /= probability;
+	}
+
+	kernel_assert(isfinite_safe(throughput.x) &&
+	              isfinite_safe(throughput.y) &&
+	              isfinite_safe(throughput.z));
+
+	state->rng_offset = prev_rng_offset;
+	state->rng_hash = prev_rng_hash;
+
+	/* Return number of hits in ss_isect. */
+	if(!hit) {
+		return 0;
+	}
+
+	/* TODO: gain back performance lost from merging with disk BSSRDF. We
+	 * only need to return on hit so this indirect ray push/pop overhead
+	 * is not actually needed, but it does keep the code simpler. */
+	ss_isect->weight[0] = throughput;
+#ifdef __SPLIT_KERNEL__
+	ss_isect->ray = *ray;
+#endif
+
+	return 1;
+}
+
+ccl_device_inline int subsurface_scatter_multi_intersect(
+        KernelGlobals *kg,
+        LocalIntersection *ss_isect,
+        ShaderData *sd,
+        ccl_addr_space PathState *state,
+        const ShaderClosure *sc,
+        uint *lcg_state,
+        float bssrdf_u,
+        float bssrdf_v,
+        bool all)
+{
+	if(CLOSURE_IS_DISK_BSSRDF(sc->type)) {
+		return subsurface_scatter_disk(kg,
+		                               ss_isect,
+		                               sd,
+		                               sc,
+		                               lcg_state,
+		                               bssrdf_u,
+		                               bssrdf_v,
+		                               all);
+	}
+	else {
+		return subsurface_random_walk(kg,
+		                              ss_isect,
+		                              sd,
+		                              state,
+		                              sc,
+		                              bssrdf_u,
+		                              bssrdf_v);
+	}
 }
 
 CCL_NAMESPACE_END

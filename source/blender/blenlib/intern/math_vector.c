@@ -850,6 +850,20 @@ void ortho_v2_v2(float out[2], const float v[2])
 }
 
 /**
+ * Rotate a point \a p by \a angle around origin (0, 0)
+ */
+void rotate_v2_v2fl(float r[2], const float p[2], const float angle)
+{
+	const float co = cosf(angle);
+	const float si = sinf(angle);
+
+	BLI_assert(r != p);
+
+	r[0] = co * p[0] - si * p[1];
+	r[1] = si * p[0] + co * p[1];
+}
+
+/**
  * Rotate a point \a p by \a angle around an arbitrary unit length \a axis.
  * http://local.wasp.uwa.edu.au/~pbourke/geometry/
  */
@@ -876,6 +890,8 @@ void rotate_normalized_v3_v3v3fl(float out[3], const float p[3], const float axi
 
 void rotate_v3_v3v3fl(float r[3], const float p[3], const float axis[3], const float angle)
 {
+	BLI_assert(r != p);
+
 	float axis_n[3];
 
 	normalize_v3_v3(axis_n, axis);

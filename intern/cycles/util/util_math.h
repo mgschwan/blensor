@@ -94,6 +94,7 @@ ccl_device_inline float fminf(float a, float b)
 #ifndef __KERNEL_GPU__
 using std::isfinite;
 using std::isnan;
+using std::sqrt;
 
 ccl_device_inline int abs(int x)
 {
@@ -319,6 +320,8 @@ CCL_NAMESPACE_END
 #include "util/util_math_float3.h"
 #include "util/util_math_float4.h"
 
+#include "util/util_rect.h"
+
 CCL_NAMESPACE_BEGIN
 
 #ifndef __KERNEL_OPENCL__
@@ -329,15 +332,22 @@ template<class A, class B> A lerp(const A& a, const A& b, const B& t)
 	return (A)(a * ((B)1 - t) + b * t);
 }
 
+#endif  /* __KERNEL_OPENCL__ */
+
 /* Triangle */
 
+#ifndef __KERNEL_OPENCL__
 ccl_device_inline float triangle_area(const float3& v1,
                                       const float3& v2,
                                       const float3& v3)
+#else
+ccl_device_inline float triangle_area(const float3 v1,
+                                      const float3 v2,
+                                      const float3 v3)
+#endif
 {
 	return len(cross(v3 - v2, v1 - v2))*0.5f;
 }
-#endif  /* __KERNEL_OPENCL__ */
 
 /* Orthonormal vectors */
 
@@ -508,6 +518,11 @@ ccl_device float safe_logf(float a, float b)
 ccl_device float safe_modulo(float a, float b)
 {
 	return (b != 0.0f)? fmodf(a, b): 0.0f;
+}
+
+ccl_device_inline float sqr(float a)
+{
+	return a * a;
 }
 
 ccl_device_inline float beta(float x, float y)

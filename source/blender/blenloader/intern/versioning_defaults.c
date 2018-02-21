@@ -54,7 +54,7 @@ void BLO_update_defaults_userpref_blend(void)
 {
 	/* defaults from T37518 */
 
-	U.uiflag |= USER_ZBUF_CURSOR;
+	U.uiflag |= USER_DEPTH_CURSOR;
 	U.uiflag |= USER_QUIT_PROMPT;
 	U.uiflag |= USER_CONTINUOUS_MOUSE;
 
@@ -109,6 +109,16 @@ void BLO_update_defaults_startup_blend(Main *bmain)
 				sculpt->detail_size = 12;
 			}
 			
+			if (ts->vpaint) {
+				VPaint *vp = ts->vpaint;
+				vp->radial_symm[0] = vp->radial_symm[1] = vp->radial_symm[2] = 1;
+			}
+
+			if (ts->wpaint) {
+				VPaint *wp = ts->wpaint;
+				wp->radial_symm[0] = wp->radial_symm[1] = wp->radial_symm[2] = 1;
+			}
+
 			if (ts->gp_sculpt.brush[0].size == 0) {
 				GP_BrushEdit_Settings *gset = &ts->gp_sculpt;
 				GP_EditBrush_Data *brush;
@@ -160,7 +170,7 @@ void BLO_update_defaults_startup_blend(Main *bmain)
 			ts->gpencil_ima_align = GP_PROJECT_VIEWSPACE;
 
 			ParticleEditSettings *pset = &ts->particle;
-			for (int a = 0; a < PE_TOT_BRUSH; a++) {
+			for (int a = 0; a < ARRAY_SIZE(pset->brush); a++) {
 				pset->brush[a].strength = 0.5f;
 				pset->brush[a].count = 10;
 			}
@@ -232,8 +242,25 @@ void BLO_update_defaults_startup_blend(Main *bmain)
 		br = (Brush *)BKE_libblock_find_name_ex(bmain, ID_BR, "Fill");
 		if (!br) {
 			br = BKE_brush_add(bmain, "Fill", OB_MODE_TEXTURE_PAINT);
+			id_us_min(&br->id);  /* fake user only */
 			br->imagepaint_tool = PAINT_TOOL_FILL;
 			br->ob_mode = OB_MODE_TEXTURE_PAINT;
+		}
+
+		/* Vertex/Weight Paint */
+		br = (Brush *)BKE_libblock_find_name_ex(bmain, ID_BR, "Average");
+		if (!br) {
+			br = BKE_brush_add(bmain, "Average", OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT);
+			id_us_min(&br->id);  /* fake user only */
+			br->vertexpaint_tool = PAINT_BLEND_AVERAGE;
+			br->ob_mode = OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT;
+		}
+		br = (Brush *)BKE_libblock_find_name_ex(bmain, ID_BR, "Smear");
+		if (!br) {
+			br = BKE_brush_add(bmain, "Smear", OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT);
+			id_us_min(&br->id);  /* fake user only */
+			br->vertexpaint_tool = PAINT_BLEND_SMEAR;
+			br->ob_mode = OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT;
 		}
 
 		br = (Brush *)BKE_libblock_find_name_ex(bmain, ID_BR, "Mask");

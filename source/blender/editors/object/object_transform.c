@@ -414,7 +414,10 @@ static void ignore_parent_tx(Main *bmain, Scene *scene, Object *ob)
 	}
 }
 
-static int apply_objects_internal(bContext *C, ReportList *reports, bool apply_loc, bool apply_rot, bool apply_scale)
+static int apply_objects_internal(
+        bContext *C, ReportList *reports,
+        bool apply_loc, bool apply_rot, bool apply_scale,
+        bool do_props)
 {
 	Main *bmain = CTX_data_main(C);
 	Scene *scene = CTX_data_scene(C);
@@ -433,7 +436,7 @@ static int apply_objects_internal(bContext *C, ReportList *reports, bool apply_l
 				changed = false;
 			}
 
-			if (ID_IS_LINKED_DATABLOCK(obdata)) {
+			if (ID_IS_LINKED(obdata)) {
 				BKE_reportf(reports, RPT_ERROR,
 				            "Cannot apply to library data: Object \"%s\", %s \"%s\", aborting",
 				            ob->id.name + 2, BKE_idcode_to_name(GS(obdata->name)), obdata->name + 2);
@@ -531,7 +534,7 @@ static int apply_objects_internal(bContext *C, ReportList *reports, bool apply_l
 			BKE_mesh_calc_normals(me);
 		}
 		else if (ob->type == OB_ARMATURE) {
-			ED_armature_apply_transform(ob, mat);
+			ED_armature_apply_transform(ob, mat, do_props);
 		}
 		else if (ob->type == OB_LATTICE) {
 			Lattice *lt = ob->data;
@@ -540,12 +543,12 @@ static int apply_objects_internal(bContext *C, ReportList *reports, bool apply_l
 		}
 		else if (ob->type == OB_MBALL) {
 			MetaBall *mb = ob->data;
-			BKE_mball_transform(mb, mat);
+			BKE_mball_transform(mb, mat, do_props);
 		}
 		else if (ELEM(ob->type, OB_CURVE, OB_SURF)) {
 			Curve *cu = ob->data;
 			scale = mat3_to_scale(rsmat);
-			BKE_curve_transform_ex(cu, mat, true, scale);
+			BKE_curve_transform_ex(cu, mat, true, do_props, scale);
 		}
 		else if (ob->type == OB_FONT) {
 			Curve *cu = ob->data;
@@ -561,7 +564,9 @@ static int apply_objects_internal(bContext *C, ReportList *reports, bool apply_l
 				tb->h *= scale;
 			}
 
-			cu->fsize *= scale;
+			if (do_props) {
+				cu->fsize *= scale;
+			}
 		}
 		else if (ob->type == OB_CAMERA) {
 			MovieClip *clip = BKE_object_movieclip_get(scene, ob, false);
@@ -677,9 +682,10 @@ static int object_transform_apply_exec(bContext *C, wmOperator *op)
 	const bool loc = RNA_boolean_get(op->ptr, "location");
 	const bool rot = RNA_boolean_get(op->ptr, "rotation");
 	const bool sca = RNA_boolean_get(op->ptr, "scale");
+	const bool do_props = RNA_boolean_get(op->ptr, "properties");
 
 	if (loc || rot || sca) {
-		return apply_objects_internal(C, op->reports, loc, rot, sca);
+		return apply_objects_internal(C, op->reports, loc, rot, sca, do_props);
 	}
 	else {
 		/* allow for redo */
@@ -704,6 +710,8 @@ void OBJECT_OT_transform_apply(wmOperatorType *ot)
 	RNA_def_boolean(ot->srna, "location", 0, "Location", "");
 	RNA_def_boolean(ot->srna, "rotation", 0, "Rotation", "");
 	RNA_def_boolean(ot->srna, "scale", 0, "Scale", "");
+	RNA_def_boolean(ot->srna, "properties", true, "Apply Properties",
+	                "Modify properties such as curve vertex radius, font size and bone envelope");
 }
 
 /********************* Set Object Center ************************/
@@ -835,7 +843,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 			if (ob->data == NULL) {
 				/* special support for dupligroups */
 				if ((ob->transflag & OB_DUPLIGROUP) && ob->dup_group && (ob->dup_group->id.tag & LIB_TAG_DOIT) == 0) {
-					if (ID_IS_LINKED_DATABLOCK(ob->dup_group)) {
+					if (ID_IS_LINKED(ob->dup_group)) {
 						tot_lib_error++;
 					}
 					else {
@@ -860,7 +868,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 					}
 				}
 			}
-			else if (ID_IS_LINKED_DATABLOCK(ob->data)) {
+			else if (ID_IS_LINKED(ob->data)) {
 				tot_lib_error++;
 			}
 
@@ -1086,7 +1094,7 @@ static int object_origin_set_exec(bContext *C, wmOperator *op)
 
 void OBJECT_OT_origin_set(wmOperatorType *ot)
 {
-	static EnumPropertyItem prop_set_center_types[] = {
+	static const EnumPropertyItem prop_set_center_types[] = {
 		{GEOMETRY_TO_ORIGIN, "GEOMETRY_ORIGIN", 0, "Geometry to Origin", "Move object geometry to object origin"},
 		{ORIGIN_TO_GEOMETRY, "ORIGIN_GEOMETRY", 0, "Origin to Geometry",
 		 "Calculate the center of geometry based on the current pivot point (median, otherwise bounding-box)"},
@@ -1100,7 +1108,7 @@ void OBJECT_OT_origin_set(wmOperatorType *ot)
 		{0, NULL, 0, NULL, NULL}
 	};
 	
-	static EnumPropertyItem prop_set_bounds_types[] = {
+	static const EnumPropertyItem prop_set_bounds_types[] = {
 		{V3D_AROUND_CENTER_MEAN, "MEDIAN", 0, "Median Center", ""},
 		{V3D_AROUND_CENTER_BOUNDS, "BOUNDS", 0, "Bounds Center", ""},
 		{0, NULL, 0, NULL, NULL}

@@ -90,14 +90,10 @@ static void copyData(ModifierData *md, ModifierData *target)
 {
 #if 0
 	WaveModifierData *wmd = (WaveModifierData *) md;
-#endif
 	WaveModifierData *twmd = (WaveModifierData *) target;
+#endif
 
 	modifier_copyData_generic(md, target);
-
-	if (twmd->texture) {
-		id_us_plus(&twmd->texture->id);
-	}
 }
 
 static bool dependsOnTime(ModifierData *UNUSED(md))
@@ -232,7 +228,7 @@ static void waveModifier_do(WaveModifierData *md,
 	}
 
 	if (wmd->texture) {
-		tex_co = MEM_mallocN(sizeof(*tex_co) * numVerts,
+		tex_co = MEM_malloc_arrayN(numVerts, sizeof(*tex_co),
 		                     "waveModifier_do tex_co");
 		get_texture_coords((MappingInfoModifierData *)wmd, ob, dm, vertexCos, tex_co, numVerts);
 

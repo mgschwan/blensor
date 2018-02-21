@@ -1027,6 +1027,13 @@ bool UI_view2d_tab_set(View2D *v2d, int tab)
 
 void UI_view2d_zoom_cache_reset(void)
 {
+	/* TODO(sergey): This way we avoid threading conflict with VSE rendering
+	 * text strip. But ideally we want to make glyph cache to be fully safe
+	 * for threading.
+	 */
+	if (G.is_rendering) {
+		return;
+	}
 	/* While scaling we can accumulate fonts at many sizes (~20 or so).
 	 * Not an issue with embedded font, but can use over 500Mb with i18n ones! See [#38244]. */
 
@@ -1395,9 +1402,9 @@ void UI_view2d_grid_draw(View2D *v2d, View2DGrid *grid, int flag)
 }
 
 /* Draw a constant grid in given 2d-region */
-void UI_view2d_constant_grid_draw(View2D *v2d)
+void UI_view2d_constant_grid_draw(View2D *v2d, float step)
 {
-	float start, step = 25.0f;
+	float start;
 
 	UI_ThemeColorShade(TH_BACK, -10);
 	
@@ -2136,6 +2143,14 @@ void UI_view2d_view_to_region_rcti(View2D *v2d, const rctf *rect_src, rcti *rect
 	rect_tmp.ymax = v2d->mask.ymin + (rect_tmp.ymax * mask_size[1]);
 
 	clamp_rctf_to_rcti(rect_dst, &rect_tmp);
+}
+
+void UI_view2d_view_to_region_m4(View2D *v2d, float matrix[4][4])
+{
+	rctf mask;
+	unit_m4(matrix);
+	BLI_rctf_rcti_copy(&mask, &v2d->mask);
+	BLI_rctf_transform_calc_m4_pivot_min(&v2d->cur, &mask, matrix);
 }
 
 bool UI_view2d_view_to_region_rcti_clip(View2D *v2d, const rctf *rect_src, rcti *rect_dst)

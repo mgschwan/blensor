@@ -232,7 +232,7 @@ void packAll(Main *bmain, ReportList *reports, bool verbose)
 	int tot = 0;
 	
 	for (ima = bmain->image.first; ima; ima = ima->id.next) {
-		if (BKE_image_has_packedfile(ima) == false && !ID_IS_LINKED_DATABLOCK(ima)) {
+		if (BKE_image_has_packedfile(ima) == false && !ID_IS_LINKED(ima)) {
 			if (ima->source == IMA_SRC_FILE) {
 				BKE_image_packfiles(reports, ima, ID_BLEND_PATH(bmain, &ima->id));
 				tot ++;
@@ -245,14 +245,14 @@ void packAll(Main *bmain, ReportList *reports, bool verbose)
 	}
 
 	for (vfont = bmain->vfont.first; vfont; vfont = vfont->id.next) {
-		if (vfont->packedfile == NULL && !ID_IS_LINKED_DATABLOCK(vfont) && BKE_vfont_is_builtin(vfont) == false) {
+		if (vfont->packedfile == NULL && !ID_IS_LINKED(vfont) && BKE_vfont_is_builtin(vfont) == false) {
 			vfont->packedfile = newPackedFile(reports, vfont->name, bmain->name);
 			tot ++;
 		}
 	}
 
 	for (sound = bmain->sound.first; sound; sound = sound->id.next) {
-		if (sound->packedfile == NULL && !ID_IS_LINKED_DATABLOCK(sound)) {
+		if (sound->packedfile == NULL && !ID_IS_LINKED(sound)) {
 			sound->packedfile = newPackedFile(reports, sound->name, bmain->name);
 			tot++;
 		}
@@ -522,6 +522,8 @@ static void unpack_generate_paths(
 		case ID_IM:
 			BLI_snprintf(r_relpath, relpathlen, "//textures/%s", tempname);
 			break;
+		default:
+			break;
 	}
 
 	{
@@ -712,6 +714,8 @@ bool BKE_pack_check(ID *id)
 			Library *li = (Library *)id;
 			return li->packedfile != NULL;
 		}
+		default:
+			break;
 	}
 	return false;
 }
@@ -750,5 +754,7 @@ void BKE_unpack_id(Main *bmain, ID *id, ReportList *reports, int how)
 			BKE_reportf(reports, RPT_ERROR, "Cannot unpack individual Library file, '%s'", li->name);
 			break;
 		}
+		default:
+			break;
 	}
 }

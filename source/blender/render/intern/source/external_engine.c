@@ -144,7 +144,7 @@ RenderEngine *RE_engine_create_ex(RenderEngineType *type, bool use_for_viewport)
 	if (use_for_viewport) {
 		engine->flag |= RE_ENGINE_USED_FOR_VIEWPORT;
 
-		BLI_begin_threaded_malloc();
+		BLI_threaded_malloc_begin();
 	}
 
 	return engine;
@@ -159,7 +159,7 @@ void RE_engine_free(RenderEngine *engine)
 #endif
 
 	if (engine->flag & RE_ENGINE_USED_FOR_VIEWPORT) {
-		BLI_end_threaded_malloc();
+		BLI_threaded_malloc_end();
 	}
 
 	MEM_freeN(engine);
@@ -273,7 +273,7 @@ void RE_engine_end_result(RenderEngine *engine, RenderResult *result, int cancel
 		RenderPart *pa = get_part_from_result(re, result);
 
 		if (pa) {
-			pa->status = PART_STATUS_READY;
+			pa->status = (!cancel && merge_results)? PART_STATUS_MERGED: PART_STATUS_RENDERED;
 		}
 		else if (re->result->do_exr_tile) {
 			/* if written result does not match any tile and we are using save
@@ -284,7 +284,7 @@ void RE_engine_end_result(RenderEngine *engine, RenderResult *result, int cancel
 
 	if (!cancel || merge_results) {
 		if (re->result->do_exr_tile) {
-			if (!cancel) {
+			if (!cancel && merge_results) {
 				render_result_exr_file_merge(re->result, result, re->viewname);
 			}
 		}
@@ -301,6 +301,11 @@ void RE_engine_end_result(RenderEngine *engine, RenderResult *result, int cancel
 	/* free */
 	BLI_remlink(&engine->fullresult, result);
 	render_result_free(result);
+}
+
+RenderResult *RE_engine_get_result(RenderEngine *engine)
+{
+	return engine->re->result;
 }
 
 /* Cancel */
@@ -503,7 +508,7 @@ bool RE_bake_engine(
         Render *re, Object *object,
         const int object_id, const BakePixel pixel_array[],
         const size_t num_pixels, const int depth,
-        const ScenePassType pass_type, const int pass_filter,
+        const eScenePassType pass_type, const int pass_filter,
         float result[])
 {
 	RenderEngineType *type = RE_engines_find(re->r.engine);

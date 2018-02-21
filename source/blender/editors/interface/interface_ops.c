@@ -360,6 +360,9 @@ bool UI_context_copy_to_selected_list(
 	else if (RNA_struct_is_a(ptr->type, &RNA_Sequence)) {
 		*r_lb = CTX_data_collection_get(C, "selected_editable_sequences");
 	}
+	else if (RNA_struct_is_a(ptr->type, &RNA_FCurve)) {
+		*r_lb = CTX_data_collection_get(C, "selected_editable_fcurves");
+	}
 	else if (RNA_struct_is_a(ptr->type, &RNA_Node) ||
 	         RNA_struct_is_a(ptr->type, &RNA_NodeSocket))
 	{
@@ -436,7 +439,7 @@ bool UI_context_copy_to_selected_list(
 
 					if ((id_data == NULL) ||
 					    (id_data->tag & LIB_TAG_DOIT) == 0 ||
-					    ID_IS_LINKED_DATABLOCK(id_data) ||
+					    ID_IS_LINKED(id_data) ||
 					    (GS(id_data->name) != id_code))
 					{
 						BLI_remlink(&lb, link);
@@ -496,51 +499,49 @@ static bool copy_to_selected_button(bContext *C, bool all, bool poll)
 		CollectionPointerLink *link;
 		ListBase lb = {NULL};
 
-		if (!UI_context_copy_to_selected_list(C, &ptr, prop, &lb, &use_path_from_id, &path)) {
-			goto finally;
-		}
+		if (UI_context_copy_to_selected_list(C, &ptr, prop, &lb, &use_path_from_id, &path) &&
+		    !BLI_listbase_is_empty(&lb))
+		{
+			for (link = lb.first; link; link = link->next) {
+				if (link->ptr.data != ptr.data) {
+					if (use_path_from_id) {
+						/* Path relative to ID. */
+						lprop = NULL;
+						RNA_id_pointer_create(link->ptr.id.data, &idptr);
+						RNA_path_resolve_property(&idptr, path, &lptr, &lprop);
+					}
+					else if (path) {
+						/* Path relative to elements from list. */
+						lprop = NULL;
+						RNA_path_resolve_property(&link->ptr, path, &lptr, &lprop);
+					}
+					else {
+						lptr = link->ptr;
+						lprop = prop;
+					}
 
-		for (link = lb.first; link; link = link->next) {
-			if (link->ptr.data != ptr.data) {
-				if (use_path_from_id) {
-					/* Path relative to ID. */
-					lprop = NULL;
-					RNA_id_pointer_create(link->ptr.id.data, &idptr);
-					RNA_path_resolve_property(&idptr, path, &lptr, &lprop);
-				}
-				else if (path) {
-					/* Path relative to elements from list. */
-					lprop = NULL;
-					RNA_path_resolve_property(&link->ptr, path, &lptr, &lprop);
-				}
-				else {
-					lptr = link->ptr;
-					lprop = prop;
-				}
+					if (lptr.data == ptr.data) {
+						/* lptr might not be the same as link->ptr! */
+						continue;
+					}
 
-				if (lptr.data == ptr.data) {
-					/* lptr might not be the same as link->ptr! */
-					continue;
-				}
-
-				if (lprop == prop) {
-					if (RNA_property_editable(&lptr, lprop)) {
-						if (poll) {
-							success = true;
-							break;
-						}
-						else {
-							if (RNA_property_copy(&lptr, &ptr, prop, (all) ? -1 : index)) {
-								RNA_property_update(C, &lptr, prop);
+					if (lprop == prop) {
+						if (RNA_property_editable(&lptr, lprop)) {
+							if (poll) {
 								success = true;
+								break;
+							}
+							else {
+								if (RNA_property_copy(&lptr, &ptr, prop, (all) ? -1 : index)) {
+									RNA_property_update(C, &lptr, prop);
+									success = true;
+								}
 							}
 						}
 					}
 				}
 			}
 		}
-
-finally:
 		MEM_SAFE_FREE(path);
 		BLI_freelistN(&lb);
 	}
@@ -1127,6 +1128,8 @@ void ED_operatortypes_ui(void)
 
 	/* external */
 	WM_operatortype_append(UI_OT_eyedropper_color);
+	WM_operatortype_append(UI_OT_eyedropper_colorband);
+	WM_operatortype_append(UI_OT_eyedropper_colorband_point);
 	WM_operatortype_append(UI_OT_eyedropper_id);
 	WM_operatortype_append(UI_OT_eyedropper_depth);
 	WM_operatortype_append(UI_OT_eyedropper_driver);
@@ -1143,6 +1146,8 @@ void ED_keymap_ui(wmKeyConfig *keyconf)
 	/* eyedroppers - notice they all have the same shortcut, but pass the event
 	 * through until a suitable eyedropper for the active button is found */
 	WM_keymap_add_item(keymap, "UI_OT_eyedropper_color", EKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "UI_OT_eyedropper_colorband", EKEY, KM_PRESS, 0, 0);
+	WM_keymap_add_item(keymap, "UI_OT_eyedropper_colorband_point", EKEY, KM_PRESS, KM_ALT, 0);
 	WM_keymap_add_item(keymap, "UI_OT_eyedropper_id", EKEY, KM_PRESS, 0, 0);
 	WM_keymap_add_item(keymap, "UI_OT_eyedropper_depth", EKEY, KM_PRESS, 0, 0);
 
@@ -1165,4 +1170,5 @@ void ED_keymap_ui(wmKeyConfig *keyconf)
 	WM_keymap_add_item(keymap, "ANIM_OT_keyingset_button_remove", KKEY, KM_PRESS, KM_ALT, 0);
 
 	eyedropper_modal_keymap(keyconf);
+	eyedropper_colorband_modal_keymap(keyconf);
 }

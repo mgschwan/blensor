@@ -45,7 +45,7 @@
 #include "DNA_sequence_types.h"
 #include "DNA_space_types.h"
 #include "DNA_screen_types.h"
-#include "DNA_object_force.h"
+#include "DNA_object_force_types.h"
 #include "DNA_object_types.h"
 #include "DNA_mask_types.h"
 #include "DNA_mesh_types.h"
@@ -60,7 +60,10 @@
 #include "DNA_genfile.h"
 
 #include "BKE_animsys.h"
+#include "BKE_brush.h"
 #include "BKE_colortools.h"
+#include "BKE_fcurve.h"
+#include "BKE_gpencil.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
 #include "BKE_mask.h"
@@ -70,7 +73,6 @@
 #include "BKE_sequencer.h"
 #include "BKE_screen.h"
 #include "BKE_tracking.h"
-#include "BKE_gpencil.h"
 
 #include "BLI_math.h"
 #include "BLI_listbase.h"
@@ -283,6 +285,67 @@ static void do_versions_compositor_render_passes(bNodeTree *ntree)
 		}
 	}
 }
+
+
+static char *replace_bbone_easing_rnapath(char *old_path)
+{
+	char *new_path = NULL;
+	
+	/* NOTE: This will break paths for any bones/custom-properties
+	 * which happen be named after the bbone property id's
+	 */
+	if (strstr(old_path, "bbone_in"))
+		new_path = BLI_str_replaceN(old_path, "bbone_in", "bbone_easein");
+	else if (strstr(old_path, "bbone_out"))
+		new_path = BLI_str_replaceN(old_path, "bbone_out", "bbone_easeout");
+	
+	if (new_path) {
+		MEM_freeN(old_path);
+		return new_path;
+	}
+	else {
+		return old_path;
+	}
+}
+
+static void do_version_bbone_easing_fcurve_fix(ID *UNUSED(id), FCurve *fcu, void *UNUSED(user_data))
+{
+	/* F-Curve's path (for bbone_in/out) */
+	if (fcu->rna_path) {
+		fcu->rna_path = replace_bbone_easing_rnapath(fcu->rna_path);
+	}
+	
+	/* Driver -> Driver Vars (for bbone_in/out) */
+	if (fcu->driver) {
+		for (DriverVar *dvar = fcu->driver->variables.first; dvar; dvar = dvar->next) {
+			DRIVER_TARGETS_LOOPER(dvar)
+			{
+				if (dtar->rna_path) {
+					dtar->rna_path = replace_bbone_easing_rnapath(dtar->rna_path);
+				}
+			}
+			DRIVER_TARGETS_LOOPER_END;
+		}
+	}
+	
+	/* FModifiers -> Stepped (for frame_start/end) */
+	if (fcu->modifiers.first) {
+		for (FModifier *fcm = fcu->modifiers.first; fcm; fcm = fcm->next) {
+			if (fcm->type == FMODIFIER_TYPE_STEPPED) {
+				FMod_Stepped *data = fcm->data;
+				
+				/* Modifier doesn't work if the modifier's copy of start/end frame are both 0
+				 * as those were only getting written to the fcm->data copy (T52009)
+				 */
+				if ((fcm->sfra == fcm->efra) && (fcm->sfra == 0)) {
+					fcm->sfra = data->start_frame;
+					fcm->efra = data->end_frame;
+				}
+			}
+		}
+	}
+}
+
 
 void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 {
@@ -1180,7 +1243,7 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 	if (!MAIN_VERSION_ATLEAST(main, 277, 1)) {
 		for (Scene *scene = main->scene.first; scene; scene = scene->id.next) {
 			ParticleEditSettings *pset = &scene->toolsettings->particle;
-			for (int a = 0; a < PE_TOT_BRUSH; a++) {
+			for (int a = 0; a < ARRAY_SIZE(pset->brush); a++) {
 				if (pset->brush[a].strength > 1.0f) {
 					pset->brush[a].strength *= 0.01f;
 				}
@@ -1530,7 +1593,7 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			if (scene->toolsettings != NULL) {
 				ToolSettings *ts = scene->toolsettings;
 				ParticleEditSettings *pset = &ts->particle;
-				for (int a = 0; a < PE_TOT_BRUSH; a++) {
+				for (int a = 0; a < ARRAY_SIZE(pset->brush); a++) {
 					if (pset->brush[a].count == 0) {
 						pset->brush[a].count = 10;
 					}
@@ -1671,6 +1734,51 @@ void blo_do_versions_270(FileData *fd, Library *UNUSED(lib), Main *main)
 			CustomData_set_layer_name(&me->vdata, CD_MDEFORMVERT, 0, "");
 		}
 	}
+
+	{
+		/* Fix for invalid state of screen due to bug in older versions. */
+		for (bScreen *sc = main->screen.first; sc; sc = sc->id.next) {
+			for (ScrArea *sa = sc->areabase.first; sa; sa = sa->next) {
+				if (sa->full && sc->state == SCREENNORMAL) {
+					sa->full = NULL;
+				}
+			}
+		}
+
+		if (!DNA_struct_elem_find(fd->filesdna, "Brush", "float", "falloff_angle")) {
+			for (Brush *br = main->brush.first; br; br = br->id.next) {
+				br->falloff_angle = DEG2RADF(80);
+				br->flag &= ~(
+				        BRUSH_FLAG_DEPRECATED_1 | BRUSH_FLAG_DEPRECATED_2 |
+				        BRUSH_FLAG_DEPRECATED_3 | BRUSH_FLAG_DEPRECATED_4 |
+				        BRUSH_FRONTFACE_FALLOFF);
+			}
+
+			for (Scene *scene = main->scene.first; scene; scene = scene->id.next) {
+				ToolSettings *ts = scene->toolsettings;
+				for (int i = 0; i < 2; i++) {
+					VPaint *vp = i ? ts->vpaint : ts->wpaint;
+					if (vp != NULL) {
+						/* remove all other flags */
+						vp->flag &= (VP_FLAG_VGROUP_RESTRICT);
+					}
+				}
+			}
+		}
+
+		/* Simple deform modifier no longer assumes Z axis (X for bend type).
+		 * Must set previous defaults. */
+		if (!DNA_struct_elem_find(fd->filesdna, "SimpleDeformModifierData", "char", "deform_axis")) {
+			for (Object *ob = main->object.first; ob; ob = ob->id.next) {
+				for (ModifierData *md = ob->modifiers.first; md; md = md->next) {
+					if (md->type == eModifierType_SimpleDeform) {
+						SimpleDeformModifierData *smd = (SimpleDeformModifierData *)md;
+						smd->deform_axis = 2;
+					}
+				}
+			}
+		}
+	}
 }
 
 void do_versions_after_linking_270(Main *main)
@@ -1687,5 +1795,11 @@ void do_versions_after_linking_270(Main *main)
 				}
 			}
 		} FOREACH_NODETREE_END
+	}
+	
+	if (!MAIN_VERSION_ATLEAST(main, 279, 2)) {
+		/* B-Bones (bbone_in/out -> bbone_easein/out) + Stepped FMod Frame Start/End fix */
+		/* if (!DNA_struct_elem_find(fd->filesdna, "Bone", "float", "bbone_easein")) */
+		BKE_fcurves_main_cb(main, do_version_bbone_easing_fcurve_fix, NULL);
 	}
 }

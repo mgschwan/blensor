@@ -41,29 +41,11 @@ extern "C" {
 #include "DEG_depsgraph_debug.h"
 #include "DEG_depsgraph_build.h"
 
-#include "intern/eval/deg_eval_debug.h"
 #include "intern/depsgraph_intern.h"
+#include "intern/nodes/deg_node_id.h"
+#include "intern/nodes/deg_node_time.h"
+
 #include "util/deg_util_foreach.h"
-
-/* ************************************************ */
-
-DepsgraphStats *DEG_stats(void)
-{
-	return DEG::DepsgraphDebug::stats;
-}
-
-void DEG_stats_verify()
-{
-	DEG::DepsgraphDebug::verify_stats();
-}
-
-DepsgraphStatsID *DEG_stats_id(ID *id)
-{
-	if (!DEG::DepsgraphDebug::stats) {
-		return NULL;
-	}
-	return DEG::DepsgraphDebug::get_id_stats(id, false);
-}
 
 bool DEG_debug_compare(const struct Depsgraph *graph1,
                        const struct Depsgraph *graph2)
@@ -218,8 +200,7 @@ void DEG_stats_simple(const Depsgraph *graph, size_t *r_outer,
 		size_t tot_outer = 0;
 		size_t tot_rels = 0;
 
-		GHASH_FOREACH_BEGIN(DEG::IDDepsNode *, id_node, deg_graph->id_hash)
-		{
+		foreach (DEG::IDDepsNode *id_node, deg_graph->id_nodes) {
 			tot_outer++;
 			GHASH_FOREACH_BEGIN(DEG::ComponentDepsNode *, comp_node, id_node->components)
 			{
@@ -230,7 +211,6 @@ void DEG_stats_simple(const Depsgraph *graph, size_t *r_outer,
 			}
 			GHASH_FOREACH_END();
 		}
-		GHASH_FOREACH_END();
 
 		DEG::TimeSourceDepsNode *time_source = deg_graph->find_time_source();
 		if (time_source != NULL) {

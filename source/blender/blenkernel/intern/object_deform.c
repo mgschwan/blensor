@@ -42,7 +42,7 @@
 #include "DNA_mesh_types.h"
 #include "DNA_modifier_types.h"
 #include "DNA_object_types.h"
-#include "DNA_object_force.h"
+#include "DNA_object_force_types.h"
 #include "DNA_particle_types.h"
 #include "DNA_scene_types.h"
 
@@ -481,6 +481,8 @@ bool BKE_object_defgroup_array_get(ID *id, MDeformVert **dvert_arr, int *dvert_t
 				*dvert_tot = lt->pntsu * lt->pntsv * lt->pntsw;
 				return true;
 			}
+			default:
+				break;
 		}
 	}
 
@@ -537,7 +539,7 @@ bool *BKE_object_defgroup_validmap_get(Object *ob, const int defbase_tot)
 		BLI_ghash_insert(gh, dg->name, NULL);
 	}
 
-	BLI_assert(BLI_ghash_size(gh) == defbase_tot);
+	BLI_assert(BLI_ghash_len(gh) == defbase_tot);
 
 	/* now loop through the armature modifiers and identify deform bones */
 	for (md = ob->modifiers.first; md; md = !md->next && step1 ? (step1 = 0), modifiers_getVirtualModifierList(ob, &virtualModifierData) : md->next) {
@@ -572,7 +574,7 @@ bool *BKE_object_defgroup_validmap_get(Object *ob, const int defbase_tot)
 		defgroup_validmap[i] = (BLI_ghash_lookup(gh, dg->name) != NULL);
 	}
 
-	BLI_assert(i == BLI_ghash_size(gh));
+	BLI_assert(i == BLI_ghash_len(gh));
 
 	BLI_ghash_free(gh, NULL, NULL);
 

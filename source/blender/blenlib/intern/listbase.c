@@ -29,7 +29,9 @@
 /** \file blender/blenlib/intern/listbase.c
  *  \ingroup bli
  *
- * Manipulations on ListBase structs
+ * Manipulations on double-linked list (#ListBase structs).
+ *
+ * For single linked lists see 'BLI_linklist.h'
  */
 
 #include <string.h>
@@ -167,6 +169,34 @@ void BLI_listbase_swaplinks(ListBase *listbase, void *vlinka, void *vlinkb)
 	else if (listbase->last == linkb) listbase->last = linka;
 	if (listbase->first == linka) listbase->first = linkb;
 	else if (listbase->first == linkb) listbase->first = linka;
+}
+
+/**
+ * Swaps \a vlinka and \a vlinkb from their respective lists. Assumes they are both already in their lista!
+ */
+void BLI_listbases_swaplinks(ListBase *listbasea, ListBase *listbaseb, void *vlinka, void *vlinkb)
+{
+	Link *linka = vlinka;
+	Link *linkb = vlinkb;
+	Link linkc = {NULL};
+
+	if (!linka || !linkb) {
+		return;
+	}
+
+	/* Temporary link to use as placeholder of the links positions */
+	BLI_insertlinkafter(listbasea, linka, &linkc);
+
+	/* Bring linka into linkb position */
+	BLI_remlink(listbasea, linka);
+	BLI_insertlinkafter(listbaseb, linkb, linka);
+
+	/* Bring linkb into linka position */
+	BLI_remlink(listbaseb, linkb);
+	BLI_insertlinkafter(listbasea, &linkc, linkb);
+
+	/* Remove temporary link */
+	BLI_remlink(listbasea, &linkc);
 }
 
 /**
@@ -656,6 +686,46 @@ void *BLI_rfindptr(const ListBase *listbase, const void *ptr, const int offset)
 		ptr_iter = *((const void **)(((const char *)link) + offset));
 
 		if (ptr == ptr_iter) {
+			return link;
+		}
+	}
+
+	return NULL;
+}
+
+/**
+ * Finds the first element of listbase which contains the specified bytes
+ * at the specified offset, returning NULL if not found.
+ */
+void *BLI_listbase_bytes_find(const ListBase *listbase, const void *bytes, const size_t bytes_size, const int offset)
+{
+	Link *link = NULL;
+	const void *ptr_iter;
+
+	for (link = listbase->first; link; link = link->next) {
+		ptr_iter = (const void *)(((const char *)link) + offset);
+
+		if (memcmp(bytes, ptr_iter, bytes_size) == 0) {
+			return link;
+		}
+	}
+
+	return NULL;
+}
+/* same as above but find reverse */
+/**
+ * Finds the last element of listbase which contains the specified bytes
+ * at the specified offset, returning NULL if not found.
+ */
+void *BLI_listbase_bytes_rfind(const ListBase *listbase, const void *bytes, const size_t bytes_size, const int offset)
+{
+	Link *link = NULL;
+	const void *ptr_iter;
+
+	for (link = listbase->last; link; link = link->prev) {
+		ptr_iter = (const void *)(((const char *)link) + offset);
+
+		if (memcmp(bytes, ptr_iter, bytes_size) == 0) {
 			return link;
 		}
 	}

@@ -108,6 +108,8 @@ typedef struct PaintStroke {
 	 * e.g. in sculpt mode, stroke doesn't start until cursor
 	 * passes over the mesh */
 	bool stroke_started;
+	/* Set when enough motion was found for rake rotation */
+	bool rake_started;
 	/* event that started stroke, for modal() return */
 	int event_type;
 	/* check if stroke variables have been initialized */
@@ -192,7 +194,7 @@ static void paint_draw_line_cursor(bContext *C, int x, int y, void *customdata)
 	glDisable(GL_LINE_SMOOTH);
 }
 
-static bool paint_tool_require_location(Brush *brush, PaintMode mode)
+static bool paint_tool_require_location(Brush *brush, ePaintMode mode)
 {
 	switch (mode) {
 		case ePaintSculpt:
@@ -214,7 +216,7 @@ static bool paint_tool_require_location(Brush *brush, PaintMode mode)
 /* Initialize the stroke cache variants from operator properties */
 static bool paint_brush_update(bContext *C,
                                Brush *brush,
-                               PaintMode mode,
+                               ePaintMode mode,
                                struct PaintStroke *stroke,
                                const float mouse_init[2],
                                float mouse[2], float pressure,
@@ -224,6 +226,9 @@ static bool paint_brush_update(bContext *C,
 	UnifiedPaintSettings *ups = stroke->ups;
 	bool location_sampled = false;
 	bool location_success = false;
+	/* Use to perform all operations except applying the stroke,
+	 * needed for operations that require cursor motion (rake). */
+	bool is_dry_run = false;
 	bool do_random = false;
 	bool do_random_mask = false;
 	/* XXX: Use pressure value from first brush step for brushes which don't
@@ -362,7 +367,15 @@ static bool paint_brush_update(bContext *C,
 		}
 		/* curve strokes do their own rake calculation */
 		else if (!(brush->flag & BRUSH_CURVE)) {
-			paint_calculate_rake_rotation(ups, brush, mouse_init);
+			if (!paint_calculate_rake_rotation(ups, brush, mouse_init)) {
+				/* Not enough motion to define an angle. */
+				if (!stroke->rake_started) {
+					is_dry_run = true;
+				}
+			}
+			else {
+				stroke->rake_started = true;
+			}
 		}
 	}
 
@@ -393,10 +406,10 @@ static bool paint_brush_update(bContext *C,
 		}
 	}
 
-	return location_success;
+	return location_success && (is_dry_run == false);
 }
 
-static bool paint_stroke_use_jitter(PaintMode mode, Brush *brush, bool invert)
+static bool paint_stroke_use_jitter(ePaintMode mode, Brush *brush, bool invert)
 {
 	bool use_jitter = (brush->flag & BRUSH_ABSOLUTE_JITTER) ?
 		(brush->jitter_absolute != 0) : (brush->jitter != 0);
@@ -416,7 +429,7 @@ static void paint_brush_stroke_add_step(bContext *C, wmOperator *op, const float
 {
 	Scene *scene = CTX_data_scene(C);
 	Paint *paint = BKE_paint_get_active_from_context(C);
-	PaintMode mode = BKE_paintmode_get_active_from_context(C);
+	ePaintMode mode = BKE_paintmode_get_active_from_context(C);
 	Brush *brush = BKE_paint_brush(paint);
 	PaintStroke *stroke = op->customdata;
 	UnifiedPaintSettings *ups = stroke->ups;
@@ -491,7 +504,7 @@ static void paint_brush_stroke_add_step(bContext *C, wmOperator *op, const float
 
 /* Returns zero if no sculpt changes should be made, non-zero otherwise */
 static bool paint_smooth_stroke(
-        PaintStroke *stroke, const PaintSample *sample, PaintMode mode,
+        PaintStroke *stroke, const PaintSample *sample, ePaintMode mode,
         float r_mouse[2], float *r_pressure)
 {
 	if (paint_supports_smooth_stroke(stroke->brush, mode)) {
@@ -757,7 +770,7 @@ static void stroke_done(struct bContext *C, struct wmOperator *op)
 }
 
 /* Returns zero if the stroke dots should not be spaced, non-zero otherwise */
-bool paint_space_stroke_enabled(Brush *br, PaintMode mode)
+bool paint_space_stroke_enabled(Brush *br, ePaintMode mode)
 {
 	return (br->flag & BRUSH_SPACE) && paint_supports_dynamic_size(br, mode);
 }
@@ -772,7 +785,7 @@ static bool sculpt_is_grab_tool(Brush *br)
 }
 
 /* return true if the brush size can change during paint (normally used for pressure) */
-bool paint_supports_dynamic_size(Brush *br, PaintMode mode)
+bool paint_supports_dynamic_size(Brush *br, ePaintMode mode)
 {
 	if (br->flag & BRUSH_ANCHORED)
 		return false;
@@ -798,7 +811,7 @@ bool paint_supports_dynamic_size(Brush *br, PaintMode mode)
 	return true;
 }
 
-bool paint_supports_smooth_stroke(Brush *br, PaintMode mode)
+bool paint_supports_smooth_stroke(Brush *br, ePaintMode mode)
 {
 	if (!(br->flag & BRUSH_SMOOTH_STROKE) ||
 	    (br->flag & (BRUSH_ANCHORED | BRUSH_DRAG_DOT | BRUSH_LINE)))
@@ -817,14 +830,14 @@ bool paint_supports_smooth_stroke(Brush *br, PaintMode mode)
 	return true;
 }
 
-bool paint_supports_texture(PaintMode mode)
+bool paint_supports_texture(ePaintMode mode)
 {
 	/* omit: PAINT_WEIGHT, PAINT_SCULPT_UV, PAINT_INVALID */
 	return ELEM(mode, ePaintSculpt, ePaintVertex, ePaintTextureProjective, ePaintTexture2D);
 }
 
 /* return true if the brush size can change during paint (normally used for pressure) */
-bool paint_supports_dynamic_tex_coords(Brush *br, PaintMode mode)
+bool paint_supports_dynamic_tex_coords(Brush *br, ePaintMode mode)
 {
 	if (br->flag & BRUSH_ANCHORED)
 		return false;
@@ -1086,7 +1099,7 @@ static void paint_stroke_line_constrain(PaintStroke *stroke, float mouse[2])
 int paint_stroke_modal(bContext *C, wmOperator *op, const wmEvent *event)
 {
 	Paint *p = BKE_paint_get_active_from_context(C);
-	PaintMode mode = BKE_paintmode_get_active_from_context(C);
+	ePaintMode mode = BKE_paintmode_get_active_from_context(C);
 	PaintStroke *stroke = op->customdata;
 	Brush *br = stroke->brush;
 	PaintSample sample_average;

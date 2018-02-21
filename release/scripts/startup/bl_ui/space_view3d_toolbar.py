@@ -19,20 +19,20 @@
 # <pep8 compliant>
 import bpy
 from bpy.types import Menu, Panel, UIList
-from bl_ui.properties_grease_pencil_common import (
-        GreasePencilDrawingToolsPanel,
-        GreasePencilStrokeEditPanel,
-        GreasePencilInterpolatePanel,
-        GreasePencilStrokeSculptPanel,
-        GreasePencilBrushPanel,
-        GreasePencilBrushCurvesPanel
-        )
-from bl_ui.properties_paint_common import (
-        UnifiedPaintPanel,
-        brush_texture_settings,
-        brush_texpaint_common,
-        brush_mask_texture_settings,
-        )
+from .properties_grease_pencil_common import (
+    GreasePencilDrawingToolsPanel,
+    GreasePencilStrokeEditPanel,
+    GreasePencilInterpolatePanel,
+    GreasePencilStrokeSculptPanel,
+    GreasePencilBrushPanel,
+    GreasePencilBrushCurvesPanel
+)
+from .properties_paint_common import (
+    UnifiedPaintPanel,
+    brush_texture_settings,
+    brush_texpaint_common,
+    brush_mask_texture_settings,
+)
 
 
 class View3DPanel:
@@ -50,6 +50,19 @@ def draw_keyframing_tools(context, layout):
     row.operator("anim.keyframe_insert_menu", text="Insert")
     row.operator("anim.keyframe_delete_v3d", text="Remove")
 
+
+# Used by vertex & weight paint
+def draw_vpaint_symmetry(layout, vpaint):
+    col = layout.column(align=True)
+    col.label(text="Mirror:")
+    row = col.row(align=True)
+
+    row.prop(vpaint, "use_symmetry_x", text="X", toggle=True)
+    row.prop(vpaint, "use_symmetry_y", text="Y", toggle=True)
+    row.prop(vpaint, "use_symmetry_z", text="Z", toggle=True)
+
+    col = layout.column()
+    col.prop(vpaint, "radial_symmetry", text="Radial")
 
 # ********** default tools for object-mode ****************
 
@@ -839,12 +852,12 @@ class VIEW3D_PT_tools_posemode(View3DPanel, Panel):
 
         draw_keyframing_tools(context, layout)
 
-        pchan = context.active_pose_bone
-        mpath = pchan.motion_path if pchan else None
+        ob = context.object
+        avs = ob.pose.animation_visualization
 
         col = layout.column(align=True)
         col.label(text="Motion Paths:")
-        if mpath:
+        if avs.motion_path.has_motion_paths:
             row = col.row(align=True)
             row.operator("pose.paths_update", text="Update")
             row.operator("pose.paths_clear", text="", icon='X')
@@ -1067,8 +1080,8 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
 
             # use_frontface
             col.separator()
-            row = col.row()
-            row.prop(brush, "use_frontface", text="Front Faces Only")
+            col.prop(brush, "use_frontface", text="Front Faces Only")
+            col.prop(brush, "use_projected")
 
             # direction
             col.separator()
@@ -1118,11 +1131,21 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
             self.prop_unified_strength(row, context, brush, "strength", text="Strength")
             self.prop_unified_strength(row, context, brush, "use_pressure_strength")
 
+            col.separator()
             col.prop(brush, "vertex_tool", text="Blend")
 
-            if brush.vertex_tool == 'BLUR':
+            if brush.vertex_tool != 'SMEAR':
                 col.prop(brush, "use_accumulate")
                 col.separator()
+
+            col.prop(brush, "use_frontface", text="Front Faces Only")
+            row = col.row()
+            row.prop(brush, "use_frontface_falloff", text="Falloff Angle")
+            sub = row.row()
+            sub.active = brush.use_frontface_falloff
+            sub.prop(brush, "falloff_angle", text="")
+
+            col.prop(brush, "use_projected")
 
             col = layout.column()
             col.prop(toolsettings, "use_auto_normalize", text="Auto Normalize")
@@ -1134,7 +1157,11 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
             self.prop_unified_color_picker(col, context, brush, "color", value_slider=True)
             if settings.palette:
                 col.template_palette(settings, "palette", color=True)
-            self.prop_unified_color(col, context, brush, "color", text="")
+            row = col.row(align=True)
+            self.prop_unified_color(row, context, brush, "color", text="")
+            self.prop_unified_color(row, context, brush, "secondary_color", text="")
+            row.separator()
+            row.operator("paint.brush_colors_flip", icon='FILE_REFRESH', text="")
 
             col.separator()
             row = col.row(align=True)
@@ -1145,12 +1172,22 @@ class VIEW3D_PT_tools_brush(Panel, View3DPaintPanel):
             self.prop_unified_strength(row, context, brush, "strength", text="Strength")
             self.prop_unified_strength(row, context, brush, "use_pressure_strength")
 
-            # XXX - TODO
-            # row = col.row(align=True)
-            # row.prop(brush, "jitter", slider=True)
-            # row.prop(brush, "use_pressure_jitter", toggle=True, text="")
             col.separator()
             col.prop(brush, "vertex_tool", text="Blend")
+            col.prop(brush, "use_alpha")
+
+            if brush.vertex_tool != 'SMEAR':
+                col.prop(brush, "use_accumulate")
+                col.separator()
+
+            col.prop(brush, "use_frontface", text="Front Faces Only")
+            row = col.row()
+            row.prop(brush, "use_frontface_falloff", text="Falloff Angle")
+            sub = row.row()
+            sub.active = brush.use_frontface_falloff
+            sub.prop(brush, "falloff_angle", text="")
+
+            col.prop(brush, "use_projected")
 
             col.separator()
             col.template_ID(settings, "palette", new="palette.new")
@@ -1611,6 +1648,7 @@ class VIEW3D_PT_sculpt_options(Panel, View3DPaintPanel):
         layout.prop(sculpt, "show_low_resolution")
         layout.prop(sculpt, "use_deform_only")
         layout.prop(sculpt, "show_diffuse_color")
+        layout.prop(sculpt, "show_mask")
 
         self.unified_paint_settings(layout, context)
 
@@ -1717,6 +1755,19 @@ class VIEW3D_PT_tools_weightpaint(View3DPanel, Panel):
         props.data_type = 'VGROUP_WEIGHTS'
 
 
+class VIEW3D_PT_tools_weightpaint_symmetry(Panel, View3DPaintPanel):
+    bl_category = "Tools"
+    bl_context = "weightpaint"
+    bl_options = {'DEFAULT_CLOSED'}
+    bl_label = "Symmetry"
+
+    def draw(self, context):
+        layout = self.layout
+        toolsettings = context.tool_settings
+        wpaint = toolsettings.weight_paint
+        draw_vpaint_symmetry(layout, wpaint)
+
+
 class VIEW3D_PT_tools_weightpaint_options(Panel, View3DPaintPanel):
     bl_category = "Options"
     bl_context = "weightpaint"
@@ -1729,13 +1780,7 @@ class VIEW3D_PT_tools_weightpaint_options(Panel, View3DPaintPanel):
         wpaint = tool_settings.weight_paint
 
         col = layout.column()
-        row = col.row()
-
-        row.prop(wpaint, "use_normal")
-        col = layout.column()
-        row = col.row()
-        row.prop(wpaint, "use_spray")
-        row.prop(wpaint, "use_group_restrict")
+        col.prop(wpaint, "use_group_restrict")
 
         obj = context.weight_paint_object
         if obj.type == 'MESH':
@@ -1766,18 +1811,22 @@ class VIEW3D_PT_tools_vertexpaint(Panel, View3DPaintPanel):
         vpaint = toolsettings.vertex_paint
 
         col = layout.column()
-        row = col.row()
-        # col.prop(vpaint, "mode", text="")
-        row.prop(vpaint, "use_normal")
-        col.prop(vpaint, "use_spray")
 
         self.unified_paint_settings(col, context)
 
-# Commented out because the Apply button isn't an operator yet, making these settings useless
-#~         col.label(text="Gamma:")
-#~         col.prop(vpaint, "gamma", text="")
-#~         col.label(text="Multiply:")
-#~         col.prop(vpaint, "mul", text="")
+
+class VIEW3D_PT_tools_vertexpaint_symmetry(Panel, View3DPaintPanel):
+    bl_category = "Tools"
+    bl_context = "vertexpaint"
+    bl_options = {'DEFAULT_CLOSED'}
+    bl_label = "Symmetry"
+
+    def draw(self, context):
+        layout = self.layout
+        toolsettings = context.tool_settings
+        vpaint = toolsettings.vertex_paint
+        draw_vpaint_symmetry(layout, vpaint)
+
 
 # ********** default tools for texture-paint ****************
 
@@ -1925,7 +1974,7 @@ class VIEW3D_PT_tools_particlemode(View3DPanel, Panel):
         col = layout.column(align=True)
         if pe.is_hair:
             col.active = pe.is_editable
-            col.prop(pe, "use_emitter_deflect", text="Deflect emitter")
+            col.prop(pe, "use_emitter_deflect", text="Deflect Emitter")
             sub = col.row(align=True)
             sub.active = pe.use_emitter_deflect
             sub.prop(pe, "emitter_distance", text="Distance")
@@ -2058,8 +2107,10 @@ classes = (
     VIEW3D_PT_sculpt_symmetry,
     VIEW3D_PT_tools_brush_appearance,
     VIEW3D_PT_tools_weightpaint,
+    VIEW3D_PT_tools_weightpaint_symmetry,
     VIEW3D_PT_tools_weightpaint_options,
     VIEW3D_PT_tools_vertexpaint,
+    VIEW3D_PT_tools_vertexpaint_symmetry,
     VIEW3D_PT_tools_imagepaint_external,
     VIEW3D_PT_tools_imagepaint_symmetry,
     VIEW3D_PT_tools_projectpaint,

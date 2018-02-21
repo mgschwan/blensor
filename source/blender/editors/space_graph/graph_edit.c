@@ -195,8 +195,8 @@ static int graphkeys_previewrange_exec(bContext *C, wmOperator *UNUSED(op))
 	/* set the range directly */
 	get_graph_keyframe_extents(&ac, &min, &max, NULL, NULL, false, false);
 	scene->r.flag |= SCER_PRV_RANGE;
-	scene->r.psfra = iroundf(min);
-	scene->r.pefra = iroundf(max);
+	scene->r.psfra = round_fl_to_int(min);
+	scene->r.pefra = round_fl_to_int(max);
 	
 	/* set notifier that things have changed */
 	// XXX err... there's nothing for frame ranges yet, but this should do fine too
@@ -502,7 +502,7 @@ typedef enum eGraphKeys_InsertKey_Types {
 } eGraphKeys_InsertKey_Types;
 
 /* RNA mode types for insert keyframes tool */
-static EnumPropertyItem prop_graphkeys_insertkey_types[] = {
+static const EnumPropertyItem prop_graphkeys_insertkey_types[] = {
 	{GRAPHKEYS_INSERTKEY_ALL,   "ALL", 0, "All Channels",
 	 "Insert a keyframe on all visible and editable F-Curves using each curve's current value"},
 	{GRAPHKEYS_INSERTKEY_SEL,   "SEL", 0, "Only Selected Channels",
@@ -1466,7 +1466,7 @@ void GRAPH_OT_sample(wmOperatorType *ot)
 #define CLEAR_CYCLIC_EXPO   -2
 
 /* defines for set extrapolation-type for selected keyframes tool */
-static EnumPropertyItem prop_graphkeys_expo_types[] = {
+static const EnumPropertyItem prop_graphkeys_expo_types[] = {
 	{FCURVE_EXTRAPOLATE_CONSTANT, "CONSTANT", 0, "Constant Extrapolation", "Values on endpoint keyframes are held"},
 	{FCURVE_EXTRAPOLATE_LINEAR, "LINEAR", 0, "Linear Extrapolation", "Straight-line slope of end segments are extended past the endpoint keyframes"},
 	
@@ -1504,7 +1504,7 @@ static void setexpo_graph_keys(bAnimContext *ac, short mode)
 				/* only add if one doesn't exist */
 				if (list_has_suitable_fmodifier(&fcu->modifiers, FMODIFIER_TYPE_CYCLES, -1) == 0) {
 					// TODO: add some more preset versions which set different extrapolation options?
-					add_fmodifier(&fcu->modifiers, FMODIFIER_TYPE_CYCLES);
+					add_fmodifier(&fcu->modifiers, FMODIFIER_TYPE_CYCLES, fcu);
 				}
 			}
 			else if (mode == CLEAR_CYCLIC_EXPO) {
@@ -2036,7 +2036,7 @@ static int graphkeys_framejump_exec(bContext *C, wmOperator *UNUSED(op))
 		}
 		else {
 			/* Animation Mode - Affects current frame (int) */
-			CFRA = iroundf(ked.f1 / ked.i1);
+			CFRA = round_fl_to_int(ked.f1 / ked.i1);
 			SUBFRA = 0.f;
 			sipo->cursorVal = ked.f2 / (float)ked.i1;
 		}
@@ -2066,7 +2066,7 @@ void GRAPH_OT_frame_jump(wmOperatorType *ot)
 /* ******************** Snap Keyframes Operator *********************** */
 
 /* defines for snap keyframes tool */
-static EnumPropertyItem prop_graphkeys_snap_types[] = {
+static const EnumPropertyItem prop_graphkeys_snap_types[] = {
 	{GRAPHKEYS_SNAP_CFRA, "CFRA", 0, "Current Frame",
 	 "Snap selected keyframes to the current frame"},
 	{GRAPHKEYS_SNAP_VALUE, "VALUE", 0, "Cursor Value",
@@ -2195,7 +2195,7 @@ void GRAPH_OT_snap(wmOperatorType *ot)
 /* ******************** Mirror Keyframes Operator *********************** */
 
 /* defines for mirror keyframes tool */
-static EnumPropertyItem prop_graphkeys_mirror_types[] = {
+static const EnumPropertyItem prop_graphkeys_mirror_types[] = {
 	{GRAPHKEYS_MIRROR_CFRA, "CFRA", 0, "By Times over Current Frame",
 	 "Flip times of selected keyframes using the current frame as the mirror line"},
 	{GRAPHKEYS_MIRROR_VALUE, "VALUE", 0, "By Values over Cursor Value",
@@ -2386,7 +2386,7 @@ void GRAPH_OT_smooth(wmOperatorType *ot)
 
 /* ******************** Add F-Modifier Operator *********************** */
 
-static EnumPropertyItem *graph_fmodifier_itemf(bContext *C, PointerRNA *UNUSED(ptr), PropertyRNA *UNUSED(prop), bool *r_free)
+static const EnumPropertyItem *graph_fmodifier_itemf(bContext *C, PointerRNA *UNUSED(ptr), PropertyRNA *UNUSED(prop), bool *r_free)
 {
 	EnumPropertyItem *item = NULL;
 	int totitem = 0;
@@ -2446,7 +2446,7 @@ static int graph_fmodifier_add_exec(bContext *C, wmOperator *op)
 		FModifier *fcm;
 		
 		/* add F-Modifier of specified type to active F-Curve, and make it the active one */
-		fcm = add_fmodifier(&fcu->modifiers, type);
+		fcm = add_fmodifier(&fcu->modifiers, type, fcu);
 		if (fcm) {
 			set_active_fmodifier(&fcu->modifiers, fcm);
 		}
@@ -2582,7 +2582,7 @@ static int graph_fmodifier_paste_exec(bContext *C, wmOperator *op)
 		FCurve *fcu = (FCurve *)ale->data;
 		int tot;
 		
-		tot = ANIM_fmodifiers_paste_from_buf(&fcu->modifiers, replace);
+		tot = ANIM_fmodifiers_paste_from_buf(&fcu->modifiers, replace, fcu);
 		
 		if (tot) {
 			ale->update |= ANIM_UPDATE_DEPS;
@@ -2746,3 +2746,89 @@ void GRAPH_OT_driver_variables_paste(wmOperatorType *ot)
 }
 
 /* ************************************************************************** */
+
+static int graph_driver_delete_invalid_exec(bContext *C, wmOperator *op)
+{
+	bAnimContext ac;
+	ListBase anim_data = {NULL, NULL};
+	bAnimListElem *ale;
+	int filter;
+	bool ok = false;
+	unsigned int deleted = 0;
+
+	/* get editor data */
+	if (ANIM_animdata_get_context(C, &ac) == 0)
+		return OPERATOR_CANCELLED;
+
+	/* NOTE: we might need a scene update to evaluate the driver flags */
+
+	/* filter data */
+	filter = (ANIMFILTER_DATA_VISIBLE | ANIMFILTER_CURVE_VISIBLE | ANIMFILTER_NODUPLIS);
+	ANIM_animdata_filter(&ac, &anim_data, filter, ac.data, ac.datatype);
+
+	/* find invalid drivers */
+	for (ale = anim_data.first; ale; ale = ale->next) {
+		FCurve *fcu = (FCurve *)ale->data;
+		if (ELEM(NULL, fcu, fcu->driver)) {
+			continue;
+		}
+		if (!(fcu->driver->flag & DRIVER_FLAG_INVALID)) {
+			continue;
+		}
+
+		ok |= ANIM_remove_driver(op->reports, ale->id, fcu->rna_path, fcu->array_index, 0);
+		if (!ok) {
+			break;
+		}
+		deleted += 1;
+	}
+
+	/* cleanup */
+	ANIM_animdata_freelist(&anim_data);
+
+	if (deleted > 0) {
+		/* notify the world of any changes */
+		DAG_relations_tag_update(CTX_data_main(C));
+		WM_event_add_notifier(C, NC_ANIMATION | ND_KEYFRAME | NA_REMOVED, NULL);
+		WM_reportf(RPT_INFO, "Deleted %u drivers", deleted);
+	}
+	else {
+		WM_report(RPT_INFO, "No drivers deleted");
+	}
+
+	/* successful or not? */
+	if (!ok) {
+		return OPERATOR_CANCELLED;
+	}
+
+	return OPERATOR_FINISHED;
+}
+
+static int graph_driver_delete_invalid_poll(bContext *C)
+{
+	bAnimContext ac;
+	ScrArea *sa = CTX_wm_area(C);
+
+	/* firstly, check if in Graph Editor */
+	if ((sa == NULL) || (sa->spacetype != SPACE_IPO))
+		return 0;
+
+	/* try to init Anim-Context stuff ourselves and check */
+	return ANIM_animdata_get_context(C, &ac) != 0;
+}
+
+
+void GRAPH_OT_driver_delete_invalid(wmOperatorType *ot)
+{
+	/* identifiers */
+	ot->name = "Delete Invalid Drivers";
+	ot->idname = "GRAPH_OT_driver_delete_invalid";
+	ot->description = "Delete all visible drivers considered invalid";
+
+	/* api callbacks */
+	ot->exec = graph_driver_delete_invalid_exec;
+	ot->poll = graph_driver_delete_invalid_poll;
+
+	/* flags */
+	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
+}

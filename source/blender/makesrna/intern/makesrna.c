@@ -46,6 +46,14 @@
 #  endif
 #endif
 
+/**
+ * Variable to control debug output of makesrna.
+ * debugSRNA:
+ *  - 0 = no output, except errors
+ *  - 1 = detail actions
+ */
+static int debugSRNA = 0;
+
 /* stub for BLI_abort() */
 #ifndef NDEBUG
 void BLI_system_backtrace(FILE *fp)
@@ -62,7 +70,9 @@ void BLI_system_backtrace(FILE *fp)
 static int file_older(const char *file1, const char *file2)
 {
 	struct stat st1, st2;
-	/* printf("compare: %s %s\n", file1, file2); */
+	if (debugSRNA > 0) {
+		printf("compare: %s %s\n", file1, file2);
+	}
 
 	if (stat(file1, &st1)) return 0;
 	if (stat(file2, &st2)) return 0;
@@ -2583,17 +2593,23 @@ static void rna_generate_blender(BlenderRNA *brna, FILE *f)
 {
 	StructRNA *srna;
 
-	fprintf(f, "BlenderRNA BLENDER_RNA = {");
-
+	fprintf(f,
+	        "BlenderRNA BLENDER_RNA = {\n"
+	        "\t.structs = {"
+	);
 	srna = brna->structs.first;
-	if (srna) fprintf(f, "{&RNA_%s, ", srna->identifier);
-	else fprintf(f, "{NULL, ");
+	if (srna) fprintf(f, "&RNA_%s, ", srna->identifier);
+	else      fprintf(f, "NULL, ");
 
 	srna = brna->structs.last;
-	if (srna) fprintf(f, "&RNA_%s}", srna->identifier);
-	else fprintf(f, "NULL}");
+	if (srna) fprintf(f, "&RNA_%s},\n", srna->identifier);
+	else      fprintf(f, "NULL},\n");
 
-	fprintf(f, "};\n\n");
+	fprintf(f,
+	        "\t.structs_map = NULL,\n"
+	        "\t.structs_len = 0,\n"
+	        "};\n\n"
+	);
 }
 
 static void rna_generate_property_prototypes(BlenderRNA *UNUSED(brna), StructRNA *srna, FILE *f)
@@ -2866,7 +2882,7 @@ static void rna_generate_property(FILE *f, StructRNA *srna, const char *nest, Pr
 			int i, defaultfound = 0, totflag = 0;
 
 			if (eprop->item) {
-				fprintf(f, "static EnumPropertyItem rna_%s%s_%s_items[%d] = {\n\t", srna->identifier,
+				fprintf(f, "static const EnumPropertyItem rna_%s%s_%s_items[%d] = {\n\t", srna->identifier,
 				        strnest, prop->identifier, eprop->totitem + 1);
 
 				for (i = 0; i < eprop->totitem; i++) {
@@ -2994,7 +3010,7 @@ static void rna_generate_property(FILE *f, StructRNA *srna, const char *nest, Pr
 	else fprintf(f, "NULL,\n");
 	fprintf(f, "\t%d, ", prop->magic);
 	rna_print_c_string(f, prop->identifier);
-	fprintf(f, ", %d, %d, %d, ", prop->flag, prop->flag_parameter, prop->flag_internal);
+	fprintf(f, ", %d, %d, %d, %d, ", prop->flag, prop->flag_parameter, prop->flag_internal, prop->tags);
 	rna_print_c_string(f, prop->name); fprintf(f, ",\n\t");
 	rna_print_c_string(f, prop->description); fprintf(f, ",\n\t");
 	fprintf(f, "%d, ", prop->icon);
@@ -3238,7 +3254,7 @@ static void rna_generate_struct(BlenderRNA *UNUSED(brna), StructRNA *srna, FILE 
 	fprintf(f, "\t");
 	rna_print_c_string(f, srna->identifier);
 	fprintf(f, ", NULL, NULL"); /* PyType - Cant initialize here */
-	fprintf(f, ", %d, ", srna->flag);
+	fprintf(f, ", %d, NULL, ", srna->flag);
 	rna_print_c_string(f, srna->name);
 	fprintf(f, ",\n\t");
 	rna_print_c_string(f, srna->description);
@@ -4128,7 +4144,9 @@ int main(int argc, char **argv)
 		return_status = 1;
 	}
 	else {
-		fprintf(stderr, "Running makesrna\n");
+		if (debugSRNA > 0) {
+			fprintf(stderr, "Running makesrna\n");
+		}
 		makesrna_path = argv[0];
 		return_status = rna_preprocess(argv[1]);
 	}

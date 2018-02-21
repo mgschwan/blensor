@@ -242,6 +242,13 @@ function(blender_add_lib__impl
 	# listed is helpful for IDE's (QtCreator/MSVC)
 	blender_source_group("${sources}")
 
+	#if enabled, set the FOLDER property for visual studio projects 
+	if(WINDOWS_USE_VISUAL_STUDIO_FOLDERS)
+		get_filename_component(FolderDir ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
+		string(REPLACE ${CMAKE_SOURCE_DIR} "" FolderDir ${FolderDir})
+		set_target_properties(${name} PROPERTIES FOLDER ${FolderDir})
+	endif()
+
 	list_assert_duplicates("${sources}")
 	list_assert_duplicates("${includes}")
 	# Not for system includes because they can resolve to the same path
@@ -282,64 +289,66 @@ function(SETUP_LIBDIRS)
 	# NOTE: For all new libraries, use absolute library paths.
 	# This should eventually be phased out.
 
-	link_directories(${JPEG_LIBPATH} ${PNG_LIBPATH} ${ZLIB_LIBPATH} ${FREETYPE_LIBPATH})
+	if(NOT MSVC)
+		link_directories(${JPEG_LIBPATH} ${PNG_LIBPATH} ${ZLIB_LIBPATH} ${FREETYPE_LIBPATH})
 
-	if(WITH_PYTHON)  #  AND NOT WITH_PYTHON_MODULE  # WIN32 needs
-		link_directories(${PYTHON_LIBPATH})
-	endif()
-	if(WITH_SDL AND NOT WITH_SDL_DYNLOAD)
-		link_directories(${SDL_LIBPATH})
-	endif()
-	if(WITH_CODEC_FFMPEG)
-		link_directories(${FFMPEG_LIBPATH})
-	endif()
-	if(WITH_IMAGE_OPENEXR)
-		link_directories(${OPENEXR_LIBPATH})
-	endif()
-	if(WITH_IMAGE_TIFF)
-		link_directories(${TIFF_LIBPATH})
-	endif()
-	if(WITH_BOOST)
-		link_directories(${BOOST_LIBPATH})
-	endif()
-	if(WITH_OPENIMAGEIO)
-		link_directories(${OPENIMAGEIO_LIBPATH})
-	endif()
-	if(WITH_OPENCOLORIO)
-		link_directories(${OPENCOLORIO_LIBPATH})
-	endif()
-	if(WITH_OPENVDB)
-		link_directories(${OPENVDB_LIBPATH})
-	endif()
-	if(WITH_OPENAL)
-		link_directories(${OPENAL_LIBPATH})
-	endif()
-	if(WITH_JACK AND NOT WITH_JACK_DYNLOAD)
-		link_directories(${JACK_LIBPATH})
-	endif()
-	if(WITH_CODEC_SNDFILE)
-		link_directories(${SNDFILE_LIBPATH})
-	endif()
-	if(WITH_FFTW3)
-		link_directories(${FFTW3_LIBPATH})
-	endif()
-	if(WITH_OPENCOLLADA)
-		link_directories(${OPENCOLLADA_LIBPATH})
-		## Never set
-		# link_directories(${PCRE_LIBPATH})
-		# link_directories(${EXPAT_LIBPATH})
-	endif()
-	if(WITH_LLVM)
-		link_directories(${LLVM_LIBPATH})
-	endif()
+		if(WITH_PYTHON)  #  AND NOT WITH_PYTHON_MODULE  # WIN32 needs
+			link_directories(${PYTHON_LIBPATH})
+		endif()
+		if(WITH_SDL AND NOT WITH_SDL_DYNLOAD)
+			link_directories(${SDL_LIBPATH})
+		endif()
+		if(WITH_CODEC_FFMPEG)
+			link_directories(${FFMPEG_LIBPATH})
+		endif()
+		if(WITH_IMAGE_OPENEXR)
+			link_directories(${OPENEXR_LIBPATH})
+		endif()
+		if(WITH_IMAGE_TIFF)
+			link_directories(${TIFF_LIBPATH})
+		endif()
+		if(WITH_BOOST)
+			link_directories(${BOOST_LIBPATH})
+		endif()
+		if(WITH_OPENIMAGEIO)
+			link_directories(${OPENIMAGEIO_LIBPATH})
+		endif()
+		if(WITH_OPENCOLORIO)
+			link_directories(${OPENCOLORIO_LIBPATH})
+		endif()
+		if(WITH_OPENVDB)
+			link_directories(${OPENVDB_LIBPATH})
+		endif()
+		if(WITH_OPENAL)
+			link_directories(${OPENAL_LIBPATH})
+		endif()
+		if(WITH_JACK AND NOT WITH_JACK_DYNLOAD)
+			link_directories(${JACK_LIBPATH})
+		endif()
+		if(WITH_CODEC_SNDFILE)
+			link_directories(${SNDFILE_LIBPATH})
+		endif()
+		if(WITH_FFTW3)
+			link_directories(${FFTW3_LIBPATH})
+		endif()
+		if(WITH_OPENCOLLADA)
+			link_directories(${OPENCOLLADA_LIBPATH})
+			## Never set
+			# link_directories(${PCRE_LIBPATH})
+			# link_directories(${EXPAT_LIBPATH})
+		endif()
+		if(WITH_LLVM)
+			link_directories(${LLVM_LIBPATH})
+		endif()
 
-	if(WITH_ALEMBIC)
-		link_directories(${ALEMBIC_LIBPATH})
-		link_directories(${HDF5_LIBPATH})
-	endif()
+		if(WITH_ALEMBIC)
+			link_directories(${ALEMBIC_LIBPATH})
+			link_directories(${HDF5_LIBPATH})
+		endif()
 
-	if(WIN32 AND NOT UNIX)
-		link_directories(${PTHREADS_LIBPATH})
+		if(WIN32 AND NOT UNIX)
+			link_directories(${PTHREADS_LIBPATH})
+		endif()
 	endif()
 endfunction()
 
@@ -402,9 +411,6 @@ function(setup_liblinks
 	endif()
 	if(WITH_SDL AND NOT WITH_SDL_DYNLOAD)
 		target_link_libraries(${target} ${SDL_LIBRARY})
-	endif()
-	if(WITH_CODEC_QUICKTIME)
-		target_link_libraries(${target} ${QUICKTIME_LIBRARIES})
 	endif()
 	if(WITH_IMAGE_TIFF)
 		target_link_libraries(${target} ${TIFF_LIBRARY})
@@ -714,14 +720,6 @@ function(SETUP_BLENDER_SORTED_LIBS)
 
 	if(WITH_IK_ITASC)
 		list(APPEND BLENDER_SORTED_LIBS bf_intern_itasc)
-	endif()
-
-	if(WITH_CODEC_QUICKTIME)
-		list(APPEND BLENDER_SORTED_LIBS bf_quicktime)
-	endif()
-
-	if(WITH_MOD_BOOLEAN)
-		list(APPEND BLENDER_SORTED_LIBS extern_carve)
 	endif()
 
 	if(WITH_GHOST_XDND)
@@ -1378,7 +1376,7 @@ endfunction()
 
 # macro for converting pixmap directory to a png and then a c file
 function(data_to_c_simple_icons
-	path_from
+	path_from icon_prefix icon_names
 	list_to_add
 	)
 
@@ -1396,8 +1394,11 @@ function(data_to_c_simple_icons
 
 	get_filename_component(_file_to_path ${_file_to} PATH)
 
-	# ideally we wouldn't glob, but storing all names for all pixmaps is a bit heavy
-	file(GLOB _icon_files "${path_from}/*.dat")
+	# Construct a list of absolute paths from input
+	set(_icon_files)
+	foreach(_var ${icon_names})
+		list(APPEND _icon_files "${_path_from_abs}/${icon_prefix}${_var}.dat")
+	endforeach()
 
 	add_custom_command(
 		OUTPUT  ${_file_from} ${_file_to}
@@ -1509,6 +1510,7 @@ function(find_python_package
 		  PATH_SUFFIXES
 		    site-packages
 		    dist-packages
+		    vendor-packages
 		   NO_DEFAULT_PATH
 		)
 
@@ -1519,6 +1521,8 @@ function(find_python_package
 				"'${PYTHON_LIBPATH}/python${_PY_VER_MAJOR}/site-packages/${package}', "
 				"'${PYTHON_LIBPATH}/python${PYTHON_VERSION}/dist-packages/${package}', "
 				"'${PYTHON_LIBPATH}/python${_PY_VER_MAJOR}/dist-packages/${package}', "
+				"'${PYTHON_LIBPATH}/python${PYTHON_VERSION}/vendor-packages/${package}', "
+				"'${PYTHON_LIBPATH}/python${_PY_VER_MAJOR}/vendor-packages/${package}', "
 				"\n"
 				"The 'WITH_PYTHON_INSTALL_${_upper_package}' option will be ignored when installing Python.\n"
 				"The build will be usable, only add-ons that depend on this package won't be functional."
@@ -1552,11 +1556,11 @@ macro(openmp_delayload
 				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_DEBUG "/DELAYLOAD:${OPENMP_DLL_NAME}d.dll delayimp.lib")
 				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_RELWITHDEBINFO "/DELAYLOAD:${OPENMP_DLL_NAME}.dll delayimp.lib")
 				SET_TARGET_PROPERTIES(${projectname} PROPERTIES LINK_FLAGS_MINSIZEREL "/DELAYLOAD:${OPENMP_DLL_NAME}.dll delayimp.lib")
-			endif(WITH_OPENMP)
-		endif(MSVC)
+			endif()
+		endif()
 endmacro()
 
-MACRO(WINDOWS_SIGN_TARGET target)
+macro(WINDOWS_SIGN_TARGET target)
 	if(WITH_WINDOWS_CODESIGN)
 		if(!SIGNTOOL_EXE)
 			error("Codesigning is enabled, but signtool is not found")
@@ -1577,4 +1581,4 @@ MACRO(WINDOWS_SIGN_TARGET target)
 			)
 		endif()
 	endif()
-ENDMACRO()
+endmacro()

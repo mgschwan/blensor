@@ -136,7 +136,7 @@ struct SnapObjectContext {
 /* -------------------------------------------------------------------- */
 
 /** Common utilities
-* \{ */
+ * \{ */
 
 
 typedef void(*IterSnapObjsCallback)(SnapObjectContext *sctx, bool is_obedit, Object *ob, float obmat[4][4], void *data);
@@ -145,31 +145,22 @@ typedef void(*IterSnapObjsCallback)(SnapObjectContext *sctx, bool is_obedit, Obj
  * Walks through all objects in the scene to create the list of objets to snap.
  *
  * \param sctx: Snap context to store data.
- * \param snap_select : from enum SnapSelect.
+ * \param snap_select : from enum eSnapSelect.
  * \param obedit : Object Edited to use its coordinates of BMesh(if any) to do the snapping.
  */
 static void iter_snap_objects(
         SnapObjectContext *sctx,
-        const SnapSelect snap_select,
+        const eSnapSelect snap_select,
         Object *obedit,
         IterSnapObjsCallback sob_callback,
         void *data)
 {
 	Base *base_act = sctx->scene->basact;
-	/* Need an exception for particle edit because the base is flagged with BA_HAS_RECALC_DATA
-	 * which makes the loop skip it, even the derived mesh will never change
-	 *
-	 * To solve that problem, we do it first as an exception.
-	 * */
-	if (base_act && base_act->object && base_act->object->mode & OB_MODE_PARTICLE_EDIT) {
-		sob_callback(sctx, false, base_act->object, base_act->object->obmat, data);
-	}
-
 	for (Base *base = sctx->scene->base.first; base != NULL; base = base->next) {
 		if ((BASE_VISIBLE_BGMODE(sctx->v3d_data.v3d, sctx->scene, base)) &&
-		    (base->flag & (BA_HAS_RECALC_OB | BA_HAS_RECALC_DATA)) == 0 &&
-			!((snap_select == SNAP_NOT_SELECTED && (base->flag & (SELECT | BA_WAS_SEL))) ||
-			  (snap_select == SNAP_NOT_ACTIVE && base == base_act)))
+		    (base->flag & BA_SNAP_FIX_DEPS_FIASCO) == 0 &&
+		    !((snap_select == SNAP_NOT_SELECTED && (base->flag & (SELECT | BA_WAS_SEL))) ||
+		      (snap_select == SNAP_NOT_ACTIVE && base == base_act)))
 		{
 			bool use_obedit;
 			Object *obj = base->object;
@@ -269,7 +260,7 @@ static int dm_looptri_to_poly_index(DerivedMesh *dm, const MLoopTri *lt);
 /* -------------------------------------------------------------------- */
 
 /** \name Ray Cast Funcs
-* \{ */
+ * \{ */
 
 /* Store all ray-hits
  * Support for storing all depths, not just the first (raycast 'all') */
@@ -405,7 +396,7 @@ static bool raycastDerivedMesh(
 	if (bb) {
 		/* was BKE_boundbox_ray_hit_check, see: cf6ca226fa58 */
 		if (!isect_ray_aabb_v3_simple(
-			    ray_start_local, ray_normal_local, bb->vec[0], bb->vec[6], &len_diff, NULL))
+		        ray_start_local, ray_normal_local, bb->vec[0], bb->vec[6], &len_diff, NULL))
 		{
 			return retval;
 		}
@@ -471,8 +462,7 @@ static bool raycastDerivedMesh(
 	if (len_diff == 0.0f) {  /* do_ray_start_correction */
 		/* We *need* a reasonably valid len_diff in this case.
 		 * Get the distance to bvhtree root */
-		if (!isect_ray_bvhroot_v3(treedata->tree, ray_start_local, ray_normal_local, &len_diff))
-		{
+		if (!isect_ray_bvhroot_v3(treedata->tree, ray_start_local, ray_normal_local, &len_diff)) {
 			return retval;
 		}
 	}
@@ -514,8 +504,8 @@ static bool raycastDerivedMesh(
 		BVHTreeRayHit hit = {.index = -1, .dist = local_depth};
 
 		if (BLI_bvhtree_ray_cast(
-			    treedata->tree, ray_start_local, ray_normal_local, 0.0f,
-			    &hit, treedata->raycast_callback, treedata) != -1)
+		        treedata->tree, ray_start_local, ray_normal_local, 0.0f,
+		        &hit, treedata->raycast_callback, treedata) != -1)
 		{
 			hit.dist += len_diff;
 			hit.dist /= local_scale;
@@ -628,8 +618,7 @@ static bool raycastEditMesh(
 	if (sctx->use_v3d && !((RegionView3D *)sctx->v3d_data.ar->regiondata)->is_persp) {  /* do_ray_start_correction */
 		/* We *need* a reasonably valid len_diff in this case.
 		 * Get the distance to bvhtree root */
-		if (!isect_ray_bvhroot_v3(treedata->tree, ray_start_local, ray_normal_local, &len_diff))
-		{
+		if (!isect_ray_bvhroot_v3(treedata->tree, ray_start_local, ray_normal_local, &len_diff)) {
 			return retval;
 		}
 		/* You need to make sure that ray_start is really far away,
@@ -746,8 +735,6 @@ static bool raycastObj(
 			        ray_start, ray_dir,
 			        ob, dm, obmat, ob_index,
 			        ray_depth, r_loc, r_no, r_index, r_hit_list);
-
-			dm->release(dm);
 		}
 	}
 
@@ -799,7 +786,7 @@ static void raycast_obj_cb(SnapObjectContext *sctx, bool is_obedit, Object *ob, 
  *
  * \param sctx: Snap context to store data.
  * \param snapdata: struct generated in `set_snapdata`.
- * \param snap_select : from enum SnapSelect.
+ * \param snap_select : from enum eSnapSelect.
  * \param use_object_edit_cage : Uses the coordinates of BMesh(if any) to do the snapping.
  * \param obj_list: List with objects to snap (created in `create_object_list`).
  *
@@ -823,7 +810,7 @@ static void raycast_obj_cb(SnapObjectContext *sctx, bool is_obedit, Object *ob, 
 static bool raycastObjects(
         SnapObjectContext *sctx,
         const float ray_start[3], const float ray_dir[3],
-        const SnapSelect snap_select, const bool use_object_edit_cage,
+        const eSnapSelect snap_select, const bool use_object_edit_cage,
         /* read/write args */
         float *ray_depth,
         /* return args */
@@ -1069,36 +1056,20 @@ static float dist_squared_to_projected_aabb(
 		main_axis += 3;
 	}
 
-	/* if rtmin < rtmax, ray intersect `AABB` */
-	if (rtmin <= rtmax) {
 #define IGNORE_BEHIND_RAY
 #ifdef IGNORE_BEHIND_RAY
-		/* `if rtmax < depth_min`, the hit is behind us */
-		if (rtmax < data->ray_min_dist) {
-			/* Test if the entire AABB is behind us */
-			float depth = depth_get(
-			        local_bvmax, data->ray_origin_local, data->ray_direction_local);
-			if (depth < (data->ray_min_dist)) {
-				return FLT_MAX;
-			}
-		}
-#endif
-		const float proj = rtmin * data->ray_direction_local[main_axis];
-		r_axis_closest[main_axis] = (proj - va[main_axis]) < (vb[main_axis] - proj);
-		return 0.0f;
-	}
-#ifdef IGNORE_BEHIND_RAY
-	/* `if rtmin < depth_min`, the hit is behing us */
-	else if (rtmin < data->ray_min_dist) {
-		/* Test if the entire AABB is behind us */
-		float depth = depth_get(
-		        local_bvmax, data->ray_origin_local, data->ray_direction_local);
-		if (depth < (data->ray_min_dist)) {
-			return FLT_MAX;
-		}
+	float depth_max = depth_get(local_bvmax, data->ray_origin_local, data->ray_direction_local);
+	if (depth_max < data->ray_min_dist) {
+		return FLT_MAX;
 	}
 #endif
 #undef IGNORE_BEHIND_RAY
+
+	/* if rtmin <= rtmax, ray intersect `AABB` */
+	if (rtmin <= rtmax) {
+		return 0;
+	}
+
 	if (data->sign[main_axis]) {
 		va[main_axis] = local_bvmax[main_axis];
 		vb[main_axis] = local_bvmin[main_axis];
@@ -2056,7 +2027,7 @@ static void sanp_obj_cb(SnapObjectContext *sctx, bool is_obedit, Object *ob, flo
  *
  * \param sctx: Snap context to store data.
  * \param snapdata: struct generated in `get_snapdata`.
- * \param snap_select : from enum SnapSelect.
+ * \param snap_select : from enum eSnapSelect.
  * \param use_object_edit_cage : Uses the coordinates of BMesh(if any) to do the snapping.
  *
  * Read/Write Args
@@ -2078,7 +2049,7 @@ static void sanp_obj_cb(SnapObjectContext *sctx, bool is_obedit, Object *ob, flo
  */
 static bool snapObjectsRay(
         SnapObjectContext *sctx, SnapData *snapdata,
-        const SnapSelect snap_select, const bool use_object_edit_cage,
+        const eSnapSelect snap_select, const bool use_object_edit_cage,
         /* read/write args */
         float *ray_depth, float *dist_px,
         /* return args */

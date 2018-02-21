@@ -33,6 +33,9 @@
 #include "BLI_utildefines.h"
 #include "BLI_path_util.h"
 
+#include "BKE_scene.h"
+#include "BKE_image.h"
+
 #include "RNA_define.h"
 #include "RNA_enum_types.h"
 
@@ -41,9 +44,10 @@
 #include "RE_engine.h"
 #include "RE_pipeline.h"
 
+#include "ED_render.h"
 
 /* Deprecated, only provided for API compatibility. */
-EnumPropertyItem rna_enum_render_pass_type_items[] = {
+const EnumPropertyItem rna_enum_render_pass_type_items[] = {
 	{SCE_PASS_COMBINED, "COMBINED", 0, "Combined", ""},
 	{SCE_PASS_Z, "Z", 0, "Z", ""},
 	{SCE_PASS_RGBA, "COLOR", 0, "Color", ""},
@@ -79,7 +83,7 @@ EnumPropertyItem rna_enum_render_pass_type_items[] = {
 	{0, NULL, 0, NULL, NULL}
 };
 
-EnumPropertyItem rna_enum_bake_pass_type_items[] = {
+const EnumPropertyItem rna_enum_bake_pass_type_items[] = {
 	{SCE_PASS_COMBINED, "COMBINED", 0, "Combined", ""},
 	{SCE_PASS_AO, "AO", 0, "AO", ""},
 	{SCE_PASS_SHADOW, "SHADOW", 0, "Shadow", ""},
@@ -121,6 +125,11 @@ static void engine_tag_update(RenderEngine *engine)
 static int engine_support_display_space_shader(RenderEngine *UNUSED(engine), Scene *scene)
 {
 	return IMB_colormanagement_support_glsl_draw(&scene->view_settings);
+}
+
+static int engine_get_preview_pixel_size(RenderEngine *UNUSED(engine), Scene *scene)
+{
+	return BKE_render_preview_pixel_size(&scene->r);
 }
 
 static void engine_bind_display_space_shader(RenderEngine *UNUSED(engine), Scene *scene)
@@ -271,7 +280,7 @@ static void engine_update_render_passes(RenderEngine *engine, struct Scene *scen
 
 /* RenderEngine registration */
 
-static void rna_RenderEngine_unregister(Main *UNUSED(bmain), StructRNA *type)
+static void rna_RenderEngine_unregister(Main *bmain, StructRNA *type)
 {
 	RenderEngineType *et = RNA_struct_blender_type_get(type);
 
@@ -279,12 +288,16 @@ static void rna_RenderEngine_unregister(Main *UNUSED(bmain), StructRNA *type)
 		return;
 	
 	RNA_struct_free_extension(type, &et->ext);
-	BLI_freelinkN(&R_engines, et);
 	RNA_struct_free(&BLENDER_RNA, type);
+	BLI_freelinkN(&R_engines, et);
+
+	/* Stop all renders in case we were using this one. */
+	ED_render_engine_changed(bmain);
 }
 
-static StructRNA *rna_RenderEngine_register(Main *bmain, ReportList *reports, void *data, const char *identifier,
-                                            StructValidateFunc validate, StructCallbackFunc call, StructFreeFunc free)
+static StructRNA *rna_RenderEngine_register(
+        Main *bmain, ReportList *reports, void *data, const char *identifier,
+        StructValidateFunc validate, StructCallbackFunc call, StructFreeFunc free)
 {
 	RenderEngineType *et, dummyet = {NULL};
 	RenderEngine dummyengine = {NULL};
@@ -389,6 +402,12 @@ static void rna_RenderResult_layers_begin(CollectionPropertyIterator *iter, Poin
 	rna_iterator_listbase_begin(iter, &rr->layers, NULL);
 }
 
+static void rna_RenderResult_stamp_data_add_field(RenderResult *rr, const char *field, const char *value)
+{
+	BKE_render_result_stamp_data(rr, field, value);
+}
+
+
 static void rna_RenderLayer_passes_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
 {
 	RenderLayer *rl = (RenderLayer *)ptr->data;
@@ -443,7 +462,7 @@ static void rna_def_render_engine(BlenderRNA *brna)
 	FunctionRNA *func;
 	PropertyRNA *parm;
 
-	static EnumPropertyItem render_pass_type_items[] = {
+	static const EnumPropertyItem render_pass_type_items[] = {
 	        {SOCK_FLOAT,   "VALUE",     0,    "Value",     ""},
 	        {SOCK_VECTOR,  "VECTOR",    0,    "Vector",    ""},
 	        {SOCK_RGBA,    "COLOR",     0,    "Color",     ""},
@@ -562,6 +581,10 @@ static void rna_def_render_engine(BlenderRNA *brna)
 	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	RNA_def_string(func, "layer", NULL, 0, "Layer", "Single layer to add render pass to");  /* NULL ok here */
 
+	func = RNA_def_function(srna, "get_result", "RE_engine_get_result");
+	RNA_def_function_ui_description(func, "Get final result for non-pixel operations");
+	parm = RNA_def_pointer(func, "result", "RenderResult", "Result", "");
+	RNA_def_function_return(func, parm);
 
 	func = RNA_def_function(srna, "test_break", "RE_engine_test_break");
 	RNA_def_function_ui_description(func, "Test if the render operation should been canceled, this is a fast call that should be used regularly for responsiveness");
@@ -645,6 +668,13 @@ static void rna_def_render_engine(BlenderRNA *brna)
 	parm = RNA_def_pointer(func, "scene", "Scene", "", "");
 	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 	parm = RNA_def_boolean(func, "supported", 0, "Supported", "");
+	RNA_def_function_return(func, parm);
+
+	func = RNA_def_function(srna, "get_preview_pixel_size", "engine_get_preview_pixel_size");
+	RNA_def_function_ui_description(func, "Get the pixel size that should be used for preview rendering");
+	parm = RNA_def_pointer(func, "scene", "Scene", "", "");
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+	parm = RNA_def_int(func, "pixel_size", 0, 1, 8, "Pixel Size", "", 1, 8);
 	RNA_def_function_return(func, parm);
 
 	RNA_define_verify_sdna(0);
@@ -763,6 +793,13 @@ static void rna_def_render_result(BlenderRNA *brna)
 	parm = RNA_def_string_file_name(func, "filename", NULL, FILE_MAX, "File Name",
 	                                "Filename to load into this render tile, must be no smaller than "
 	                                "the render result");
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+
+	func = RNA_def_function(srna, "stamp_data_add_field", "rna_RenderResult_stamp_data_add_field");
+	RNA_def_function_ui_description(func, "Add engine-specific stamp data to the result");
+	parm = RNA_def_string(func, "field", NULL, 1024, "Field", "Name of the stamp field to add");
+	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
+	parm = RNA_def_string(func, "value", NULL, 1024, "Value", "Value of the stamp data");
 	RNA_def_parameter_flags(parm, 0, PARM_REQUIRED);
 
 	RNA_define_verify_sdna(0);

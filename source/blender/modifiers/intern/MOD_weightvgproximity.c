@@ -91,10 +91,13 @@ typedef struct Vert2GeomDataChunk {
 /**
  * Callback used by BLI_task 'for loop' helper.
  */
-static void vert2geom_task_cb_ex(void *userdata, void *userdata_chunk, const int iter, const int UNUSED(thread_id))
+static void vert2geom_task_cb_ex(
+        void *__restrict userdata,
+        const int iter,
+        const ParallelRangeTLS *__restrict tls)
 {
 	Vert2GeomData *data = userdata;
-	Vert2GeomDataChunk *data_chunk = userdata_chunk;
+	Vert2GeomDataChunk *data_chunk = tls->userdata_chunk;
 
 	float tmp_co[3];
 	int i;
@@ -178,9 +181,16 @@ static void get_vert2geom_distance(int numVerts, float (*v_cos)[3],
 	data.dist[1] = dist_e;
 	data.dist[2] = dist_f;
 
-	BLI_task_parallel_range_ex(
-	            0, numVerts, &data, &data_chunk, sizeof(data_chunk), vert2geom_task_cb_ex,
-	            numVerts > 10000, false);
+	ParallelRangeSettings settings;
+	BLI_parallel_range_settings_defaults(&settings);
+	settings.use_threading = (numVerts > 10000);
+	settings.userdata_chunk = &data_chunk;
+	settings.userdata_chunk_size = sizeof(data_chunk);
+	BLI_task_parallel_range(
+	        0, numVerts,
+	        &data,
+	        vert2geom_task_cb_ex,
+	        &settings);
 
 	if (dist_v)
 		free_bvhtree_from_mesh(&treeData_v);
@@ -288,14 +298,10 @@ static void copyData(ModifierData *md, ModifierData *target)
 {
 #if 0
 	WeightVGProximityModifierData *wmd  = (WeightVGProximityModifierData *) md;
-#endif
 	WeightVGProximityModifierData *twmd = (WeightVGProximityModifierData *) target;
+#endif
 
 	modifier_copyData_generic(md, target);
-
-	if (twmd->mask_texture) {
-		id_us_plus(&twmd->mask_texture->id);
-	}
 }
 
 static CustomDataMask requiredDataMask(Object *UNUSED(ob), ModifierData *md)
@@ -454,9 +460,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 
 	/* Find out which vertices to work on (all vertices in vgroup), and get their relevant weight.
 	 */
-	tidx = MEM_mallocN(sizeof(int) * numVerts, "WeightVGProximity Modifier, tidx");
-	tw = MEM_mallocN(sizeof(float) * numVerts, "WeightVGProximity Modifier, tw");
-	tdw = MEM_mallocN(sizeof(MDeformWeight *) * numVerts, "WeightVGProximity Modifier, tdw");
+	tidx = MEM_malloc_arrayN(numVerts, sizeof(int), "WeightVGProximity Modifier, tidx");
+	tw = MEM_malloc_arrayN(numVerts, sizeof(float), "WeightVGProximity Modifier, tw");
+	tdw = MEM_malloc_arrayN(numVerts, sizeof(MDeformWeight *), "WeightVGProximity Modifier, tdw");
 	for (i = 0; i < numVerts; i++) {
 		MDeformWeight *_dw = defvert_find_index(&dvert[i], defgrp_index);
 		if (_dw) {
@@ -473,11 +479,11 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		return dm;
 	}
 	if (numIdx != numVerts) {
-		indices = MEM_mallocN(sizeof(int) * numIdx, "WeightVGProximity Modifier, indices");
+		indices = MEM_malloc_arrayN(numIdx, sizeof(int), "WeightVGProximity Modifier, indices");
 		memcpy(indices, tidx, sizeof(int) * numIdx);
-		org_w = MEM_mallocN(sizeof(float) * numIdx, "WeightVGProximity Modifier, org_w");
+		org_w = MEM_malloc_arrayN(numIdx, sizeof(float), "WeightVGProximity Modifier, org_w");
 		memcpy(org_w, tw, sizeof(float) * numIdx);
-		dw = MEM_mallocN(sizeof(MDeformWeight *) * numIdx, "WeightVGProximity Modifier, dw");
+		dw = MEM_malloc_arrayN(numIdx, sizeof(MDeformWeight *), "WeightVGProximity Modifier, dw");
 		memcpy(dw, tdw, sizeof(MDeformWeight *) * numIdx);
 		MEM_freeN(tw);
 		MEM_freeN(tdw);
@@ -486,16 +492,16 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 		org_w = tw;
 		dw = tdw;
 	}
-	new_w = MEM_mallocN(sizeof(float) * numIdx, "WeightVGProximity Modifier, new_w");
+	new_w = MEM_malloc_arrayN(numIdx, sizeof(float), "WeightVGProximity Modifier, new_w");
 	MEM_freeN(tidx);
 
 	/* Get our vertex coordinates. */
-	v_cos = MEM_mallocN(sizeof(float[3]) * numIdx, "WeightVGProximity Modifier, v_cos");
+	v_cos = MEM_malloc_arrayN(numIdx, sizeof(float[3]), "WeightVGProximity Modifier, v_cos");
 	if (numIdx != numVerts) {
 		/* XXX In some situations, this code can be up to about 50 times more performant
 		 *     than simply using getVertCo for each affected vertex...
 		 */
-		float (*tv_cos)[3] = MEM_mallocN(sizeof(float[3]) * numVerts, "WeightVGProximity Modifier, tv_cos");
+		float (*tv_cos)[3] = MEM_malloc_arrayN(numVerts, sizeof(float[3]), "WeightVGProximity Modifier, tv_cos");
 		dm->getVertCos(dm, tv_cos);
 		for (i = 0; i < numIdx; i++)
 			copy_v3_v3(v_cos[i], tv_cos[indices[i]]);
@@ -534,9 +540,9 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob, DerivedMesh *der
 			/* We must check that we do have a valid target_dm! */
 			if (target_dm) {
 				SpaceTransform loc2trgt;
-				float *dists_v = use_trgt_verts ? MEM_mallocN(sizeof(float) * numIdx, "dists_v") : NULL;
-				float *dists_e = use_trgt_edges ? MEM_mallocN(sizeof(float) * numIdx, "dists_e") : NULL;
-				float *dists_f = use_trgt_faces ? MEM_mallocN(sizeof(float) * numIdx, "dists_f") : NULL;
+				float *dists_v = use_trgt_verts ? MEM_malloc_arrayN(numIdx, sizeof(float), "dists_v") : NULL;
+				float *dists_e = use_trgt_edges ? MEM_malloc_arrayN(numIdx, sizeof(float), "dists_e") : NULL;
+				float *dists_f = use_trgt_faces ? MEM_malloc_arrayN(numIdx, sizeof(float), "dists_f") : NULL;
 
 				BLI_SPACE_TRANSFORM_SETUP(&loc2trgt, ob, obr);
 				get_vert2geom_distance(numIdx, v_cos, dists_v, dists_e, dists_f,

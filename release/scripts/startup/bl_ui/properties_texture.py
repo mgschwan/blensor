@@ -33,7 +33,7 @@ from bpy.types import (
 
 from rna_prop_ui import PropertyPanel
 
-from bl_ui.properties_paint_common import brush_texture_settings
+from .properties_paint_common import brush_texture_settings
 
 
 class TEXTURE_MT_specials(Menu):
@@ -78,7 +78,7 @@ class TEXTURE_UL_texslots(UIList):
             layout.label(text="", icon_value=icon)
 
 
-from bl_ui.properties_material import active_node_mat
+from .properties_material import active_node_mat
 
 
 def context_tex_datablock(context):
@@ -1173,6 +1173,7 @@ class TEXTURE_PT_influence(TextureSlotPanel, Panel):
             col = split.column()
             factor_but(col, "use_map_length", "length_factor", "Length")
             factor_but(col, "use_map_clump", "clump_factor", "Clump")
+            factor_but(col, "use_map_twist", "twist_factor", "Twist")
 
             col = split.column()
             factor_but(col, "use_map_kink_amp", "kink_amp_factor", "Kink Amplitude")

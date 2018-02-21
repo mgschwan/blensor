@@ -559,11 +559,10 @@ void BKE_splineik_execute_tree(Scene *scene, Object *ob, bPoseChannel *pchan_roo
 /* *************** Depsgraph evaluation callbacks ************ */
 
 void BKE_pose_eval_init(EvaluationContext *UNUSED(eval_ctx),
-                        Scene *scene,
+                        Scene *UNUSED(scene),
                         Object *ob,
                         bPose *pose)
 {
-	float ctime = BKE_scene_frame_get(scene); /* not accurate... */
 	bPoseChannel *pchan;
 
 	DEBUG_PRINT("%s on %s\n", __func__, ob->id.name);
@@ -581,10 +580,22 @@ void BKE_pose_eval_init(EvaluationContext *UNUSED(eval_ctx),
 	for (pchan = pose->chanbase.first; pchan != NULL; pchan = pchan->next) {
 		pchan->flag &= ~(POSE_DONE | POSE_CHAIN | POSE_IKTREE | POSE_IKSPLINE);
 	}
+}
 
+void BKE_pose_eval_init_ik(EvaluationContext *UNUSED(eval_ctx),
+                           Scene *scene,
+                           Object *ob,
+                           bPose *UNUSED(pose))
+{
+	DEBUG_PRINT("%s on %s\n", __func__, ob->id.name);
+	BLI_assert(ob->type == OB_ARMATURE);
+	const float ctime = BKE_scene_frame_get(scene); /* not accurate... */
+	bArmature *arm = (bArmature *)ob->data;
+	if (arm->flag & ARM_RESTPOS) {
+		return;
+	}
 	/* 2a. construct the IK tree (standard IK) */
 	BIK_initialize_tree(scene, ob, ctime);
-
 	/* 2b. construct the Spline IK trees
 	 *  - this is not integrated as an IK plugin, since it should be able
 	 *	  to function in conjunction with standard IK
@@ -597,9 +608,9 @@ void BKE_pose_eval_bone(EvaluationContext *UNUSED(eval_ctx),
                         Object *ob,
                         bPoseChannel *pchan)
 {
-	bArmature *arm = (bArmature *)ob->data;
 	DEBUG_PRINT("%s on %s pchan %s\n", __func__, ob->id.name, pchan->name);
 	BLI_assert(ob->type == OB_ARMATURE);
+	bArmature *arm = (bArmature *)ob->data;
 	if (arm->edbo || (arm->flag & ARM_RESTPOS)) {
 		Bone *bone = pchan->bone;
 		if (bone) {
@@ -664,8 +675,13 @@ void BKE_pose_iktree_evaluate(EvaluationContext *UNUSED(eval_ctx),
                               Object *ob,
                               bPoseChannel *rootchan)
 {
-	float ctime = BKE_scene_frame_get(scene); /* not accurate... */
 	DEBUG_PRINT("%s on %s pchan %s\n", __func__, ob->id.name, rootchan->name);
+	BLI_assert(ob->type == OB_ARMATURE);
+	const float ctime = BKE_scene_frame_get(scene); /* not accurate... */
+	bArmature *arm = (bArmature *)ob->data;
+	if (arm->flag & ARM_RESTPOS) {
+		return;
+	}
 	BIK_execute_tree(scene, ob, rootchan, ctime);
 }
 
@@ -674,8 +690,13 @@ void BKE_pose_splineik_evaluate(EvaluationContext *UNUSED(eval_ctx),
                                 Object *ob,
                                 bPoseChannel *rootchan)
 {
-	float ctime = BKE_scene_frame_get(scene); /* not accurate... */
 	DEBUG_PRINT("%s on %s pchan %s\n", __func__, ob->id.name, rootchan->name);
+	BLI_assert(ob->type == OB_ARMATURE);
+	const float ctime = BKE_scene_frame_get(scene); /* not accurate... */
+	bArmature *arm = (bArmature *)ob->data;
+	if (arm->flag & ARM_RESTPOS) {
+		return;
+	}
 	BKE_splineik_execute_tree(scene, ob, rootchan, ctime);
 }
 
@@ -696,7 +717,7 @@ void BKE_pose_eval_flush(EvaluationContext *UNUSED(eval_ctx),
 
 void BKE_pose_eval_proxy_copy(EvaluationContext *UNUSED(eval_ctx), Object *ob)
 {
-	BLI_assert(ID_IS_LINKED_DATABLOCK(ob) && ob->proxy_from != NULL);
+	BLI_assert(ID_IS_LINKED(ob) && ob->proxy_from != NULL);
 	DEBUG_PRINT("%s on %s\n", __func__, ob->id.name);
 	if (BKE_pose_copy_result(ob->pose, ob->proxy_from->pose) == false) {
 		printf("Proxy copy error, lib Object: %s proxy Object: %s\n",

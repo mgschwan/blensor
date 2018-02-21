@@ -212,50 +212,70 @@ Material *BKE_material_add(Main *bmain, const char *name)
 {
 	Material *ma;
 
-	ma = BKE_libblock_alloc(bmain, ID_MA, name);
+	ma = BKE_libblock_alloc(bmain, ID_MA, name, 0);
 	
 	BKE_material_init(ma);
 	
 	return ma;
 }
 
-/* XXX keep synced with next function */
-Material *BKE_material_copy(Main *bmain, const Material *ma)
+/**
+ * Only copy internal data of Material ID from source to already allocated/initialized destination.
+ * You probably nerver want to use that directly, use id_copy or BKE_id_copy_ex for typical needs.
+ *
+ * WARNING! This function will not handle ID user count!
+ *
+ * \param flag  Copying options (see BKE_library.h's LIB_ID_COPY_... flags for more).
+ */
+void BKE_material_copy_data(Main *bmain, Material *ma_dst, const Material *ma_src, const int flag)
 {
-	Material *man;
-	int a;
-	
-	man = BKE_libblock_copy(bmain, &ma->id);
-	
-	id_lib_extern((ID *)man->group);
-	
-	for (a = 0; a < MAX_MTEX; a++) {
-		if (ma->mtex[a]) {
-			man->mtex[a] = MEM_mallocN(sizeof(MTex), "copymaterial");
-			memcpy(man->mtex[a], ma->mtex[a], sizeof(MTex));
-			id_us_plus((ID *)man->mtex[a]->tex);
+	for (int a = 0; a < MAX_MTEX; a++) {
+		if (ma_src->mtex[a]) {
+			ma_dst->mtex[a] = MEM_mallocN(sizeof(*ma_dst->mtex[a]), __func__);
+			*ma_dst->mtex[a] = *ma_src->mtex[a];
 		}
 	}
-	
-	if (ma->ramp_col) man->ramp_col = MEM_dupallocN(ma->ramp_col);
-	if (ma->ramp_spec) man->ramp_spec = MEM_dupallocN(ma->ramp_spec);
-	
-	if (ma->nodetree) {
-		man->nodetree = ntreeCopyTree(bmain, ma->nodetree);
+
+	if (ma_src->ramp_col) {
+		ma_dst->ramp_col = MEM_dupallocN(ma_src->ramp_col);
+	}
+	if (ma_src->ramp_spec) {
+		ma_dst->ramp_spec = MEM_dupallocN(ma_src->ramp_spec);
 	}
 
-	BKE_previewimg_id_copy(&man->id, &ma->id);
+	if (ma_src->nodetree) {
+		/* Note: nodetree is *not* in bmain, however this specific case is handled at lower level
+		 *       (see BKE_libblock_copy_ex()). */
+		BKE_id_copy_ex(bmain, (ID *)ma_src->nodetree, (ID **)&ma_dst->nodetree, flag, false);
+	}
 
-	BLI_listbase_clear(&man->gpumaterial);
+	if ((flag & LIB_ID_COPY_NO_PREVIEW) == 0) {
+		BKE_previewimg_id_copy(&ma_dst->id, &ma_src->id);
+	}
+	else {
+		ma_dst->preview = NULL;
+	}
 
-	BKE_id_copy_ensure_local(bmain, &ma->id, &man->id);
+	BLI_listbase_clear(&ma_dst->gpumaterial);
+}
 
-	return man;
+Material *BKE_material_copy(Main *bmain, const Material *ma)
+{
+	Material *ma_copy;
+	BKE_id_copy_ex(bmain, &ma->id, (ID **)&ma_copy, 0, false);
+	return ma_copy;
 }
 
 /* XXX (see above) material copy without adding to main dbase */
-Material *localize_material(Material *ma)
+Material *BKE_material_localize(Material *ma)
 {
+	/* TODO replace with something like
+	 * 	Material *ma_copy;
+	 * 	BKE_id_copy_ex(bmain, &ma->id, (ID **)&ma_copy, LIB_ID_COPY_NO_MAIN | LIB_ID_COPY_NO_PREVIEW | LIB_ID_COPY_NO_USER_REFCOUNT, false);
+	 * 	return ma_copy;
+	 *
+	 * ... Once f*** nodes are fully converted to that too :( */
+
 	Material *man;
 	int a;
 	
@@ -343,6 +363,8 @@ Material ***give_matarar_id(ID *id)
 			return &(((Curve *)id)->mat);
 		case ID_MB:
 			return &(((MetaBall *)id)->mat);
+		default:
+			break;
 	}
 	return NULL;
 }
@@ -359,6 +381,8 @@ short *give_totcolp_id(ID *id)
 			return &(((Curve *)id)->totcol);
 		case ID_MB:
 			return &(((MetaBall *)id)->totcol);
+		default:
+			break;
 	}
 	return NULL;
 }
@@ -378,6 +402,8 @@ static void material_data_index_remove_id(ID *id, short index)
 		case ID_MB:
 			/* meta-elems don't have materials atm */
 			break;
+		default:
+			break;
 	}
 }
 
@@ -395,6 +421,8 @@ static void material_data_index_clear_id(ID *id)
 			break;
 		case ID_MB:
 			/* meta-elems don't have materials atm */
+			break;
+		default:
 			break;
 	}
 }
@@ -690,8 +718,8 @@ void assign_material(Object *ob, Material *ma, short act, int assign_type)
 	if (act < 1) act = 1;
 	
 	/* prevent crashing when using accidentally */
-	BLI_assert(!ID_IS_LINKED_DATABLOCK(ob));
-	if (ID_IS_LINKED_DATABLOCK(ob)) return;
+	BLI_assert(!ID_IS_LINKED(ob));
+	if (ID_IS_LINKED(ob)) return;
 	
 	/* test arraylens */
 	
@@ -964,7 +992,7 @@ static void do_init_render_material(Material *ma, int r_mode, float *amb)
 		Group *group;
 
 		for (group = G.main->group.first; group; group = group->id.next) {
-			if (!ID_IS_LINKED_DATABLOCK(group) && STREQ(group->id.name, ma->group->id.name)) {
+			if (!ID_IS_LINKED(group) && STREQ(group->id.name, ma->group->id.name)) {
 				ma->group = group;
 			}
 		}
@@ -1179,7 +1207,6 @@ void material_drivers_update(Scene *scene, Material *ma, float ctime)
 bool BKE_object_material_slot_remove(Object *ob)
 {
 	Material *mao, ***matarar;
-	Object *obt;
 	short *totcolp;
 	short a, actcol;
 	
@@ -1227,11 +1254,13 @@ bool BKE_object_material_slot_remove(Object *ob)
 	}
 	
 	actcol = ob->actcol;
-	obt = G.main->object.first;
-	while (obt) {
-	
+
+	for (Object *obt = G.main->object.first; obt; obt = obt->id.next) {
 		if (obt->data == ob->data) {
-			
+			/* Can happen when object material lists are used, see: T52953 */
+			if (actcol > obt->totcol) {
+				continue;
+			}
 			/* WATCH IT: do not use actcol from ob or from obt (can become zero) */
 			mao = obt->mat[actcol - 1];
 			if (mao)
@@ -1251,7 +1280,6 @@ bool BKE_object_material_slot_remove(Object *ob)
 				obt->matbits = NULL;
 			}
 		}
-		obt = obt->id.next;
 	}
 
 	/* check indices from mesh */
@@ -2073,7 +2101,7 @@ int do_version_tface(Main *main)
 	
 	/* 1st part: marking mesh materials to update */
 	for (me = main->mesh.first; me; me = me->id.next) {
-		if (ID_IS_LINKED_DATABLOCK(me)) continue;
+		if (ID_IS_LINKED(me)) continue;
 
 		/* get the active tface layer */
 		index = CustomData_get_active_layer_index(&me->fdata, CD_MTFACE);
@@ -2127,7 +2155,7 @@ int do_version_tface(Main *main)
 				 * at doversion time: direct_link might not have happened on it,
 				 * so ma->mtex is not pointing to valid memory yet.
 				 * later we could, but it's better not */
-				else if (ID_IS_LINKED_DATABLOCK(ma))
+				else if (ID_IS_LINKED(ma))
 					continue;
 				
 				/* material already marked as disputed */
@@ -2192,7 +2220,7 @@ int do_version_tface(Main *main)
 
 	/* we shouldn't loop through the materials created in the loop. make the loop stop at its original length) */
 	for (ma = main->mat.first, a = 0; ma; ma = ma->id.next, a++) {
-		if (ID_IS_LINKED_DATABLOCK(ma)) continue;
+		if (ID_IS_LINKED(ma)) continue;
 
 		/* disputed material */
 		if (ma->game.flag == MAT_BGE_DISPUTED) {

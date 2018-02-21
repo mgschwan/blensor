@@ -37,9 +37,11 @@
 #include <errno.h>
 
 #include "DNA_anim_types.h"
+#include "DNA_group_types.h"
 #include "DNA_image_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
+#include "DNA_particle_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_sequence_types.h"
 #include "DNA_userdef_types.h"
@@ -307,7 +309,6 @@ Render *RE_GetRender(const char *name)
 	return re;
 }
 
-
 /* if you want to know exactly what has been done */
 RenderResult *RE_AcquireResultRead(Render *re)
 {
@@ -375,6 +376,7 @@ void RE_AcquireResultImageViews(Render *re, RenderResult *rr)
 			render_result_views_shallowcopy(rr, re->result);
 
 			rv = rr->views.first;
+			rr->have_combined = (rv->rectf != NULL);
 
 			/* active layer */
 			rl = render_get_active_layer(re, re->result);
@@ -393,7 +395,6 @@ void RE_AcquireResultImageViews(Render *re, RenderResult *rr)
 				}
 			}
 
-			rr->have_combined = (rv->rectf != NULL);
 			rr->layers = re->result->layers;
 			rr->xof = re->disprect.xmin;
 			rr->yof = re->disprect.ymin;
@@ -432,6 +433,7 @@ void RE_AcquireResultImage(Render *re, RenderResult *rr, const int view_id)
 			
 			/* actview view */
 			rv = RE_RenderViewGetById(re->result, view_id);
+			rr->have_combined = (rv->rectf != NULL);
 
 			rr->rectf = rv->rectf;
 			rr->rectz = rv->rectz;
@@ -448,7 +450,6 @@ void RE_AcquireResultImage(Render *re, RenderResult *rr, const int view_id)
 					rr->rectz = RE_RenderLayerGetPass(rl, RE_PASSNAME_Z, rv->name);
 			}
 
-			rr->have_combined = (rv->rectf != NULL);
 			rr->layers = re->result->layers;
 			rr->views = re->result->views;
 
@@ -512,6 +513,36 @@ Render *RE_NewRender(const char *name)
 	re->ycor = 1.0f;
 	
 	return re;
+}
+
+/* MAX_ID_NAME + sizeof(Library->name) + space + null-terminator. */
+#define MAX_SCENE_RENDER_NAME (MAX_ID_NAME + 1024 + 2)
+
+static void scene_render_name_get(const Scene *scene,
+                                  const size_t max_size,
+                                  char *render_name)
+{
+	if (ID_IS_LINKED(scene)) {
+		BLI_snprintf(render_name, max_size, "%s %s",
+		             scene->id.lib->id.name, scene->id.name);
+	}
+	else {
+		BLI_snprintf(render_name, max_size, "%s", scene->id.name);
+	}
+}
+
+Render *RE_GetSceneRender(const Scene *scene)
+{
+	char render_name[MAX_SCENE_RENDER_NAME];
+	scene_render_name_get(scene, sizeof(render_name), render_name);
+	return RE_GetRender(render_name);
+}
+
+Render *RE_NewSceneRender(const Scene *scene)
+{
+	char render_name[MAX_SCENE_RENDER_NAME];
+	scene_render_name_get(scene, sizeof(render_name), render_name);
+	return RE_NewRender(render_name);
 }
 
 /* called for new renders and when finishing rendering so
@@ -808,7 +839,7 @@ void RE_InitState(Render *re, Render *source, RenderData *rd,
 		re->result = MEM_callocN(sizeof(RenderResult), "new render result");
 		re->result->rectx = re->rectx;
 		re->result->recty = re->recty;
-		render_result_view_new(re->result, "new temporary view");
+		render_result_view_new(re->result, "");
 	}
 	
 	if (re->r.scemode & R_VIEWPORT_PREVIEW)
@@ -1104,7 +1135,7 @@ static void *do_part_thread(void *pa_v)
 		BLI_rw_mutex_unlock(&R.resultmutex);
 	}
 	
-	pa->status = PART_STATUS_READY;
+	pa->status = PART_STATUS_MERGED;
 	
 	return NULL;
 }
@@ -1210,7 +1241,7 @@ static int sort_and_queue_parts(Render *re, int minx, ThreadQueue *workqueue)
 	
 	/* find center of rendered parts, image center counts for 1 too */
 	for (pa = re->parts.first; pa; pa = pa->next) {
-		if (pa->status == PART_STATUS_READY) {
+		if (pa->status >= PART_STATUS_RENDERED) {
 			centx += BLI_rcti_cent_x(&pa->disprect);
 			centy += BLI_rcti_cent_y(&pa->disprect);
 			tot++;
@@ -1376,7 +1407,7 @@ static void threaded_tile_processor(Render *re)
 		BLI_thread_queue_nowait(workqueue);
 		
 		/* start all threads */
-		BLI_init_threads(&threads, do_render_thread, re->r.threads);
+		BLI_threadpool_init(&threads, do_render_thread, re->r.threads);
 		
 		for (a = 0; a < re->r.threads; a++) {
 			thread[a].workqueue = workqueue;
@@ -1392,7 +1423,7 @@ static void threaded_tile_processor(Render *re)
 				thread[a].duh = NULL;
 			}
 
-			BLI_insert_thread(&threads, &thread[a]);
+			BLI_threadpool_insert(&threads, &thread[a]);
 		}
 		
 		/* wait for results to come back */
@@ -1436,7 +1467,7 @@ static void threaded_tile_processor(Render *re)
 			}
 		}
 		
-		BLI_end_threads(&threads);
+		BLI_threadpool_end(&threads);
 		
 		if ((g_break=re->test_break(re->tbh)))
 			break;
@@ -1913,7 +1944,7 @@ static void do_render_fields_blur_3d(Render *re)
  */
 static void render_scene(Render *re, Scene *sce, int cfra)
 {
-	Render *resc = RE_NewRender(sce->id.name);
+	Render *resc = RE_NewSceneRender(sce);
 	int winx = re->winx, winy = re->winy;
 	
 	sce->r.cfra = cfra;
@@ -2057,6 +2088,28 @@ static void tag_dependend_objects_for_render(Scene *scene, int renderlay)
 						ShrinkwrapModifierData *smd = (ShrinkwrapModifierData *)md;
 						if (smd->target  && smd->target->type == OB_MESH) {
 							DAG_id_tag_update(&smd->target->id, OB_RECALC_DATA);
+						}
+					}
+					else if (md->type == eModifierType_ParticleSystem) {
+						ParticleSystemModifierData *psmd = (ParticleSystemModifierData *)md;
+						ParticleSystem *psys = psmd->psys;
+						ParticleSettings *part = psys->part;
+						switch (part->ren_as) {
+							case PART_DRAW_OB:
+								if (part->dup_ob != NULL) {
+									DAG_id_tag_update(&part->dup_ob->id, OB_RECALC_DATA);
+								}
+								break;
+							case PART_DRAW_GR:
+								if (part->dup_group != NULL) {
+									for (GroupObject *go = part->dup_group->gobject.first;
+									     go != NULL;
+									     go = go->next)
+									{
+										DAG_id_tag_update(&go->ob->id, OB_RECALC_DATA);
+									}
+								}
+								break;
 						}
 					}
 				}
@@ -2348,7 +2401,7 @@ static void do_merge_fullsample(Render *re, bNodeTree *ntree)
 		tag_scenes_for_render(re);
 		for (sce = re->main->scene.first; sce; sce = sce->id.next) {
 			if (sce->id.tag & LIB_TAG_DOIT) {
-				re1 = RE_GetRender(sce->id.name);
+				re1 = RE_GetSceneRender(sce);
 
 				if (re1 && (re1->r.scemode & R_FULL_SAMPLE)) {
 					if (sample) {
@@ -3278,19 +3331,19 @@ void RE_RenderFreestyleExternal(Render *re)
 
 bool RE_WriteRenderViewsImage(ReportList *reports, RenderResult *rr, Scene *scene, const bool stamp, char *name)
 {
-	bool is_mono;
 	bool ok = true;
 	RenderData *rd = &scene->r;
 
 	if (!rr)
 		return false;
 
-	is_mono = BLI_listbase_count_ex(&rr->views, 2) < 2;
+	bool is_mono = BLI_listbase_count_ex(&rr->views, 2) < 2;
+	bool is_exr_rr = ELEM(rd->im_format.imtype, R_IMF_IMTYPE_OPENEXR, R_IMF_IMTYPE_MULTILAYER) &&
+	                 RE_HasFloatPixels(rr);
 
-	if (ELEM(rd->im_format.imtype, R_IMF_IMTYPE_OPENEXR, R_IMF_IMTYPE_MULTILAYER) &&
-	    rd->im_format.views_format == R_IMF_VIEWS_MULTIVIEW)
+	if (rd->im_format.views_format == R_IMF_VIEWS_MULTIVIEW && is_exr_rr)
 	{
-		ok = RE_WriteRenderResult(reports, rr, name, &rd->im_format, true, NULL);
+		ok = RE_WriteRenderResult(reports, rr, name, &rd->im_format, NULL, -1);
 		render_print_save_message(reports, name, ok, errno);
 	}
 
@@ -3308,9 +3361,26 @@ bool RE_WriteRenderViewsImage(ReportList *reports, RenderResult *rr, Scene *scen
 				BKE_scene_multiview_view_filepath_get(&scene->r, filepath, rv->name, name);
 			}
 
-			if (rd->im_format.imtype == R_IMF_IMTYPE_MULTILAYER) {
-				ok = RE_WriteRenderResult(reports, rr, name, &rd->im_format, false, rv->name);
+			if (is_exr_rr) {
+				ok = RE_WriteRenderResult(reports, rr, name, &rd->im_format, rv->name, -1);
 				render_print_save_message(reports, name, ok, errno);
+
+				/* optional preview images for exr */
+				if (ok && (rd->im_format.flag & R_IMF_FLAG_PREVIEW_JPG)) {
+					ImageFormatData imf = rd->im_format;
+					imf.imtype = R_IMF_IMTYPE_JPEG90;
+
+					if (BLI_testextensie(name, ".exr"))
+						name[strlen(name) - 4] = 0;
+					BKE_image_path_ensure_ext_from_imformat(name, &imf);
+
+					ImBuf *ibuf = render_result_rect_to_ibuf(rr, rd, view_id);
+					ibuf->planes = 24;
+
+					ok = render_imbuf_write_stamp_test(reports, scene, rr, ibuf, name, &imf, stamp);
+
+					IMB_freeImBuf(ibuf);
+				}
 			}
 			else {
 				ImBuf *ibuf = render_result_rect_to_ibuf(rr, rd, view_id);
@@ -3319,22 +3389,6 @@ bool RE_WriteRenderViewsImage(ReportList *reports, RenderResult *rr, Scene *scen
 				                                    &scene->display_settings, &rd->im_format);
 
 				ok = render_imbuf_write_stamp_test(reports, scene, rr, ibuf, name, &rd->im_format, stamp);
-
-				/* optional preview images for exr */
-				if (ok && rd->im_format.imtype == R_IMF_IMTYPE_OPENEXR && (rd->im_format.flag & R_IMF_FLAG_PREVIEW_JPG)) {
-					ImageFormatData imf = rd->im_format;
-					imf.imtype = R_IMF_IMTYPE_JPEG90;
-
-					if (BLI_testextensie(name, ".exr"))
-						name[strlen(name) - 4] = 0;
-					BKE_image_path_ensure_ext_from_imformat(name, &imf);
-					ibuf->planes = 24;
-
-					IMB_colormanagement_imbuf_for_write(ibuf, true, false, &scene->view_settings,
-					                                    &scene->display_settings, &imf);
-
-					ok = render_imbuf_write_stamp_test(reports, scene, rr, ibuf, name, &imf, stamp);
-				}
 
 				/* imbuf knows which rects are not part of ibuf */
 				IMB_freeImBuf(ibuf);
@@ -3345,7 +3399,7 @@ bool RE_WriteRenderViewsImage(ReportList *reports, RenderResult *rr, Scene *scen
 		BLI_assert(scene->r.im_format.views_format == R_IMF_VIEWS_STEREO_3D);
 
 		if (rd->im_format.imtype == R_IMF_IMTYPE_MULTILAYER) {
-			printf("Stereo 3D not support for MultiLayer image: %s\n", name);
+			printf("Stereo 3D not supported for MultiLayer image: %s\n", name);
 		}
 		else {
 			ImBuf *ibuf_arr[3] = {NULL};
@@ -3365,7 +3419,7 @@ bool RE_WriteRenderViewsImage(ReportList *reports, RenderResult *rr, Scene *scen
 			ok = render_imbuf_write_stamp_test(reports, scene, rr, ibuf_arr[2], name, &rd->im_format, stamp);
 
 			/* optional preview images for exr */
-			if (ok && rd->im_format.imtype == R_IMF_IMTYPE_OPENEXR &&
+			if (ok && is_exr_rr &&
 			    (rd->im_format.flag & R_IMF_FLAG_PREVIEW_JPG))
 			{
 				ImageFormatData imf = rd->im_format;
@@ -3376,9 +3430,6 @@ bool RE_WriteRenderViewsImage(ReportList *reports, RenderResult *rr, Scene *scen
 
 				BKE_image_path_ensure_ext_from_imformat(name, &imf);
 				ibuf_arr[2]->planes = 24;
-
-				IMB_colormanagement_imbuf_for_write(ibuf_arr[2], true, false, &scene->view_settings,
-				                                    &scene->display_settings, &imf);
 
 				ok = render_imbuf_write_stamp_test(reports, scene, rr, ibuf_arr[2], name, &rd->im_format, stamp);
 			}
@@ -3858,9 +3909,9 @@ bool RE_ReadRenderResult(Scene *scene, Scene *scenode)
 		scene = scenode;
 	
 	/* get render: it can be called from UI with draw callbacks */
-	re = RE_GetRender(scene->id.name);
+	re = RE_GetSceneRender(scene);
 	if (re == NULL)
-		re = RE_NewRender(scene->id.name);
+		re = RE_NewSceneRender(scene);
 	RE_InitState(re, NULL, &scene->r, NULL, winx, winy, &disprect);
 	re->scene = scene;
 	re->scene_color_manage = BKE_scene_check_color_management_enabled(scene);
@@ -4001,7 +4052,7 @@ bool RE_WriteEnvmapResult(struct ReportList *reports, Scene *scene, EnvMap *env,
 	}
 }
 
-/* used in the interface to decide whether to show layers */
+/* Used in the interface to decide whether to show layers or passes. */
 bool RE_layers_have_name(struct RenderResult *rr)
 {
 	switch (BLI_listbase_count_ex(&rr->layers, 2)) {
@@ -4012,6 +4063,17 @@ bool RE_layers_have_name(struct RenderResult *rr)
 		default:
 			return true;
 	}
+	return false;
+}
+
+bool RE_passes_have_name(struct RenderLayer *rl)
+{
+	for (RenderPass *rp = rl->passes.first; rp; rp = rp->next) {
+		if (!STREQ(rp->name, "Combined")) {
+			return true;
+		}
+	}
+
 	return false;
 }
 

@@ -74,6 +74,8 @@
 
 #include "nla_private.h"
 
+#include "atomic_ops.h"
+
 /* ***************************************** */
 /* AnimData API */
 
@@ -259,7 +261,7 @@ void BKE_animdata_free(ID *id, const bool do_id_user)
 /* Copying -------------------------------------------- */
 
 /* Make a copy of the given AnimData - to be used when copying datablocks */
-AnimData *BKE_animdata_copy(AnimData *adt, const bool do_action)
+AnimData *BKE_animdata_copy(Main *bmain, AnimData *adt, const bool do_action)
 {
 	AnimData *dadt;
 	
@@ -270,8 +272,9 @@ AnimData *BKE_animdata_copy(AnimData *adt, const bool do_action)
 	
 	/* make a copy of action - at worst, user has to delete copies... */
 	if (do_action) {
-		dadt->action = BKE_action_copy(G.main, adt->action);
-		dadt->tmpact = BKE_action_copy(G.main, adt->tmpact);
+		BLI_assert(bmain != NULL);
+		BKE_id_copy_ex(bmain, (ID *)dadt->action, (ID **)&dadt->action, 0, false);
+		BKE_id_copy_ex(bmain, (ID *)dadt->tmpact, (ID **)&dadt->tmpact, 0, false);
 	}
 	else {
 		id_us_plus((ID *)dadt->action);
@@ -291,7 +294,7 @@ AnimData *BKE_animdata_copy(AnimData *adt, const bool do_action)
 	return dadt;
 }
 
-bool BKE_animdata_copy_id(ID *id_to, ID *id_from, const bool do_action)
+bool BKE_animdata_copy_id(Main *bmain, ID *id_to, ID *id_from, const bool do_action)
 {
 	AnimData *adt;
 
@@ -303,7 +306,7 @@ bool BKE_animdata_copy_id(ID *id_to, ID *id_from, const bool do_action)
 	adt = BKE_animdata_from_id(id_from);
 	if (adt) {
 		IdAdtTemplate *iat = (IdAdtTemplate *)id_to;
-		iat->adt = BKE_animdata_copy(adt, do_action);
+		iat->adt = BKE_animdata_copy(bmain, adt, do_action);
 	}
 
 	return true;
@@ -524,7 +527,7 @@ void BKE_animdata_separate_by_basepath(ID *srcID, ID *dstID, ListBase *basepaths
 	if (srcAdt->action) {
 		/* set up an action if necessary, and name it in a similar way so that it can be easily found again */
 		if (dstAdt->action == NULL) {
-			dstAdt->action = add_empty_action(G.main, srcAdt->action->id.name + 2);
+			dstAdt->action = BKE_action_add(G.main, srcAdt->action->id.name + 2);
 		}
 		else if (dstAdt->action == srcAdt->action) {
 			printf("Argh! Source and Destination share animation! ('%s' and '%s' both use '%s') Making new empty action\n",
@@ -532,7 +535,7 @@ void BKE_animdata_separate_by_basepath(ID *srcID, ID *dstID, ListBase *basepaths
 			
 			/* TODO: review this... */
 			id_us_min(&dstAdt->action->id);
-			dstAdt->action = add_empty_action(G.main, dstAdt->action->id.name + 2);
+			dstAdt->action = BKE_action_add(G.main, dstAdt->action->id.name + 2);
 		}
 			
 		/* loop over base paths, trying to fix for each one... */
@@ -623,6 +626,8 @@ char *BKE_animdata_driver_path_hack(bContext *C, PointerRNA *ptr, PropertyRNA *p
 					}
 					break;
 				}
+				default:
+					break;
 			}
 
 			/* fix RNA pointer, as we've now changed the ID root by changing the paths */
@@ -795,8 +800,7 @@ static void nlastrips_path_rename_fix(ID *owner_id, const char *prefix, const ch
 	}
 }
 
-/* ----------------------- */
-
+/* Rename Sub-ID Entities in RNA Paths ----------------------- */
 
 /* Fix up the given RNA-Path
  *
@@ -814,7 +818,7 @@ char *BKE_animsys_fix_rna_path_rename(ID *owner_id, char *old_path, const char *
 	
 	/* if no action, no need to proceed */
 	if (ELEM(NULL, owner_id, old_path)) {
-		printf("early abort\n");
+		if (G.debug & G_DEBUG) printf("%s: early abort\n", __func__);
 		return old_path;
 	}
 	
@@ -837,9 +841,9 @@ char *BKE_animsys_fix_rna_path_rename(ID *owner_id, char *old_path, const char *
 	}
 	
 	/* fix given path */
-	printf("%s | %s  | oldpath = %p ", oldN, newN, old_path);
+	if (G.debug & G_DEBUG) printf("%s | %s  | oldpath = %p ", oldN, newN, old_path);
 	result = rna_path_rename_fix(owner_id, prefix, oldN, newN, old_path, verify_paths);
-	printf("result = %p\n", result);
+	if (G.debug & G_DEBUG) printf("path rename result = %p\n", result);
 	
 	/* free the temp names */
 	MEM_freeN(oldN);
@@ -942,8 +946,7 @@ void BKE_animdata_fix_paths_rename(ID *owner_id, AnimData *adt, ID *ref_id, cons
 	MEM_freeN(newN);
 }
 
-/* *************************** */
-/* remove of individual paths */
+/* Remove FCurves with Prefix  -------------------------------------- */
 
 /* Check RNA-Paths for a list of F-Curves */
 static void fcurves_path_remove_fix(const char *prefix, ListBase *curves)
@@ -971,7 +974,6 @@ static void nlastrips_path_remove_fix(const char *prefix, ListBase *strips)
 
 	/* recursively check strips, fixing only actions... */
 	for (strip = strips->first; strip; strip = strip->next) {
-
 		/* fix strip's action */
 		if (strip->act)
 			fcurves_path_remove_fix(prefix, &strip->act->curves);
@@ -994,7 +996,6 @@ void BKE_animdata_fix_paths_remove(ID *id, const char *prefix)
 
 		/* check if there's any AnimData to start with */
 		if (adt) {
-
 			/* free fcurves */
 			if (adt->action)
 				fcurves_path_remove_fix(prefix, &adt->action->curves);
@@ -1011,6 +1012,75 @@ void BKE_animdata_fix_paths_remove(ID *id, const char *prefix)
 		}
 	}
 }
+
+
+/* Apply Op to All FCurves in Database --------------------------- */
+
+/* "User-Data" wrapper used by BKE_fcurves_main_cb() */
+typedef struct AllFCurvesCbWrapper {
+	ID_FCurve_Edit_Callback func;  /* Operation to apply on F-Curve */
+	void *user_data;               /* Custom data for that operation */
+} AllFCurvesCbWrapper;
+
+/* Helper for adt_apply_all_fcurves_cb() - Apply wrapped operator to list of F-Curves */
+static void fcurves_apply_cb(ID *id, ListBase *fcurves, ID_FCurve_Edit_Callback func, void *user_data)
+{
+	FCurve *fcu;
+	
+	for (fcu = fcurves->first; fcu; fcu = fcu->next) {
+		func(id, fcu, user_data);
+	}
+}
+
+/* Helper for adt_apply_all_fcurves_cb() - Recursively go through each NLA strip */
+static void nlastrips_apply_all_curves_cb(ID *id, ListBase *strips, AllFCurvesCbWrapper *wrapper)
+{
+	NlaStrip *strip;
+	
+	for (strip = strips->first; strip; strip = strip->next) {
+		/* fix strip's action */
+		if (strip->act) {
+			fcurves_apply_cb(id, &strip->act->curves, wrapper->func, wrapper->user_data);
+		}
+		
+		/* check sub-strips (if metas) */
+		nlastrips_apply_all_curves_cb(id, &strip->strips, wrapper);
+	}
+}
+
+/* Helper for BKE_fcurves_main_cb() - Dispatch wrapped operator to all F-Curves */
+static void adt_apply_all_fcurves_cb(ID *id, AnimData *adt, void *wrapper_data)
+{
+	AllFCurvesCbWrapper *wrapper = wrapper_data;
+	NlaTrack *nlt;
+	
+	if (adt->action) {
+		fcurves_apply_cb(id, &adt->action->curves, wrapper->func, wrapper->user_data);
+	}
+	
+	if (adt->tmpact) {
+		fcurves_apply_cb(id, &adt->tmpact->curves, wrapper->func, wrapper->user_data);
+	}
+	
+	/* free drivers - stored as a list of F-Curves */
+	fcurves_apply_cb(id, &adt->drivers, wrapper->func, wrapper->user_data);
+	
+	/* NLA Data - Animation Data for Strips */
+	for (nlt = adt->nla_tracks.first; nlt; nlt = nlt->next) {
+		nlastrips_apply_all_curves_cb(id, &nlt->strips, wrapper);
+	}
+}
+
+/* apply the given callback function on all F-Curves attached to data in main database */
+void BKE_fcurves_main_cb(Main *mainptr, ID_FCurve_Edit_Callback func, void *user_data)
+{
+	/* Wrap F-Curve operation stuff to pass to the general AnimData-level func */
+	AllFCurvesCbWrapper wrapper = {func, user_data};
+	
+	/* Use the AnimData-based function so that we don't have to reimplement all that stuff */
+	BKE_animdata_main_cb(mainptr, adt_apply_all_fcurves_cb, &wrapper);
+}
+
 
 /* Whole Database Ops -------------------------------------------- */
 
@@ -1347,7 +1417,7 @@ void BKE_keyingset_free_path(KeyingSet *ks, KS_Path *ksp)
 }
 
 /* Copy all KeyingSets in the given list */
-void BKE_keyingsets_copy(ListBase *newlist, ListBase *list)
+void BKE_keyingsets_copy(ListBase *newlist, const ListBase *list)
 {
 	KeyingSet *ksn;
 	KS_Path *kspn;
@@ -1595,8 +1665,11 @@ static bool animsys_write_rna_setting(PathResolvedRNA *anim_rna, const float val
 
 		/* for cases like duplifarmes it's only a temporary so don't
 		 * notify anyone of updates */
-		if (!(id->tag & LIB_TAG_ANIM_NO_RECALC)) {
-			BKE_id_tag_set_atomic(id, LIB_TAG_ID_RECALC);
+		if (!(id->recalc & ID_RECALC_SKIP_ANIM_TAG)) {
+			/* NOTE: This is a bit annoying to use atomic API here, but this
+			 * code is at it's EOL and removed already in 2.8 branch.
+			 */
+			atomic_fetch_and_or_int32(&id->recalc, ID_RECALC);
 			DAG_id_type_tag(G.main, GS(id->name));
 		}
 	}
@@ -2550,8 +2623,8 @@ static void animsys_evaluate_nla(ListBase *echannels, PointerRNA *ptr, AnimData 
 	 */
 	if (ptr->id.data != NULL) {
 		ID *id = ptr->id.data;
-		if (!(id->tag & LIB_TAG_ANIM_NO_RECALC)) {
-			id->tag |= LIB_TAG_ID_RECALC;
+		if (!(id->recalc & ID_RECALC_SKIP_ANIM_TAG)) {
+			id->recalc |= ID_RECALC;
 			DAG_id_type_tag(G.main, GS(id->name));
 		}
 	}
@@ -2851,7 +2924,7 @@ void BKE_animsys_eval_animdata(EvaluationContext *eval_ctx, ID *id)
 {
 	AnimData *adt = BKE_animdata_from_id(id);
 	Scene *scene = NULL; /* XXX: this is only needed for flushing RNA updates,
-	                      * which should get handled as part of the graph instead...
+	                      * which should get handled as part of the dependency graph instead...
 	                      */
 	DEBUG_PRINT("%s on %s, time=%f\n\n", __func__, id->name, (double)eval_ctx->ctime);
 	BKE_animsys_evaluate_animdata(scene, id, adt, eval_ctx->ctime, ADT_RECALC_ANIM);

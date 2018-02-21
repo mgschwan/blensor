@@ -39,34 +39,11 @@ extern "C" {
 /* avoid many includes for now */
 #include "BLI_sys_types.h"
 #include "BLI_compiler_compat.h"
+#include "BLI_utildefines_variadic.h"
 
 #ifndef NDEBUG /* for BLI_assert */
 #include <stdio.h>
 #endif
-
-
-/* varargs macros (keep first so others can use) */
-/* --- internal helpers --- */
-#define _VA_NARGS_GLUE(x, y) x y
-#define _VA_NARGS_RETURN_COUNT(\
-	_1_, _2_, _3_, _4_, _5_, _6_, _7_, _8_, _9_, _10_, _11_, _12_, _13_, _14_, _15_, _16_, \
-	_17_, _18_, _19_, _20_, _21_, _22_, _23_, _24_, _25_, _26_, _27_, _28_, _29_, _30_, _31_, _32_, \
-	_33_, _34_, _35_, _36_, _37_, _38_, _39_, _40_, _41_, _42_, _43_, _44_, _45_, _46_, _47_, _48_, \
-	_49_, _50_, _51_, _52_, _53_, _54_, _55_, _56_, _57_, _58_, _59_, _60_, _61_, _62_, _63_, _64_, \
-	count, ...) count
-#define _VA_NARGS_EXPAND(args) _VA_NARGS_RETURN_COUNT args
-/* 64 args max */
-#define _VA_NARGS_COUNT(...) _VA_NARGS_EXPAND((__VA_ARGS__, \
-	64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, \
-	48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, \
-	32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, \
-	16, 15, 14, 13, 12, 11, 10,  9,  8,  7,  6,  5,  4,  3,  2, 1, 0))
-#define _VA_NARGS_OVERLOAD_MACRO2(name, count) name##count
-#define _VA_NARGS_OVERLOAD_MACRO1(name, count) _VA_NARGS_OVERLOAD_MACRO2(name, count)
-#define _VA_NARGS_OVERLOAD_MACRO(name,  count) _VA_NARGS_OVERLOAD_MACRO1(name, count)
-/* --- expose for re-use --- */
-#define VA_NARGS_CALL_OVERLOAD(name, ...) \
-	_VA_NARGS_GLUE(_VA_NARGS_OVERLOAD_MACRO(name, _VA_NARGS_COUNT(__VA_ARGS__)), (__VA_ARGS__))
 
 /* useful for finding bad use of min/max */
 #if 0
@@ -532,6 +509,16 @@ extern bool BLI_memory_is_zero(const void *arr, const size_t arr_size);
 #define SET_UINT_IN_POINTER(i)    ((void *)(uintptr_t)(i))
 #define GET_UINT_FROM_POINTER(i)  ((void)0, ((unsigned int)(uintptr_t)(i)))
 
+/* Set flag from a single test */
+#define SET_FLAG_FROM_TEST(value, test, flag) \
+{ \
+	if (test) { \
+		(value) |=  (flag); \
+	} \
+	else { \
+		(value) &= ~(flag); \
+	} \
+} ((void)0)
 
 /* Macro to convert a value to string in the preprocessor
  * STRINGIFY_ARG: gives the argument as a string
@@ -632,6 +619,9 @@ extern bool BLI_memory_is_zero(const void *arr, const size_t arr_size);
 /* BLI_assert(), default only to print
  * for aborting need to define WITH_ASSERT_ABORT
  */
+/* For 'abort' only. */
+#include <stdlib.h>
+
 #ifndef NDEBUG
 #  include "BLI_system.h"
 #  ifdef WITH_ASSERT_ABORT
@@ -670,9 +660,28 @@ extern bool BLI_memory_is_zero(const void *arr, const size_t arr_size);
     (defined(__GNUC__) && ((__GNUC__ * 100 + __GNUC_MINOR__) >= 406))  /* gcc4.6+ only */
 #  define BLI_STATIC_ASSERT(a, msg) __extension__ _Static_assert(a, msg);
 #else
-   /* TODO msvc, clang */
-#  define BLI_STATIC_ASSERT(a, msg)
+/* Code adapted from http://www.pixelbeat.org/programming/gcc/static_assert.html */
+/* Note we need the two concats below because arguments to ## are not expanded, so we need to
+ * expand __LINE__ with one indirection before doing the actual concatenation. */
+#  define ASSERT_CONCAT_(a, b) a##b
+#  define ASSERT_CONCAT(a, b) ASSERT_CONCAT_(a, b)
+   /* These can't be used after statements in c89. */
+#  if defined(__COUNTER__)  /* MSVC */
+#    define BLI_STATIC_ASSERT(a, msg) \
+         ; enum { ASSERT_CONCAT(static_assert_, __COUNTER__) = 1 / (int)(!!(a)) };
+#  else  /* older gcc, clang... */
+    /* This can't be used twice on the same line so ensure if using in headers
+     * that the headers are not included twice (by wrapping in #ifndef...#endif)
+     * Note it doesn't cause an issue when used on same line of separate modules
+     * compiled with gcc -combine -fwhole-program. */
+#    define BLI_STATIC_ASSERT(a, msg) \
+         ; enum { ASSERT_CONCAT(assert_line_, __LINE__) = 1 / (int)(!!(a)) };
+#  endif
 #endif
+
+
+#define BLI_STATIC_ASSERT_ALIGN(st, align) \
+  BLI_STATIC_ASSERT((sizeof(st) % (align) == 0), "Structure must be strictly aligned")
 
 /* hints for branch prediction, only use in code that runs a _lot_ where */
 #ifdef __GNUC__

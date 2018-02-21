@@ -1782,7 +1782,7 @@ static int stitch_init(bContext *C, wmOperator *op)
 		}
 	}
 
-	total_edges = BLI_ghash_size(edge_hash);
+	total_edges = BLI_ghash_len(edge_hash);
 	state->edges = edges = MEM_mallocN(sizeof(*edges) * total_edges, "stitch_edges");
 
 	/* I assume any system will be able to at least allocate an iterator :p */
@@ -2254,7 +2254,7 @@ void UV_OT_stitch(wmOperatorType *ot)
 {
 	PropertyRNA *prop;
 
-	static EnumPropertyItem stitch_modes[] = {
+	static const EnumPropertyItem stitch_modes[] = {
 	    {STITCH_VERT, "VERTEX", 0, "Vertex", ""},
 	    {STITCH_EDGE, "EDGE", 0, "Edge", ""},
 	    {0, NULL, 0, NULL, NULL}

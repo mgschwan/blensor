@@ -396,7 +396,7 @@ void GeometryExporter::createPolylist(short material_index,
 		ostr << translate_id(material_id);
 		facelist->setMaterial(ostr.str());
 	}
-			
+
 	COLLADASW::InputList &til = facelist->getInputList();
 		
 	// creates <input> in <polylist> for vertices 
@@ -548,7 +548,7 @@ void GeometryExporter::createPolylist(std::string imageid,
 		MTexPoly *tp = &mtpolys[i];
 		MPoly *p = &mpolys[i];
 
-		std::string tpageid = (tp->tpage) ? id_name(tp->tpage):"";
+		std::string tpageid = (mtpolys && tp->tpage) ? id_name(tp->tpage) : "";
 		if (tpageid == imageid) {
 			faces_in_polylist++;
 			vcount_list.push_back(p->totloop);
@@ -637,7 +637,7 @@ void GeometryExporter::createPolylist(std::string imageid,
 		MTexPoly *tp = &mtpolys[i];
 		MPoly *p = &mpolys[i];
 		int loop_count = p->totloop;
-		std::string tpageid = (tp->tpage) ? id_name(tp->tpage) : "";
+		std::string tpageid = (mtpolys && tp->tpage) ? id_name(tp->tpage) : "";
 		if (tpageid == imageid) {
 			MLoop *l = &mloops[p->loopstart];
 			BCPolygonNormalsIndices normal_indices = norind[i];
@@ -718,12 +718,13 @@ void GeometryExporter::createVertexColorSource(std::string geom_id, Mesh *me)
 
 		source.setArrayId(layer_id + ARRAY_ID_SUFFIX);
 		source.setAccessorCount(me->totloop);
-		source.setAccessorStride(3);
+		source.setAccessorStride(4);
 
 		COLLADASW::SourceBase::ParameterNameList &param = source.getParameterNameList();
 		param.push_back("R");
 		param.push_back("G");
 		param.push_back("B");
+		param.push_back("A");
 
 		source.prepareToAppendValues();
 
@@ -735,7 +736,8 @@ void GeometryExporter::createVertexColorSource(std::string geom_id, Mesh *me)
 				source.appendValues(
 						mlc->r / 255.0f,
 						mlc->g / 255.0f,
-						mlc->b / 255.0f
+						mlc->b / 255.0f,
+						mlc->a / 255.0f
 				);
 			}
 		}

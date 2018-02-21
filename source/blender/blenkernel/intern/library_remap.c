@@ -194,9 +194,11 @@ static int foreach_libblock_remap_callback(void *user_data, ID *id_self, ID **id
 			id->tag |= LIB_TAG_DOIT;
 		}
 
-		/* Special hack in case it's Object->data and we are in edit mode (skipped_direct too). */
+		/* Special hack in case it's Object->data and we are in edit mode, and new_id is not NULL
+		 * (otherwise, we follow common NEVER_NULL flags).
+		 * (skipped_indirect too). */
 		if ((is_never_null && skip_never_null) ||
-		    (is_obj_editmode && (((Object *)id)->data == *id_p)) ||
+		    (is_obj_editmode && (((Object *)id)->data == *id_p) && new_id != NULL) ||
 		    (skip_indirect && is_indirect))
 		{
 			if (is_indirect) {
@@ -732,7 +734,7 @@ static int id_relink_to_newid_looper(void *UNUSED(user_data), ID *UNUSED(self_id
  */
 void BKE_libblock_relink_to_newid(ID *id)
 {
-	if (ID_IS_LINKED_DATABLOCK(id))
+	if (ID_IS_LINKED(id))
 		return;
 
 	BKE_library_foreach_ID_link(NULL, id, id_relink_to_newid_looper, NULL, 0);
@@ -744,9 +746,11 @@ void BKE_libblock_free_data(ID *id, const bool do_id_user)
 		IDP_FreeProperty_ex(id->properties, do_id_user);
 		MEM_freeN(id->properties);
 	}
+
+	/* XXX TODO remove animdata handling from each type's freeing func, and do it here, like for copy! */
 }
 
-void BKE_libblock_free_datablock(ID *id)
+void BKE_libblock_free_datablock(ID *id, const int UNUSED(flag))
 {
 	const short type = GS(id->name);
 	switch (type) {
@@ -856,6 +860,90 @@ void BKE_libblock_free_datablock(ID *id)
 	}
 }
 
+
+void BKE_id_free_ex(Main *bmain, void *idv, int flag, const bool use_flag_from_idtag)
+{
+	ID *id = idv;
+
+	if (use_flag_from_idtag) {
+		if ((id->tag & LIB_TAG_NO_MAIN) != 0) {
+			flag |= LIB_ID_FREE_NO_MAIN;
+		}
+		else {
+			flag &= ~LIB_ID_FREE_NO_MAIN;
+		}
+
+		if ((id->tag & LIB_TAG_NO_USER_REFCOUNT) != 0) {
+			flag |= LIB_ID_FREE_NO_USER_REFCOUNT;
+		}
+		else {
+			flag &= ~LIB_ID_FREE_NO_USER_REFCOUNT;
+		}
+
+		if ((id->tag & LIB_TAG_NOT_ALLOCATED) != 0) {
+			flag |= LIB_ID_FREE_NOT_ALLOCATED;
+		}
+		else {
+			flag &= ~LIB_ID_FREE_NOT_ALLOCATED;
+		}
+	}
+
+	BLI_assert((flag & LIB_ID_FREE_NO_MAIN) != 0 || bmain != NULL);
+	BLI_assert((flag & LIB_ID_FREE_NO_MAIN) != 0 || (flag & LIB_ID_FREE_NOT_ALLOCATED) == 0);
+	BLI_assert((flag & LIB_ID_FREE_NO_MAIN) != 0 || (flag & LIB_ID_FREE_NO_USER_REFCOUNT) == 0);
+
+	const short type = GS(id->name);
+
+	if (bmain && (flag & LIB_ID_FREE_NO_DEG_TAG) == 0) {
+		DAG_id_type_tag(bmain, type);
+	}
+
+#ifdef WITH_PYTHON
+	BPY_id_release(id);
+#endif
+
+	if ((flag & LIB_ID_FREE_NO_USER_REFCOUNT) == 0) {
+		BKE_libblock_relink_ex(bmain, id, NULL, NULL, true);
+	}
+
+	BKE_libblock_free_datablock(id, flag);
+
+	/* avoid notifying on removed data */
+	if (bmain) {
+		BKE_main_lock(bmain);
+	}
+
+	if ((flag & LIB_ID_FREE_NO_UI_USER) == 0) {
+		if (free_notifier_reference_cb) {
+			free_notifier_reference_cb(id);
+		}
+
+		if (remap_editor_id_reference_cb) {
+			remap_editor_id_reference_cb(id, NULL);
+		}
+	}
+
+	if ((flag & LIB_ID_FREE_NO_MAIN) == 0) {
+		ListBase *lb = which_libbase(bmain, type);
+		BLI_remlink(lb, id);
+	}
+
+	BKE_libblock_free_data(id, (flag & LIB_ID_FREE_NO_USER_REFCOUNT) == 0);
+
+	if (bmain) {
+		BKE_main_unlock(bmain);
+	}
+
+	if ((flag & LIB_ID_FREE_NOT_ALLOCATED) == 0) {
+		MEM_freeN(id);
+	}
+}
+
+void BKE_id_free(Main *bmain, void *idv)
+{
+	BKE_id_free_ex(bmain, idv, 0, true);
+}
+
 /**
  * used in headerbuttons.c image.c mesh.c screen.c sound.c and library.c
  *
@@ -873,14 +961,19 @@ void BKE_libblock_free_ex(Main *bmain, void *idv, const bool do_id_user, const b
 	DAG_id_type_tag(bmain, type);
 
 #ifdef WITH_PYTHON
+#ifdef WITH_PYTHON_SAFETY
 	BPY_id_release(id);
+#endif
+	if (id->py_instance) {
+		BPY_DECREF_RNA_INVALIDATE(id->py_instance);
+	}
 #endif
 
 	if (do_id_user) {
 		BKE_libblock_relink_ex(bmain, id, NULL, NULL, true);
 	}
 
-	BKE_libblock_free_datablock(id);
+	BKE_libblock_free_datablock(id, 0);
 
 	/* avoid notifying on removed data */
 	BKE_main_lock(bmain);

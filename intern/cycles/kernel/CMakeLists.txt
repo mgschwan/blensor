@@ -8,7 +8,7 @@ set(INC_SYS
 
 )
 
-set(SRC
+set(SRC_CPU_KERNELS
 	kernels/cpu/kernel.cpp
 	kernels/cpu/kernel_sse2.cpp
 	kernels/cpu/kernel_sse3.cpp
@@ -27,6 +27,15 @@ set(SRC
 	kernels/cpu/filter_sse41.cpp
 	kernels/cpu/filter_avx.cpp
 	kernels/cpu/filter_avx2.cpp
+)
+
+set(SRC_CUDA_KERNELS
+	kernels/cuda/kernel.cu
+	kernels/cuda/kernel_split.cu
+	kernels/cuda/filter.cu
+)
+
+set(SRC_OPENCL_KERNELS
 	kernels/opencl/kernel.cl
 	kernels/opencl/kernel_state_buffer_size.cl
 	kernels/opencl/kernel_split.cl
@@ -50,23 +59,20 @@ set(SRC
 	kernels/opencl/kernel_indirect_subsurface.cl
 	kernels/opencl/kernel_buffer_update.cl
 	kernels/opencl/filter.cl
-	kernels/cuda/kernel.cu
-	kernels/cuda/kernel_split.cu
-	kernels/cuda/filter.cu
 )
 
 set(SRC_BVH_HEADERS
 	bvh/bvh.h
 	bvh/bvh_nodes.h
 	bvh/bvh_shadow_all.h
-	bvh/bvh_subsurface.h
+	bvh/bvh_local.h
 	bvh/bvh_traversal.h
 	bvh/bvh_types.h
 	bvh/bvh_volume.h
 	bvh/bvh_volume_all.h
 	bvh/qbvh_nodes.h
 	bvh/qbvh_shadow_all.h
-	bvh/qbvh_subsurface.h
+	bvh/qbvh_local.h
 	bvh/qbvh_traversal.h
 	bvh/qbvh_volume.h
 	bvh/qbvh_volume_all.h
@@ -79,12 +85,10 @@ set(SRC_HEADERS
 	kernel_compat_cpu.h
 	kernel_compat_cuda.h
 	kernel_compat_opencl.h
-	kernel_debug.h
 	kernel_differential.h
 	kernel_emission.h
 	kernel_film.h
 	kernel_globals.h
-	kernel_image_opencl.h
 	kernel_jitter.h
 	kernel_light.h
 	kernel_math.h
@@ -120,10 +124,12 @@ set(SRC_KERNELS_CPU_HEADERS
 
 set(SRC_KERNELS_CUDA_HEADERS
 	kernels/cuda/kernel_config.h
+	kernels/cuda/kernel_cuda_image.h
 )
 
 set(SRC_KERNELS_OPENCL_HEADERS
 	kernels/opencl/kernel_split_function.h
+	kernels/opencl/kernel_opencl_image.h
 )
 
 set(SRC_CLOSURE_HEADERS
@@ -154,6 +160,7 @@ set(SRC_CLOSURE_HEADERS
 set(SRC_SVM_HEADERS
 	svm/svm.h
 	svm/svm_attribute.h
+	svm/svm_bevel.h
 	svm/svm_blackbody.h
 	svm/svm_bump.h
 	svm/svm_camera.h
@@ -202,6 +209,7 @@ set(SRC_GEOM_HEADERS
 	geom/geom.h
 	geom/geom_attribute.h
 	geom/geom_curve.h
+	geom/geom_curve_intersect.h
 	geom/geom_motion_curve.h
 	geom/geom_motion_triangle.h
 	geom/geom_motion_triangle_intersect.h
@@ -233,6 +241,7 @@ set(SRC_FILTER_HEADERS
 set(SRC_UTIL_HEADERS
 	../util/util_atomic.h
 	../util/util_color.h
+	../util/util_defines.h
 	../util/util_half.h
 	../util/util_hash.h
 	../util/util_math.h
@@ -245,6 +254,7 @@ set(SRC_UTIL_HEADERS
 	../util/util_math_int3.h
 	../util/util_math_int4.h
 	../util/util_math_matrix.h
+	../util/util_rect.h
 	../util/util_static_assert.h
 	../util/util_transform.h
 	../util/util_texture.h
@@ -320,7 +330,7 @@ if(WITH_CYCLES_CUDA_BINARIES)
 	set(CUDA_VERSION "${CUDA_VERSION_MAJOR}${CUDA_VERSION_MINOR}")
 
 	# warn for other versions
-	if(CUDA_VERSION MATCHES "80")
+	if(CUDA_VERSION MATCHES "80" OR CUDA_VERSION MATCHES "90")
 	else()
 		message(WARNING
 			"CUDA version ${CUDA_VERSION_MAJOR}.${CUDA_VERSION_MINOR} detected, "
@@ -346,69 +356,86 @@ if(WITH_CYCLES_CUDA_BINARIES)
 	set(cuda_cubins)
 
 	macro(CYCLES_CUDA_KERNEL_ADD arch name flags sources experimental)
+		set(cuda_cubin ${name}_${arch}.cubin)
+		set(cuda_kernel_src "/kernels/cuda/${name}.cu")
+
+		set(cuda_flags
+			-D CCL_NAMESPACE_BEGIN=
+			-D CCL_NAMESPACE_END=
+			-D NVCC
+			-m ${CUDA_BITS}
+			-I ${CMAKE_CURRENT_SOURCE_DIR}/..
+			-I ${CMAKE_CURRENT_SOURCE_DIR}/kernels/cuda
+			--use_fast_math
+			-o ${CMAKE_CURRENT_BINARY_DIR}/${cuda_cubin})
+
 		if(${experimental})
-			set(flags ${flags} -D__KERNEL_EXPERIMENTAL__)
+			set(cuda_flags ${cuda_flags} -D __KERNEL_EXPERIMENTAL__)
 			set(name ${name}_experimental)
 		endif()
 
-		set(cuda_cubin ${name}_${arch}.cubin)
-
 		if(WITH_CYCLES_DEBUG)
-			set(cuda_debug_flags "-D__KERNEL_DEBUG__")
-		else()
-			set(cuda_debug_flags "")
+			set(cuda_flags ${cuda_flags} -D __KERNEL_DEBUG__)
 		endif()
 
-		set(cuda_nvcc_command ${CUDA_NVCC_EXECUTABLE})
-		set(cuda_nvcc_version ${CUDA_VERSION})
+		if(WITH_CYCLES_CUBIN_COMPILER)
+			string(SUBSTRING ${arch} 3 -1 CUDA_ARCH)
 
-		set(cuda_version_flags "-D__KERNEL_CUDA_VERSION__=${cuda_nvcc_version}")
-		set(cuda_math_flags "--use_fast_math")
+			# Needed to find libnvrtc-builtins.so. Can't do it from inside
+			# cycles_cubin_cc since the env variable is read before main()
+			if(APPLE)
+				set(CUBIN_CC_ENV ${CMAKE_COMMAND}
+					-E env DYLD_LIBRARY_PATH="${CUDA_TOOLKIT_ROOT_DIR}/lib")
+			elseif(UNIX)
+				set(CUBIN_CC_ENV ${CMAKE_COMMAND}
+					-E env LD_LIBRARY_PATH="${CUDA_TOOLKIT_ROOT_DIR}/lib64")
+			endif()
 
-		set(cuda_kernel_src "/kernels/cuda/${name}.cu")
-
-		add_custom_command(
-			OUTPUT ${cuda_cubin}
-			COMMAND ${cuda_nvcc_command}
-					-arch=${arch}
-					${CUDA_NVCC_FLAGS}
-					-m${CUDA_BITS}
-					--cubin ${CMAKE_CURRENT_SOURCE_DIR}${cuda_kernel_src}
-					-o ${CMAKE_CURRENT_BINARY_DIR}/${cuda_cubin}
-					--ptxas-options="-v"
-					${cuda_arch_flags}
-					${cuda_version_flags}
-					${cuda_math_flags}
-					${flags}
-					${cuda_debug_flags}
-					-I${CMAKE_CURRENT_SOURCE_DIR}/..
-					-DCCL_NAMESPACE_BEGIN=
-					-DCCL_NAMESPACE_END=
-					-DNVCC
-			DEPENDS ${sources})
-
+			add_custom_command(
+				OUTPUT ${cuda_cubin}
+				COMMAND ${CUBIN_CC_ENV}
+						"$<TARGET_FILE:cycles_cubin_cc>"
+						-target ${CUDA_ARCH}
+						-i ${CMAKE_CURRENT_SOURCE_DIR}${cuda_kernel_src}
+						${cuda_flags}
+						-v
+						-cuda-toolkit-dir "${CUDA_TOOLKIT_ROOT_DIR}"
+				DEPENDS ${sources} cycles_cubin_cc)
+		else()
+			add_custom_command(
+				OUTPUT ${cuda_cubin}
+				COMMAND ${CUDA_NVCC_EXECUTABLE}
+						-arch=${arch}
+						${CUDA_NVCC_FLAGS}
+						--cubin
+						${CMAKE_CURRENT_SOURCE_DIR}${cuda_kernel_src}
+						--ptxas-options="-v"
+						${cuda_flags}
+				DEPENDS ${sources})
+		endif()
 		delayed_install("${CMAKE_CURRENT_BINARY_DIR}" "${cuda_cubin}" ${CYCLES_INSTALL_PATH}/lib)
 		list(APPEND cuda_cubins ${cuda_cubin})
 
-		unset(cuda_extra_flags)
 		unset(cuda_debug_flags)
-
-		unset(cuda_nvcc_command)
-		unset(cuda_nvcc_version)
 	endmacro()
 
 	foreach(arch ${CYCLES_CUDA_BINARIES_ARCH})
-		# Compile regular kernel
-		CYCLES_CUDA_KERNEL_ADD(${arch} kernel "" "${cuda_sources}" FALSE)
-		CYCLES_CUDA_KERNEL_ADD(${arch} filter "" "${cuda_filter_sources}" FALSE)
+		if(CUDA_VERSION GREATER "89" AND ${arch} MATCHES "sm_2.")
+			message(STATUS "CUDA binaries for ${arch} disabled, not supported by CUDA 9.")
+		else()
+			# Compile regular kernel
+			CYCLES_CUDA_KERNEL_ADD(${arch} filter "" "${cuda_filter_sources}" FALSE)
+			CYCLES_CUDA_KERNEL_ADD(${arch} kernel "" "${cuda_sources}" FALSE)
 
-		if(WITH_CYCLES_CUDA_SPLIT_KERNEL_BINARIES)
-			# Compile split kernel
-			CYCLES_CUDA_KERNEL_ADD(${arch} kernel_split "-D__SPLIT__" ${cuda_sources} FALSE)
+			if(WITH_CYCLES_CUDA_SPLIT_KERNEL_BINARIES)
+				# Compile split kernel
+				CYCLES_CUDA_KERNEL_ADD(${arch} kernel_split "-D __SPLIT__" ${cuda_sources} FALSE)
+			endif()
 		endif()
 	endforeach()
 
 	add_custom_target(cycles_kernel_cuda ALL DEPENDS ${cuda_cubins})
+	cycles_set_solution_folder(cycles_kernel_cuda)
 endif()
 
 # OSL module
@@ -451,8 +478,10 @@ if(CXX_HAS_AVX2)
 	set_source_files_properties(kernels/cpu/filter_avx2.cpp PROPERTIES COMPILE_FLAGS "${CYCLES_AVX2_KERNEL_FLAGS}")
 endif()
 
-add_library(cycles_kernel
-	${SRC}
+cycles_add_library(cycles_kernel
+	${SRC_CPU_KERNELS}
+	${SRC_CUDA_KERNELS}
+	${SRC_OPENCL_KERNELS}
 	${SRC_HEADERS}
 	${SRC_KERNELS_CPU_HEADERS}
 	${SRC_KERNELS_CUDA_HEADERS}
@@ -479,34 +508,10 @@ endif()
 #add_custom_target(cycles_kernel_preprocess ALL DEPENDS ${KERNEL_PREPROCESSED})
 #delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${KERNEL_PREPROCESSED}" ${CYCLES_INSTALL_PATH}/kernel)
 
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_state_buffer_size.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_split.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_data_init.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_path_init.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_queue_enqueue.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_scene_intersect.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_lamp_emission.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_do_volume.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_indirect_background.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_shader_setup.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_shader_sort.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_shader_eval.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_holdout_emission_blurring_pathtermination_ao.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_subsurface_scatter.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_direct_lighting.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_shadow_blocked_ao.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_shadow_blocked_dl.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_enqueue_inactive.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_next_iteration_setup.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_indirect_subsurface.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_buffer_update.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/kernel_split_function.h" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/opencl/filter.cl" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/cuda/kernel.cu" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/cuda)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/cuda/kernel_split.cu" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/cuda)
-delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "kernels/cuda/filter.cu" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/cuda)
+delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_OPENCL_KERNELS}" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
+delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_CUDA_KERNELS}" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/cuda)
 delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_HEADERS}" ${CYCLES_INSTALL_PATH}/source/kernel)
+delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_KERNELS_OPENCL_HEADERS}" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/opencl)
 delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_KERNELS_CUDA_HEADERS}" ${CYCLES_INSTALL_PATH}/source/kernel/kernels/cuda)
 delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_BVH_HEADERS}" ${CYCLES_INSTALL_PATH}/source/kernel/bvh)
 delayed_install(${CMAKE_CURRENT_SOURCE_DIR} "${SRC_CLOSURE_HEADERS}" ${CYCLES_INSTALL_PATH}/source/kernel/closure)

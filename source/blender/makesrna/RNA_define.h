@@ -58,11 +58,13 @@ void RNA_def_struct_name_property(StructRNA *srna, PropertyRNA *prop);
 void RNA_def_struct_nested(BlenderRNA *brna, StructRNA *srna, const char *structname);
 void RNA_def_struct_flag(StructRNA *srna, int flag);
 void RNA_def_struct_clear_flag(StructRNA *srna, int flag);
+void RNA_def_struct_property_tags(StructRNA *srna, const EnumPropertyItem *prop_tag_defines);
 void RNA_def_struct_refine_func(StructRNA *srna, const char *refine);
 void RNA_def_struct_idprops_func(StructRNA *srna, const char *refine);
 void RNA_def_struct_register_funcs(StructRNA *srna, const char *reg, const char *unreg, const char *instance);
 void RNA_def_struct_path_func(StructRNA *srna, const char *path);
-void RNA_def_struct_identifier(StructRNA *srna, const char *identifier);
+void RNA_def_struct_identifier_no_struct_map(StructRNA *srna, const char *identifier);
+void RNA_def_struct_identifier(BlenderRNA *brna, StructRNA *srna, const char *identifier);
 void RNA_def_struct_ui_text(StructRNA *srna, const char *name, const char *description);
 void RNA_def_struct_ui_icon(StructRNA *srna, int icon);
 void RNA_struct_free_extension(StructRNA *srna, ExtensionRNA *ext);
@@ -139,6 +141,7 @@ void RNA_def_property_collection_sdna(PropertyRNA *prop, const char *structname,
 
 void RNA_def_property_flag(PropertyRNA *prop, PropertyFlag flag);
 void RNA_def_property_clear_flag(PropertyRNA *prop, PropertyFlag flag);
+void RNA_def_property_tags(PropertyRNA *prop, int tags);
 void RNA_def_property_subtype(PropertyRNA *prop, PropertySubType subtype);
 void RNA_def_property_array(PropertyRNA *prop, int length);
 void RNA_def_property_multi_array(PropertyRNA *prop, int dimension, const int length[]);
@@ -210,14 +213,14 @@ void RNA_def_parameter_clear_flags(PropertyRNA *prop, PropertyFlag flag_property
 
 void RNA_enum_item_add(EnumPropertyItem **items, int *totitem, const EnumPropertyItem *item);
 void RNA_enum_item_add_separator(EnumPropertyItem **items, int *totitem);
-void RNA_enum_items_add(EnumPropertyItem **items, int *totitem, EnumPropertyItem *item);
-void RNA_enum_items_add_value(EnumPropertyItem **items, int *totitem, EnumPropertyItem *item, int value);
+void RNA_enum_items_add(EnumPropertyItem **items, int *totitem, const EnumPropertyItem *item);
+void RNA_enum_items_add_value(EnumPropertyItem **items, int *totitem, const EnumPropertyItem *item, int value);
 void RNA_enum_item_end(EnumPropertyItem **items, int *totitem);
 
 /* Memory management */
 
-void RNA_def_struct_duplicate_pointers(StructRNA *srna);
-void RNA_def_struct_free_pointers(StructRNA *srna);
+void RNA_def_struct_duplicate_pointers(BlenderRNA *brna, StructRNA *srna);
+void RNA_def_struct_free_pointers(BlenderRNA *brna, StructRNA *srna);
 void RNA_def_func_duplicate_pointers(FunctionRNA *func);
 void RNA_def_func_free_pointers(FunctionRNA *func);
 void RNA_def_property_duplicate_pointers(StructOrFunctionRNA *cont_, PropertyRNA *prop);

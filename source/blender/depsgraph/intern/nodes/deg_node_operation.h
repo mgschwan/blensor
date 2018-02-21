@@ -38,6 +38,8 @@ struct Depsgraph;
 
 namespace DEG {
 
+struct ComponentDepsNode;
+
 /* Flags for Depsgraph Nodes */
 typedef enum eDepsOperation_Flag {
 	/* node needs to be updated */
@@ -45,11 +47,6 @@ typedef enum eDepsOperation_Flag {
 
 	/* node was directly modified, causing need for update */
 	DEPSOP_FLAG_DIRECTLY_MODIFIED  = (1 << 1),
-
-	/* Operation is evaluated using CPython; has GIL and security
-	 * implications...
-	 */
-	DEPSOP_FLAG_USES_PYTHON   = (1 << 2),
 } eDepsOperation_Flag;
 
 /* Atomic Operation - Base type for all operations */
@@ -79,7 +76,6 @@ struct OperationDepsNode : public DepsNode {
 
 	/* How many inlinks are we still waiting on before we can be evaluated. */
 	uint32_t num_links_pending;
-	float eval_priority;
 	bool scheduled;
 
 	/* Identifier for the operation being performed. */

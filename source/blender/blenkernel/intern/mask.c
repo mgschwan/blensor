@@ -51,6 +51,7 @@
 
 #include "BKE_animsys.h"
 #include "BKE_curve.h"
+#include "BKE_depsgraph.h"
 #include "BKE_global.h"
 #include "BKE_library.h"
 #include "BKE_main.h"
@@ -794,7 +795,7 @@ static Mask *mask_alloc(Main *bmain, const char *name)
 {
 	Mask *mask;
 
-	mask = BKE_libblock_alloc(bmain, ID_MSK, name);
+	mask = BKE_libblock_alloc(bmain, ID_MSK, name, 0);
 
 	id_fake_user_set(&mask->id);
 
@@ -817,10 +818,13 @@ Mask *BKE_mask_new(Main *bmain, const char *name)
 	mask->sfra = 1;
 	mask->efra = 100;
 
+	DAG_relations_tag_update(bmain);
+
 	return mask;
 }
 
 /* TODO(sergey): Use generic BKE_libblock_copy_nolib() instead. */
+/* TODO(bastien): Use new super cool & generic BKE_id_copy_ex() instead! */
 Mask *BKE_mask_copy_nolib(Mask *mask)
 {
 	Mask *mask_new;
@@ -840,22 +844,29 @@ Mask *BKE_mask_copy_nolib(Mask *mask)
 	return mask_new;
 }
 
-Mask *BKE_mask_copy(Main *bmain, const Mask *mask)
+/**
+ * Only copy internal data of Mask ID from source to already allocated/initialized destination.
+ * You probably nerver want to use that directly, use id_copy or BKE_id_copy_ex for typical needs.
+ *
+ * WARNING! This function will not handle ID user count!
+ *
+ * \param flag  Copying options (see BKE_library.h's LIB_ID_COPY_... flags for more).
+ */
+void BKE_mask_copy_data(Main *UNUSED(bmain), Mask *mask_dst, const Mask *mask_src, const int UNUSED(flag))
 {
-	Mask *mask_new;
+	BLI_listbase_clear(&mask_dst->masklayers);
 
-	mask_new = BKE_libblock_copy(bmain, &mask->id);
-
-	BLI_listbase_clear(&mask_new->masklayers);
-
-	BKE_mask_layer_copy_list(&mask_new->masklayers, &mask->masklayers);
+	BKE_mask_layer_copy_list(&mask_dst->masklayers, &mask_src->masklayers);  /* TODO add unused flag to those as well. */
 
 	/* enable fake user by default */
-	id_fake_user_set(&mask_new->id);
+	id_fake_user_set(&mask_dst->id);
+}
 
-	BKE_id_copy_ensure_local(bmain, &mask->id, &mask_new->id);
-
-	return mask_new;
+Mask *BKE_mask_copy(Main *bmain, const Mask *mask)
+{
+	Mask *mask_copy;
+	BKE_id_copy_ex(bmain, &mask->id, (ID **)&mask_copy, 0, false);
+	return mask_copy;
 }
 
 void BKE_mask_make_local(Main *bmain, Mask *mask, const bool lib_local)
@@ -1171,17 +1182,6 @@ void BKE_mask_point_parent_matrix_get(MaskSplinePoint *point, float ctime, float
 	}
 }
 
-static void mask_evaluate_apply_point_parent(MaskSplinePoint *point, float ctime)
-{
-	float parent_matrix[3][3];
-
-	BKE_mask_point_parent_matrix_get(point, ctime, parent_matrix);
-
-	mul_m3_v2(parent_matrix, point->bezt.vec[0]);
-	mul_m3_v2(parent_matrix, point->bezt.vec[1]);
-	mul_m3_v2(parent_matrix, point->bezt.vec[2]);
-}
-
 static void mask_calc_point_handle(MaskSplinePoint *point, MaskSplinePoint *point_prev, MaskSplinePoint *point_next)
 {
 	BezTriple *bezt = &point->bezt;
@@ -1196,14 +1196,14 @@ static void mask_calc_point_handle(MaskSplinePoint *point, MaskSplinePoint *poin
 
 #if 1
 	if (bezt_prev || bezt_next) {
-		BKE_nurb_handle_calc(bezt, bezt_prev, bezt_next, 0);
+		BKE_nurb_handle_calc(bezt, bezt_prev, bezt_next, 0, 0);
 	}
 #else
 	if (handle_type == HD_VECT) {
-		BKE_nurb_handle_calc(bezt, bezt_prev, bezt_next, 0);
+		BKE_nurb_handle_calc(bezt, bezt_prev, bezt_next, 0, 0);
 	}
 	else if (handle_type == HD_AUTO) {
-		BKE_nurb_handle_calc(bezt, bezt_prev, bezt_next, 0);
+		BKE_nurb_handle_calc(bezt, bezt_prev, bezt_next, 0, 0);
 	}
 	else if (handle_type == HD_ALIGN || handle_type == HD_ALIGN_DOUBLESIDE) {
 		float v1[3], v2[3];
@@ -1397,80 +1397,12 @@ void BKE_mask_spline_ensure_deform(MaskSpline *spline)
 
 void BKE_mask_layer_evaluate(MaskLayer *masklay, const float ctime, const bool do_newframe)
 {
-	/* animation if available */
+	/* Animation if available. */
 	if (do_newframe) {
-		MaskLayerShape *masklay_shape_a;
-		MaskLayerShape *masklay_shape_b;
-		int found;
-
-		if ((found = BKE_mask_layer_shape_find_frame_range(masklay, ctime,
-		                                                   &masklay_shape_a, &masklay_shape_b)))
-		{
-			if (found == 1) {
-#if 0
-				printf("%s: exact %d %d (%d)\n", __func__, (int)ctime, BLI_listbase_count(&masklay->splines_shapes),
-				       masklay_shape_a->frame);
-#endif
-
-				BKE_mask_layer_shape_to_mask(masklay, masklay_shape_a);
-			}
-			else if (found == 2) {
-				float w = masklay_shape_b->frame - masklay_shape_a->frame;
-#if 0
-				printf("%s: tween %d %d (%d %d)\n", __func__, (int)ctime, BLI_listbase_count(&masklay->splines_shapes),
-				       masklay_shape_a->frame, masklay_shape_b->frame);
-#endif
-				BKE_mask_layer_shape_to_mask_interp(masklay, masklay_shape_a, masklay_shape_b,
-				                                    (ctime - masklay_shape_a->frame) / w);
-			}
-			else {
-				/* always fail, should never happen */
-				BLI_assert(found == 2);
-			}
-		}
+		BKE_mask_layer_evaluate_animation(masklay, ctime);
 	}
-	/* animation done... */
-
-	BKE_mask_layer_calc_handles(masklay);
-
-	/* update deform */
-	{
-		MaskSpline *spline;
-
-		for (spline = masklay->splines.first; spline; spline = spline->next) {
-			int i;
-			bool need_handle_recalc = false;
-
-			BKE_mask_spline_ensure_deform(spline);
-
-			for (i = 0; i < spline->tot_point; i++) {
-				MaskSplinePoint *point = &spline->points[i];
-				MaskSplinePoint *point_deform = &spline->points_deform[i];
-
-				BKE_mask_point_free(point_deform);
-
-				*point_deform = *point;
-				point_deform->uw = point->uw ? MEM_dupallocN(point->uw) : NULL;
-
-				mask_evaluate_apply_point_parent(point_deform, ctime);
-
-				if (ELEM(point->bezt.h1, HD_AUTO, HD_VECT)) {
-					need_handle_recalc = true;
-				}
-			}
-
-			/* if the spline has auto or vector handles, these need to be recalculated after deformation */
-			if (need_handle_recalc) {
-				for (i = 0; i < spline->tot_point; i++) {
-					MaskSplinePoint *point_deform = &spline->points_deform[i];
-					if (ELEM(point_deform->bezt.h1, HD_AUTO, HD_VECT)) {
-						BKE_mask_calc_handle_point(spline, point_deform);
-					}
-				}
-			}
-			/* end extra calc handles loop */
-		}
-	}
+	/* Update deform. */
+	BKE_mask_layer_evaluate_deform(masklay, ctime);
 }
 
 void BKE_mask_evaluate(Mask *mask, const float ctime, const bool do_newframe)
@@ -1531,8 +1463,8 @@ void BKE_mask_update_scene(Main *bmain, Scene *scene)
 	Mask *mask;
 
 	for (mask = bmain->mask.first; mask; mask = mask->id.next) {
-		if (mask->id.tag & (LIB_TAG_ID_RECALC | LIB_TAG_ID_RECALC_DATA)) {
-			bool do_new_frame = (mask->id.tag & LIB_TAG_ID_RECALC_DATA) != 0;
+		if (mask->id.recalc & ID_RECALC_ALL) {
+			bool do_new_frame = (mask->id.recalc & ID_RECALC_DATA) != 0;
 			BKE_mask_evaluate_all_masks(bmain, CFRA, do_new_frame);
 		}
 	}

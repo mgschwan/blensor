@@ -165,7 +165,7 @@ static int track_markers_initjob(bContext *C,
 
 	track_init_markers(sc, clip, framenr, &frames_limit);
 
-	tmj->sfra = ED_space_clip_get_clip_frame_number(sc);
+	tmj->sfra = framenr;
 	tmj->clip = clip;
 	tmj->backwards = backwards;
 
@@ -176,6 +176,7 @@ static int track_markers_initjob(bContext *C,
 		else {
 			tmj->efra = EFRA;
 		}
+		tmj->efra = BKE_movieclip_remap_scene_to_clip_frame(clip, tmj->efra);
 	}
 	else {
 		if (backwards) {
@@ -196,8 +197,6 @@ static int track_markers_initjob(bContext *C,
 		}
 	}
 
-	tmj->efra = BKE_movieclip_remap_scene_to_clip_frame(clip, tmj->efra);
-
 	if (settings->speed != TRACKING_SPEED_FASTEST) {
 		tmj->delay = 1.0f / scene->r.frs_sec * 1000.0f;
 
@@ -212,7 +211,7 @@ static int track_markers_initjob(bContext *C,
 		}
 	}
 
-	tmj->context = BKE_autotrack_context_new(clip, &sc->user, backwards, 1);
+	tmj->context = BKE_autotrack_context_new(clip, &sc->user, backwards, true);
 
 	clip->tracking_context = tmj->context;
 
@@ -310,6 +309,7 @@ static void track_markers_endjob(void *tmv)
 static void track_markers_freejob(void *tmv)
 {
 	TrackMarkersJob *tmj = (TrackMarkersJob *)tmv;
+	tmj->clip->tracking_context = NULL;
 	BKE_autotrack_context_free(tmj->context);
 	MEM_freeN(tmj);
 }

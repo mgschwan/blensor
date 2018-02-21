@@ -433,6 +433,9 @@ static ShaderNode *add_node(Scene *scene,
 			case BL::ShaderNodeSubsurfaceScattering::falloff_BURLEY:
 				subsurface->falloff = CLOSURE_BSSRDF_BURLEY_ID;
 				break;
+			case BL::ShaderNodeSubsurfaceScattering::falloff_RANDOM_WALK:
+				subsurface->falloff = CLOSURE_BSSRDF_RANDOM_WALK_ID;
+				break;
 		}
 
 		node = subsurface;
@@ -530,6 +533,14 @@ static ShaderNode *add_node(Scene *scene,
 				break;
 			case BL::ShaderNodeBsdfPrincipled::distribution_MULTI_GGX:
 				principled->distribution = CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID;
+				break;
+		}
+		switch (b_principled_node.subsurface_method()) {
+			case BL::ShaderNodeBsdfPrincipled::subsurface_method_BURLEY:
+				principled->subsurface_method = CLOSURE_BSSRDF_PRINCIPLED_ID;
+				break;
+			case BL::ShaderNodeBsdfPrincipled::subsurface_method_RANDOM_WALK:
+				principled->subsurface_method = CLOSURE_BSSRDF_PRINCIPLED_RANDOM_WALK_ID;
 				break;
 		}
 		node = principled;
@@ -865,6 +876,25 @@ static ShaderNode *add_node(Scene *scene,
 			        transform_translate(-loc) * transform_scale(size) *
 			        transform_inverse(get_transform(b_ob.matrix_world()));
 		}
+	}
+	else if(b_node.is_a(&RNA_ShaderNodeBevel)) {
+		BL::ShaderNodeBevel b_bevel_node(b_node);
+		BevelNode *bevel = new BevelNode();
+		bevel->samples = b_bevel_node.samples();
+		node = bevel;
+	}
+	else if(b_node.is_a(&RNA_ShaderNodeDisplacement)) {
+		BL::ShaderNodeDisplacement b_disp_node(b_node);
+		DisplacementNode *disp = new DisplacementNode();
+		disp->space = (NodeNormalMapSpace)b_disp_node.space();
+		node = disp;
+	}
+	else if(b_node.is_a(&RNA_ShaderNodeVectorDisplacement)) {
+		BL::ShaderNodeVectorDisplacement b_disp_node(b_node);
+		VectorDisplacementNode *disp = new VectorDisplacementNode();
+		disp->space = (NodeNormalMapSpace)b_disp_node.space();
+		disp->attribute = "";
+		node = disp;
 	}
 
 	if(node) {
@@ -1215,7 +1245,7 @@ void BlenderSync::sync_materials(bool update_all)
 			shader->heterogeneous_volume = !get_boolean(cmat, "homogeneous_volume");
 			shader->volume_sampling_method = get_volume_sampling(cmat);
 			shader->volume_interpolation_method = get_volume_interpolation(cmat);
-			shader->displacement_method = (experimental) ? get_displacement_method(cmat) : DISPLACE_BUMP;
+			shader->displacement_method = get_displacement_method(cmat);
 
 			shader->set_graph(graph);
 
@@ -1289,11 +1319,8 @@ void BlenderSync::sync_world(bool update_all)
 			/* AO */
 			BL::WorldLighting b_light = b_world.light_settings();
 
-			if(b_light.use_ambient_occlusion())
-				background->ao_factor = b_light.ao_factor();
-			else
-				background->ao_factor = 0.0f;
-
+			background->use_ao = b_light.use_ambient_occlusion();
+			background->ao_factor = b_light.ao_factor();
 			background->ao_distance = b_light.distance();
 
 			/* visibility */
@@ -1309,6 +1336,7 @@ void BlenderSync::sync_world(bool update_all)
 			background->visibility = visibility;
 		}
 		else {
+			background->use_ao = false;
 			background->ao_factor = 0.0f;
 			background->ao_distance = FLT_MAX;
 		}
@@ -1329,8 +1357,17 @@ void BlenderSync::sync_world(bool update_all)
 	else
 		background->transparent = b_scene.render().alpha_mode() == BL::RenderSettings::alpha_mode_TRANSPARENT;
 
+	if(background->transparent) {
+		background->transparent_glass = get_boolean(cscene, "film_transparent_glass");
+		background->transparent_roughness_threshold = get_float(cscene, "film_transparent_roughness");
+	}
+	else {
+		background->transparent_glass = false;
+		background->transparent_roughness_threshold = 0.0f;
+	}
+
 	background->use_shader = render_layer.use_background_shader;
-	background->use_ao = render_layer.use_background_ao;
+	background->use_ao = background->use_ao && render_layer.use_background_ao;
 
 	if(background->modified(prevbackground))
 		background->tag_update(scene);

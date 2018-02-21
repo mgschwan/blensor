@@ -42,8 +42,8 @@
 #include "DNA_material_types.h"
 #include "DNA_mesh_types.h"
 #include "DNA_meta_types.h"
-#include "DNA_object_fluidsim.h"
-#include "DNA_object_force.h"
+#include "DNA_object_fluidsim_types.h"
+#include "DNA_object_force_types.h"
 #include "DNA_object_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_vfont_types.h"
@@ -90,7 +90,6 @@
 #include "BKE_scene.h"
 #include "BKE_screen.h"
 #include "BKE_speaker.h"
-#include "BKE_texture.h"
 
 #include "RNA_access.h"
 #include "RNA_define.h"
@@ -120,7 +119,7 @@
 /* this is an exact copy of the define in rna_lamp.c
  * kept here because of linking order.
  * Icons are only defined here */
-EnumPropertyItem rna_enum_lamp_type_items[] = {
+const EnumPropertyItem rna_enum_lamp_type_items[] = {
 	{LA_LOCAL, "POINT", ICON_LAMP_POINT, "Point", "Omnidirectional point light source"},
 	{LA_SUN, "SUN", ICON_LAMP_SUN, "Sun", "Constant direction parallel ray light source"},
 	{LA_SPOT, "SPOT", ICON_LAMP_SPOT, "Spot", "Directional cone light source"},
@@ -130,7 +129,7 @@ EnumPropertyItem rna_enum_lamp_type_items[] = {
 };
 
 /* copy from rna_object_force.c */
-static EnumPropertyItem field_type_items[] = {
+static const EnumPropertyItem field_type_items[] = {
 	{PFIELD_FORCE, "FORCE", ICON_FORCE_FORCE, "Force", ""},
 	{PFIELD_WIND, "WIND", ICON_FORCE_WIND, "Wind", ""},
 	{PFIELD_VORTEX, "VORTEX", ICON_FORCE_VORTEX, "Vortex", ""},
@@ -979,7 +978,7 @@ static int group_instance_add_exec(bContext *C, wmOperator *op)
 		group = (Group *)BKE_libblock_find_name(ID_GR, name);
 		
 		if (0 == RNA_struct_property_is_set(op->ptr, "location")) {
-			wmEvent *event = CTX_wm_window(C)->eventstate;
+			const wmEvent *event = CTX_wm_window(C)->eventstate;
 			ARegion *ar = CTX_wm_region(C);
 			const int mval[2] = {event->x - ar->winrct.xmin,
 			                     event->y - ar->winrct.ymin};
@@ -1193,7 +1192,7 @@ static int object_delete_exec(bContext *C, wmOperator *op)
 			Base *base_other;
 
 			for (scene_iter = bmain->scene.first; scene_iter; scene_iter = scene_iter->id.next) {
-				if (scene_iter != scene && !ID_IS_LINKED_DATABLOCK(scene_iter)) {
+				if (scene_iter != scene && !ID_IS_LINKED(scene_iter)) {
 					base_other = BKE_scene_base_find(scene_iter, base->object);
 					if (base_other) {
 						if (is_indirectly_used && ID_REAL_USERS(base->object) <= 1 && ID_EXTRA_USERS(base->object) == 0) {
@@ -1344,15 +1343,15 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
                                        const bool use_hierarchy)
 {
 	Main *bmain = CTX_data_main(C);
-	ListBase *lb;
+	ListBase *lb_duplis;
 	DupliObject *dob;
-	GHash *dupli_gh = NULL, *parent_gh = NULL;
-	Object *object;
+	GHash *dupli_gh, *parent_gh = NULL;
 
-	if (!(base->object->transflag & OB_DUPLI))
+	if (!(base->object->transflag & OB_DUPLI)) {
 		return;
+	}
 
-	lb = object_duplilist(bmain->eval_ctx, scene, base->object);
+	lb_duplis = object_duplilist(bmain->eval_ctx, scene, base->object);
 
 	dupli_gh = BLI_ghash_ptr_new(__func__);
 	if (use_hierarchy) {
@@ -1364,52 +1363,55 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 		}
 	}
 
-	for (dob = lb->first; dob; dob = dob->next) {
-		Base *basen;
-		Object *ob = ID_NEW_SET(dob->ob, BKE_object_copy(bmain, dob->ob));
+	for (dob = lb_duplis->first; dob; dob = dob->next) {
+		Object *ob_src = dob->ob;
+		Object *ob_dst = ID_NEW_SET(dob->ob, BKE_object_copy(bmain, ob_src));
+		Base *base_dst;
 
 		/* font duplis can have a totcol without material, we get them from parent
 		 * should be implemented better...
 		 */
-		if (ob->mat == NULL) ob->totcol = 0;
+		if (ob_dst->mat == NULL) {
+			ob_dst->totcol = 0;
+		}
 
-		basen = MEM_dupallocN(base);
-		basen->flag &= ~(OB_FROMDUPLI | OB_FROMGROUP);
-		ob->flag = basen->flag;
-		basen->lay = base->lay;
-		BLI_addhead(&scene->base, basen);   /* addhead: othwise eternal loop */
-		basen->object = ob;
+		base_dst = MEM_dupallocN(base);
+		base_dst->flag &= ~(OB_FROMDUPLI | OB_FROMGROUP);
+		ob_dst->flag = base_dst->flag;
+		base_dst->lay = base->lay;
+		BLI_addhead(&scene->base, base_dst);   /* addhead: othwise eternal loop */
+		base_dst->object = ob_dst;
 
 		/* make sure apply works */
-		BKE_animdata_free(&ob->id, true);
-		ob->adt = NULL;
+		BKE_animdata_free(&ob_dst->id, true);
+		ob_dst->adt = NULL;
 
 		/* Proxies are not to be copied. */
-		ob->proxy_from = NULL;
-		ob->proxy_group = NULL;
-		ob->proxy = NULL;
+		ob_dst->proxy_from = NULL;
+		ob_dst->proxy_group = NULL;
+		ob_dst->proxy = NULL;
 
-		ob->parent = NULL;
-		BKE_constraints_free(&ob->constraints);
-		ob->curve_cache = NULL;
-		ob->transflag &= ~OB_DUPLI;
-		ob->lay = base->lay;
+		ob_dst->parent = NULL;
+		BKE_constraints_free(&ob_dst->constraints);
+		ob_dst->curve_cache = NULL;
+		ob_dst->transflag &= ~OB_DUPLI;
+		ob_dst->lay = base->lay;
 
-		copy_m4_m4(ob->obmat, dob->mat);
-		BKE_object_apply_mat4(ob, ob->obmat, false, false);
+		copy_m4_m4(ob_dst->obmat, dob->mat);
+		BKE_object_apply_mat4(ob_dst, ob_dst->obmat, false, false);
 
-		BLI_ghash_insert(dupli_gh, dob, ob);
+		BLI_ghash_insert(dupli_gh, dob, ob_dst);
 		if (parent_gh) {
 			void **val;
 			/* Due to nature of hash/comparison of this ghash, a lot of duplis may be considered as 'the same',
 			 * this avoids trying to insert same key several time and raise asserts in debug builds... */
 			if (!BLI_ghash_ensure_p(parent_gh, dob, &val)) {
-				*val = ob;
+				*val = ob_dst;
 			}
 		}
 	}
 
-	for (dob = lb->first; dob; dob = dob->next) {
+	for (dob = lb_duplis->first; dob; dob = dob->next) {
 		Object *ob_src = dob->ob;
 		Object *ob_dst = BLI_ghash_lookup(dupli_gh, dob);
 
@@ -1476,20 +1478,21 @@ static void make_object_duplilist_real(bContext *C, Scene *scene, Base *base,
 	}
 
 	if (base->object->transflag & OB_DUPLIGROUP && base->object->dup_group) {
-		for (object = bmain->object.first; object; object = object->id.next) {
-			if (object->proxy_group == base->object) {
-				object->proxy = NULL;
-				object->proxy_from = NULL;
-				DAG_id_tag_update(&object->id, OB_RECALC_OB);
+		for (Object *ob = bmain->object.first; ob; ob = ob->id.next) {
+			if (ob->proxy_group == base->object) {
+				ob->proxy = NULL;
+				ob->proxy_from = NULL;
+				DAG_id_tag_update(&ob->id, OB_RECALC_OB);
 			}
 		}
 	}
 
 	BLI_ghash_free(dupli_gh, NULL, NULL);
-	if (parent_gh)
+	if (parent_gh) {
 		BLI_ghash_free(parent_gh, NULL, NULL);
+	}
 
-	free_object_duplilist(lb);
+	free_object_duplilist(lb_duplis);
 
 	BKE_main_id_clear_newpoins(bmain);
 
@@ -1543,7 +1546,7 @@ void OBJECT_OT_duplicates_make_real(wmOperatorType *ot)
 
 /**************************** Convert **************************/
 
-static EnumPropertyItem convert_target_items[] = {
+static const EnumPropertyItem convert_target_items[] = {
 	{OB_CURVE, "CURVE", ICON_OUTLINER_OB_CURVE, "Curve from Mesh/Text", ""},
 	{OB_MESH, "MESH", ICON_OUTLINER_OB_MESH, "Mesh from Curve/Meta/Surf/Text", ""},
 	{0, NULL, 0, NULL, NULL}
@@ -1583,8 +1586,8 @@ static int convert_poll(bContext *C)
 	Object *obact = CTX_data_active_object(C);
 	Scene *scene = CTX_data_scene(C);
 
-	return (!ID_IS_LINKED_DATABLOCK(scene) && obact && scene->obedit != obact &&
-	        (obact->flag & SELECT) && !ID_IS_LINKED_DATABLOCK(obact));
+	return (!ID_IS_LINKED(scene) && obact && scene->obedit != obact &&
+	        (obact->flag & SELECT) && !ID_IS_LINKED(obact));
 }
 
 /* Helper for convert_exec */
@@ -1669,7 +1672,7 @@ static int convert_exec(bContext *C, wmOperator *op)
 			 * However, changing this is more design than bugfix, not to mention convoluted code below,
 			 * so that will be for later.
 			 * But at the very least, do not do that with linked IDs! */
-			if ((ID_IS_LINKED_DATABLOCK(ob) || (ob->data && ID_IS_LINKED_DATABLOCK(ob->data))) && !keep_original) {
+			if ((ID_IS_LINKED(ob) || (ob->data && ID_IS_LINKED(ob->data))) && !keep_original) {
 				keep_original = true;
 				BKE_reportf(op->reports, RPT_INFO,
 				            "Converting some linked object/object data, enforcing 'Keep Original' option to True");
@@ -2395,7 +2398,8 @@ static int add_named_exec(bContext *C, wmOperator *op)
 
 	MEM_freeN(base);
 
-	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT | ND_OB_ACTIVE, scene);
+	WM_event_add_notifier(C, NC_SCENE | ND_OB_SELECT, scene);
+	WM_event_add_notifier(C, NC_SCENE | ND_OB_ACTIVE, scene);
 
 	return OPERATOR_FINISHED;
 }
@@ -2424,7 +2428,7 @@ static int join_poll(bContext *C)
 {
 	Object *ob = CTX_data_active_object(C);
 
-	if (!ob || ID_IS_LINKED_DATABLOCK(ob)) return 0;
+	if (!ob || ID_IS_LINKED(ob)) return 0;
 
 	if (ELEM(ob->type, OB_MESH, OB_CURVE, OB_SURF, OB_ARMATURE))
 		return ED_operator_screenactive(C);
@@ -2477,7 +2481,7 @@ static int join_shapes_poll(bContext *C)
 {
 	Object *ob = CTX_data_active_object(C);
 
-	if (!ob || ID_IS_LINKED_DATABLOCK(ob)) return 0;
+	if (!ob || ID_IS_LINKED(ob)) return 0;
 
 	/* only meshes supported at the moment */
 	if (ob->type == OB_MESH)

@@ -49,7 +49,6 @@
 
 #include "ED_screen.h"
 #include "ED_space_api.h"
-#include "ED_transform.h"
 #include "ED_transform_snap_object_context.h"
 
 #include "PIL_time.h" /* smoothview */
@@ -129,7 +128,7 @@ typedef enum eWalkGravityState {
 /* called in transform_ops.c, on each regeneration of keymaps  */
 void walk_modal_keymap(wmKeyConfig *keyconf)
 {
-	static EnumPropertyItem modal_items[] = {
+	static const EnumPropertyItem modal_items[] = {
 		{WALK_MODAL_CANCEL, "CANCEL", 0, "Cancel", ""},
 		{WALK_MODAL_CONFIRM, "CONFIRM", 0, "Confirm", ""},
 
@@ -510,7 +509,7 @@ static bool initWalkInfo(bContext *C, WalkInfo *walk, wmOperator *op)
 		walk->rv3d->persp = RV3D_PERSP;
 	}
 
-	if (walk->rv3d->persp == RV3D_CAMOB && ID_IS_LINKED_DATABLOCK(walk->v3d->camera)) {
+	if (walk->rv3d->persp == RV3D_CAMOB && ID_IS_LINKED(walk->v3d->camera)) {
 		BKE_report(op->reports, RPT_ERROR, "Cannot navigate a camera from an external library");
 		return false;
 	}
@@ -700,7 +699,7 @@ static void walkEvent(bContext *C, wmOperator *op, WalkInfo *walk, const wmEvent
 			return;
 		}
 
-		if ((walk->is_cursor_absolute == false) && WM_event_is_absolute(event)) {
+		if ((walk->is_cursor_absolute == false) && event->is_motion_absolute) {
 			walk->is_cursor_absolute = true;
 			copy_v2_v2_int(walk->prev_mval, event->mval);
 			copy_v2_v2_int(walk->center_mval, event->mval);

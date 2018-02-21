@@ -38,6 +38,7 @@ set(SRC_HEADERS
 	util_atomic.h
 	util_boundbox.h
 	util_debug.h
+	util_defines.h
 	util_guarded_allocator.cpp
 	util_foreach.h
 	util_function.h
@@ -67,6 +68,7 @@ set(SRC_HEADERS
 	util_path.h
 	util_progress.h
 	util_queue.h
+	util_rect.h
 	util_set.h
 	util_simd.h
 	util_sky_model.cpp
@@ -125,4 +127,4 @@ include_directories(SYSTEM ${INC_SYS})
 
 add_definitions(${GL_DEFINITIONS})
 
-add_library(cycles_util ${SRC} ${SRC_HEADERS})
+cycles_add_library(cycles_util ${SRC} ${SRC_HEADERS})

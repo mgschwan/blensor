@@ -86,9 +86,9 @@ public:
  *   this was actually showing up in profiles quite significantly. it
  *   also does not run any constructors/destructors
  * - if this is used, we are not tempted to use inefficient operations
- * - aligned allocation for SSE data types */
+ * - aligned allocation for CPU native data types */
 
-template<typename T, size_t alignment = 16>
+template<typename T, size_t alignment = MIN_ALIGNMENT_CPU_DATA_TYPES>
 class array
 {
 public:
@@ -162,6 +162,11 @@ public:
 		return memcmp(data_, other.data_, datasize_*sizeof(T)) == 0;
 	}
 
+	bool operator!=(const array<T>& other) const
+	{
+		return !(*this == other);
+	}
+
 	void steal_data(array& from)
 	{
 		if(this != &from) {
@@ -175,6 +180,14 @@ public:
 			from.datasize_ = 0;
 			from.capacity_ = 0;
 		}
+	}
+
+	T *steal_pointer()
+	{
+		T *ptr = data_;
+		data_ = NULL;
+		clear();
+		return ptr;
 	}
 
 	T* resize(size_t newsize)
@@ -271,6 +284,15 @@ public:
 	{
 		assert(datasize_ < capacity_);
 		push_back_slow(t);
+	}
+
+	void append(const array<T>& from)
+	{
+		if(from.size()) {
+			size_t old_size = size();
+			resize(old_size + from.size());
+			memcpy(data_ + old_size, from.data(), sizeof(T) * from.size());
+		}
 	}
 
 protected:

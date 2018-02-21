@@ -39,7 +39,6 @@ extern int blensor_initialize_from_main(Render *re, RenderData *rd, Main *bmain,
                                        Object *camera_override, unsigned int lay_override, int anim, int anim_init);
 extern void shade_ray(struct Isect *is, struct ShadeInput *shi, struct ShadeResult *shr);
 
-Render *R;
 
 //How many fields are returned from the cast rays function
 #define BLENSOR_INTERSECTION_RETURNS 15
@@ -175,14 +174,14 @@ static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, flo
                   shi.light_override= NULL;
                   shi.combinedflag= 0xFFFF;
 
-                  saved_render_mode = R->r.mode;
-                  R->r.mode = ~(R_RAYTRACE); //Disable raytracing
+                  saved_render_mode = re->r.mode;
+                  re->r.mode = ~(R_RAYTRACE); //Disable raytracing
                   saved_material_mode = m->mode;
                   m->mode |= MA_SHLESS; //Enable shadeless mode (disables lighting shaders)
                   shade_ray(&isect, &shi, &shr);
                   /* Restore parameters */
                   m->mode = saved_material_mode;
-                  R->r.mode = saved_render_mode;
+                  re->r.mode = saved_render_mode;
                 }
                 ret[5] = m->alpha;
                 ret[6] = m->ray_mirror;
@@ -565,7 +564,6 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
   double refractive_index = 1.0; //Vacuum
 	/* ugly global still... is to prevent preview events and signal subsurfs etc to make full resol */
 	G.is_rendering= true;
-  R = re;
 	
 	printf ("Do Blensor processing: %d\n", frame);
 

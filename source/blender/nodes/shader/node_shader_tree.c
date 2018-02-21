@@ -337,7 +337,9 @@ static void ntree_shader_link_builtin_group_normal(
 		 * some internal re-linking in order to avoid cycles.
 		 */
 		bNode *group_output_node = ntreeFindType(group_ntree, NODE_GROUP_OUTPUT);
-		BLI_assert(group_output_node != NULL);
+		if (group_output_node == NULL) {
+			return;
+		}
 		bNodeSocket *group_output_node_displacement_socket =
 		        nodeFindSocket(group_output_node,
 		                       SOCK_IN,
@@ -447,6 +449,21 @@ static void ntree_shader_relink_displacement(bNodeTree *ntree,
 	 * cycles in the Cycles material :)
 	 */
 	nodeRemLink(ntree, displacement_link);
+
+	/* Convert displacement vector to bump height. */
+	bNode *dot_node = nodeAddStaticNode(NULL, ntree, SH_NODE_VECT_MATH);
+	bNode *geo_node = nodeAddStaticNode(NULL, ntree, SH_NODE_NEW_GEOMETRY);
+	dot_node->custom1 = 3; /* dot product */
+
+	nodeAddLink(ntree,
+	            displacement_node, displacement_socket,
+	            dot_node, dot_node->inputs.first);
+	nodeAddLink(ntree,
+	            geo_node, ntree_shader_node_find_output(geo_node, "Normal"),
+	            dot_node, dot_node->inputs.last);
+	displacement_node = dot_node;
+	displacement_socket = ntree_shader_node_find_output(dot_node, "Value");
+
 	/* We can't connect displacement to normal directly, use bump node for that
 	 * and hope that it gives good enough approximation.
 	 */
@@ -599,10 +616,10 @@ bool ntreeShaderExecTree(bNodeTree *ntree, ShadeInput *shi, ShadeResult *shr)
 	
 	/* ensure execdata is only initialized once */
 	if (!exec) {
-		BLI_lock_thread(LOCK_NODES);
+		BLI_thread_lock(LOCK_NODES);
 		if (!ntree->execdata)
 			ntree->execdata = ntreeShaderBeginExecTree(ntree);
-		BLI_unlock_thread(LOCK_NODES);
+		BLI_thread_unlock(LOCK_NODES);
 
 		exec = ntree->execdata;
 	}

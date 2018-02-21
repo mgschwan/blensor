@@ -28,7 +28,6 @@
 #include "render/curves.h"
 
 #include "util/util_algorithm.h"
-#include "util/util_debug.h"
 #include "util/util_foreach.h"
 #include "util/util_logging.h"
 #include "util/util_progress.h"
@@ -129,7 +128,7 @@ void BVHBuild::add_reference_triangles(BoundBox& root, BoundBox& center, Mesh *m
 		if(attr_mP == NULL) {
 			BoundBox bounds = BoundBox::empty;
 			t.bounds_grow(verts, bounds);
-			if(bounds.valid()) {
+			if(bounds.valid() && t.valid(verts)) {
 				references.push_back(BVHReference(bounds,
 				                                  j,
 				                                  i,
@@ -529,7 +528,9 @@ BVHNode* BVHBuild::run()
 			        << "  Allocation slop factor: "
 			               << ((prim_type.capacity() != 0)
 			                       ? (float)prim_type.size() / prim_type.capacity()
-			                       : 1.0f) << "\n";
+			                       : 1.0f) << "\n"
+			        << "  Maximum depth: "
+			        << string_human_readable_number(rootnode->getSubtreeSize(BVH_STAT_DEPTH))  << "\n";
 		}
 	}
 
@@ -671,7 +672,7 @@ BVHNode* BVHBuild::build_node(const BVHObjectBinning& range, int level)
 				return create_leaf_node(range, references);
 			}
 		}
-		/* Check whether unaligned split is better than the regulat one. */
+		/* Check whether unaligned split is better than the regular one. */
 		if(unalignedSplitSAH < splitSAH) {
 			do_unalinged_split = true;
 		}
@@ -865,7 +866,7 @@ BVHNode *BVHBuild::create_object_leaf_nodes(const BVHReference *ref, int start, 
 			prim_time[start] = make_float2(ref->time_from(), ref->time_to());
 		}
 
-		uint visibility = objects[ref->prim_object()]->visibility;
+		const uint visibility = objects[ref->prim_object()]->visibility_for_tracing();
 		BVHNode *leaf_node =  new LeafNode(ref->bounds(), visibility, start, start+1);
 		leaf_node->time_from = ref->time_from();
 		leaf_node->time_to = ref->time_to();
@@ -939,7 +940,7 @@ BVHNode* BVHBuild::create_leaf_node(const BVHRange& range,
 			                                         ref.time_to()));
 
 			bounds[type_index].grow(ref.bounds());
-			visibility[type_index] |= objects[ref.prim_object()]->visibility;
+			visibility[type_index] |= objects[ref.prim_object()]->visibility_for_tracing();
 			if(ref.prim_type() & PRIMITIVE_ALL_CURVE) {
 				visibility[type_index] |= PATH_RAY_CURVE;
 			}

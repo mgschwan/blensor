@@ -106,7 +106,8 @@ const char *BKE_appdir_folder_default(void)
 static char *blender_version_decimal(const int ver)
 {
 	static char version_str[5];
-	sprintf(version_str, "%d.%02d", ver / 100, ver % 100);
+	BLI_assert(ver < 1000);
+	BLI_snprintf(version_str, sizeof(version_str), "%d.%02d", ver / 100, ver % 100);
 	return version_str;
 }
 
@@ -212,8 +213,8 @@ static bool get_path_local(
 	/* try EXECUTABLE_DIR/2.5x/folder_name - new default directory for local blender installed files */
 #ifdef __APPLE__
 	/* due new codesign situation in OSX > 10.9.5 we must move the blender_version dir with contents to Resources */
-	static char osx_resourses[FILE_MAX];
-	sprintf(osx_resourses, "%s../Resources", bprogdir);
+	char osx_resourses[FILE_MAX];
+	BLI_snprintf(osx_resourses, sizeof(osx_resourses), "%s../Resources", bprogdir);
 	/* Remove the '/../' added above. */
 	BLI_cleanup_path(NULL, osx_resourses);
 	return test_path(targetpath, targetpath_len, osx_resourses, blender_version_decimal(ver), relfolder);
@@ -289,6 +290,33 @@ static bool get_path_user(
 }
 
 /**
+ * Special convenience exception for dev builds to allow overrides to the system path.
+ * With this, need for running 'make install' can be avoided, e.g. by symlinking SOURCE_DIR/release
+ * to EXECUTABLE_DIR/release, or by running Blender from source directory directly.
+ */
+static bool get_path_system_dev_build_exception(
+        char *targetpath, size_t targetpath_len, const char *relfolder)
+{
+	char cwd[FILE_MAX];
+
+	/* Try EXECUTABLE_DIR/release/folder_name. Allows symlinking release folder from source dir. */
+	if (test_path(targetpath, targetpath_len, bprogdir, "release", relfolder)) {
+		return true;
+	}
+	/* Try CWD/release/folder_name. Allows executing Blender from any directory
+	 * (usually source dir), even without a release dir in bprogdir. */
+	if (BLI_current_working_dir(cwd, sizeof(cwd))) {
+		if (test_path(targetpath, targetpath_len, cwd, "release", relfolder)) {
+			return true;
+		}
+	}
+	/* never use if not existing. */
+	targetpath[0] = '\0';
+
+	return false;
+}
+
+/**
  * Returns the path of a folder within the Blender installation directory.
  *
  * \param targetpath  String to return path
@@ -304,7 +332,6 @@ static bool get_path_system(
 {
 	char system_path[FILE_MAX];
 	const char *system_base_path;
-	char cwd[FILE_MAX];
 	char relfolder[FILE_MAX];
 
 	if (folder_name) {
@@ -319,23 +346,9 @@ static bool get_path_system(
 		relfolder[0] = '\0';
 	}
 
-	/* first allow developer only overrides to the system path
-	 * these are only used when running blender from source */
-
-	/* try CWD/release/folder_name */
-	if (BLI_current_working_dir(cwd, sizeof(cwd))) {
-		if (test_path(targetpath, targetpath_len, cwd, "release", relfolder)) {
-			return true;
-		}
-	}
-
-	/* try EXECUTABLE_DIR/release/folder_name */
-	if (test_path(targetpath, targetpath_len, bprogdir, "release", relfolder))
+	if (get_path_system_dev_build_exception(targetpath, targetpath_len, relfolder)) {
 		return true;
-
-	/* end developer overrides */
-
-
+	}
 
 	system_path[0] = '\0';
 
@@ -688,13 +701,16 @@ bool BKE_appdir_program_python_search(
 	return is_found;
 }
 
+/** Keep in sync with `bpy.utils.app_template_paths()` */
 static const char *app_template_directory_search[2] = {
 	"startup" SEP_STR "bl_app_templates_user",
 	"startup" SEP_STR "bl_app_templates_system",
 };
 
 static const int app_template_directory_id[2] = {
+	/* Only 'USER' */
 	BLENDER_USER_SCRIPTS,
+	/* Covers 'LOCAL' & 'SYSTEM'. */
 	BLENDER_SYSTEM_SCRIPTS,
 };
 

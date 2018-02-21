@@ -28,11 +28,12 @@ CCL_NAMESPACE_BEGIN
 
 enum ObjectTransform {
 	OBJECT_TRANSFORM = 0,
-	OBJECT_TRANSFORM_MOTION_PRE = 0,
 	OBJECT_INVERSE_TRANSFORM = 4,
-	OBJECT_TRANSFORM_MOTION_POST = 4,
-	OBJECT_PROPERTIES = 8,
-	OBJECT_DUPLI = 9
+	OBJECT_TRANSFORM_MOTION_PRE = 0,
+	OBJECT_TRANSFORM_MOTION_MID = 4,
+	OBJECT_TRANSFORM_MOTION_POST = 8,
+	OBJECT_PROPERTIES = 12,
+	OBJECT_DUPLI = 13
 };
 
 enum ObjectVectorTransform {
@@ -90,19 +91,24 @@ ccl_device_inline Transform object_fetch_vector_transform(KernelGlobals *kg, int
 #ifdef __OBJECT_MOTION__
 ccl_device_inline Transform object_fetch_transform_motion(KernelGlobals *kg, int object, float time)
 {
-	DecompMotionTransform motion;
+	MotionTransform motion;
 
 	int offset = object*OBJECT_SIZE + (int)OBJECT_TRANSFORM_MOTION_PRE;
 
-	motion.mid.x = kernel_tex_fetch(__objects, offset + 0);
-	motion.mid.y = kernel_tex_fetch(__objects, offset + 1);
-	motion.mid.z = kernel_tex_fetch(__objects, offset + 2);
-	motion.mid.w = kernel_tex_fetch(__objects, offset + 3);
+	motion.pre.x = kernel_tex_fetch(__objects, offset + 0);
+	motion.pre.y = kernel_tex_fetch(__objects, offset + 1);
+	motion.pre.z = kernel_tex_fetch(__objects, offset + 2);
+	motion.pre.w = kernel_tex_fetch(__objects, offset + 3);
 
-	motion.pre_x = kernel_tex_fetch(__objects, offset + 4);
-	motion.pre_y = kernel_tex_fetch(__objects, offset + 5);
-	motion.post_x = kernel_tex_fetch(__objects, offset + 6);
-	motion.post_y = kernel_tex_fetch(__objects, offset + 7);
+	motion.mid.x = kernel_tex_fetch(__objects, offset + 4);
+	motion.mid.y = kernel_tex_fetch(__objects, offset + 5);
+	motion.mid.z = kernel_tex_fetch(__objects, offset + 6);
+	motion.mid.w = kernel_tex_fetch(__objects, offset + 7);
+
+	motion.post.x = kernel_tex_fetch(__objects, offset + 8);
+	motion.post.y = kernel_tex_fetch(__objects, offset + 9);
+	motion.post.z = kernel_tex_fetch(__objects, offset + 10);
+	motion.post.w = kernel_tex_fetch(__objects, offset + 11);
 
 	Transform tfm;
 	transform_motion_interpolate(&tfm, &motion, time);
@@ -167,6 +173,10 @@ ccl_device_inline void object_inverse_normal_transform(KernelGlobals *kg, const 
 #else
 	if(sd->object != OBJECT_NONE) {
 		Transform tfm = object_fetch_transform(kg, sd->object, OBJECT_TRANSFORM);
+		*N = normalize(transform_direction_transposed(&tfm, *N));
+	}
+	else if(sd->type == PRIMITIVE_LAMP) {
+		Transform tfm = lamp_fetch_transform(kg, sd->lamp, false);
 		*N = normalize(transform_direction_transposed(&tfm, *N));
 	}
 #endif
@@ -244,6 +254,17 @@ ccl_device_inline float object_pass_id(KernelGlobals *kg, int object)
 	return f.y;
 }
 
+/* Per lamp random number for shader variation */
+
+ccl_device_inline float lamp_random_number(KernelGlobals *kg, int lamp)
+{
+	if(lamp == LAMP_NONE)
+		return 0.0f;
+
+	float4 f = kernel_tex_fetch(__light_data, lamp*LIGHT_SIZE + 4);
+	return f.y;
+}
+
 /* Per object random number for shader variation */
 
 ccl_device_inline float object_random_number(KernelGlobals *kg, int object)
@@ -317,7 +338,7 @@ ccl_device_inline uint object_patch_map_offset(KernelGlobals *kg, int object)
 	if(object == OBJECT_NONE)
 		return 0;
 
-	int offset = object*OBJECT_SIZE + 11;
+	int offset = object*OBJECT_SIZE + 15;
 	float4 f = kernel_tex_fetch(__objects, offset);
 	return __float_as_uint(f.x);
 }
@@ -331,11 +352,11 @@ ccl_device int shader_pass_id(KernelGlobals *kg, const ShaderData *sd)
 
 /* Particle data from which object was instanced */
 
-ccl_device_inline float particle_index(KernelGlobals *kg, int particle)
+ccl_device_inline uint particle_index(KernelGlobals *kg, int particle)
 {
 	int offset = particle*PARTICLE_SIZE;
 	float4 f = kernel_tex_fetch(__particles, offset + 0);
-	return f.x;
+	return __float_as_uint(f.x);
 }
 
 ccl_device float particle_age(KernelGlobals *kg, int particle)
@@ -415,12 +436,7 @@ ccl_device_inline float3 bvh_clamp_direction(float3 dir)
 
 ccl_device_inline float3 bvh_inverse_direction(float3 dir)
 {
-	/* TODO(sergey): Currently disabled, gives speedup but causes precision issues. */
-#if defined(__KERNEL_SSE__) && 0
 	return rcp(dir);
-#else
-	return 1.0f / dir;
-#endif
 }
 
 /* Transform ray into object space to enter static object in BVH */

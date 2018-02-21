@@ -40,13 +40,52 @@
 
 CCL_NAMESPACE_BEGIN
 
-Scene::Scene(const SceneParams& params_, const DeviceInfo& device_info_)
-: params(params_)
+DeviceScene::DeviceScene(Device *device)
+: bvh_nodes(device, "__bvh_nodes", MEM_TEXTURE),
+  bvh_leaf_nodes(device, "__bvh_leaf_nodes", MEM_TEXTURE),
+  object_node(device, "__object_node", MEM_TEXTURE),
+  prim_tri_index(device, "__prim_tri_index", MEM_TEXTURE),
+  prim_tri_verts(device, "__prim_tri_verts", MEM_TEXTURE),
+  prim_type(device, "__prim_type", MEM_TEXTURE),
+  prim_visibility(device, "__prim_visibility", MEM_TEXTURE),
+  prim_index(device, "__prim_index", MEM_TEXTURE),
+  prim_object(device, "__prim_object", MEM_TEXTURE),
+  prim_time(device, "__prim_time", MEM_TEXTURE),
+  tri_shader(device, "__tri_shader", MEM_TEXTURE),
+  tri_vnormal(device, "__tri_vnormal", MEM_TEXTURE),
+  tri_vindex(device, "__tri_vindex", MEM_TEXTURE),
+  tri_patch(device, "__tri_patch", MEM_TEXTURE),
+  tri_patch_uv(device, "__tri_patch_uv", MEM_TEXTURE),
+  curves(device, "__curves", MEM_TEXTURE),
+  curve_keys(device, "__curve_keys", MEM_TEXTURE),
+  patches(device, "__patches", MEM_TEXTURE),
+  objects(device, "__objects", MEM_TEXTURE),
+  objects_vector(device, "__objects_vector", MEM_TEXTURE),
+  attributes_map(device, "__attributes_map", MEM_TEXTURE),
+  attributes_float(device, "__attributes_float", MEM_TEXTURE),
+  attributes_float3(device, "__attributes_float3", MEM_TEXTURE),
+  attributes_uchar4(device, "__attributes_uchar4", MEM_TEXTURE),
+  light_distribution(device, "__light_distribution", MEM_TEXTURE),
+  light_data(device, "__light_data", MEM_TEXTURE),
+  light_background_marginal_cdf(device, "__light_background_marginal_cdf", MEM_TEXTURE),
+  light_background_conditional_cdf(device, "__light_background_conditional_cdf", MEM_TEXTURE),
+  particles(device, "__particles", MEM_TEXTURE),
+  svm_nodes(device, "__svm_nodes", MEM_TEXTURE),
+  shader_flag(device, "__shader_flag", MEM_TEXTURE),
+  object_flag(device, "__object_flag", MEM_TEXTURE),
+  lookup_table(device, "__lookup_table", MEM_TEXTURE),
+  sobol_directions(device, "__sobol_directions", MEM_TEXTURE)
 {
-	device = NULL;
+	memset(&data, 0, sizeof(data));
+}
+
+Scene::Scene(const SceneParams& params_, Device *device)
+: device(device), dscene(device), params(params_)
+{
 	memset(&dscene.data, 0, sizeof(dscene.data));
 
 	camera = new Camera();
+	dicing_camera = new Camera();
 	lookup_tables = new LookupTables();
 	film = new Film();
 	background = new Background();
@@ -54,13 +93,13 @@ Scene::Scene(const SceneParams& params_, const DeviceInfo& device_info_)
 	mesh_manager = new MeshManager();
 	object_manager = new ObjectManager();
 	integrator = new Integrator();
-	image_manager = new ImageManager(device_info_);
+	image_manager = new ImageManager(device->info);
 	particle_system_manager = new ParticleSystemManager();
 	curve_system_manager = new CurveSystemManager();
 	bake_manager = new BakeManager();
 
 	/* OSL only works on the CPU */
-	if(device_info_.type == DEVICE_CPU)
+	if(device->info.has_osl)
 		shader_manager = ShaderManager::create(this, params.shadingsystem);
 	else
 		shader_manager = ShaderManager::create(this, SHADINGSYSTEM_SVM);
@@ -107,9 +146,9 @@ void Scene::free_memory(bool final)
 		bake_manager->device_free(device, &dscene);
 
 		if(!params.persistent_data || final)
-			image_manager->device_free(device, &dscene);
+			image_manager->device_free(device);
 		else
-			image_manager->device_free_builtin(device, &dscene);
+			image_manager->device_free_builtin(device);
 
 		lookup_tables->device_free(device, &dscene);
 	}
@@ -117,6 +156,7 @@ void Scene::free_memory(bool final)
 	if(final) {
 		delete lookup_tables;
 		delete camera;
+		delete dicing_camera;
 		delete film;
 		delete background;
 		delete integrator;
@@ -148,8 +188,6 @@ void Scene::device_update(Device *device_, Progress& progress)
 	 * - Film needs light manager to run for use_light_visibility
 	 * - Lookup tables are done a second time to handle film tables
 	 */
-	
-	image_manager->set_pack_images(device->info.pack_images);
 
 	progress.set_status("Updating Shaders");
 	shader_manager->device_update(device, &dscene, this, progress);
@@ -176,6 +214,11 @@ void Scene::device_update(Device *device_, Progress& progress)
 
 	if(progress.get_cancel() || device->have_error()) return;
 
+	progress.set_status("Updating Particle Systems");
+	particle_system_manager->device_update(device, &dscene, this, progress);
+
+	if(progress.get_cancel() || device->have_error()) return;
+
 	progress.set_status("Updating Meshes");
 	mesh_manager->device_update(device, &dscene, this, progress);
 
@@ -187,7 +230,7 @@ void Scene::device_update(Device *device_, Progress& progress)
 	if(progress.get_cancel() || device->have_error()) return;
 
 	progress.set_status("Updating Images");
-	image_manager->device_update(device, &dscene, this, progress);
+	image_manager->device_update(device, this, progress);
 
 	if(progress.get_cancel() || device->have_error()) return;
 
@@ -208,11 +251,6 @@ void Scene::device_update(Device *device_, Progress& progress)
 
 	progress.set_status("Updating Lights");
 	light_manager->device_update(device, &dscene, this, progress);
-
-	if(progress.get_cancel() || device->have_error()) return;
-
-	progress.set_status("Updating Particle Systems");
-	particle_system_manager->device_update(device, &dscene, this, progress);
 
 	if(progress.get_cancel() || device->have_error()) return;
 
@@ -253,10 +291,10 @@ void Scene::device_update(Device *device_, Progress& progress)
 	}
 }
 
-Scene::MotionType Scene::need_motion(bool advanced_shading)
+Scene::MotionType Scene::need_motion()
 {
 	if(integrator->motion_blur)
-		return (advanced_shading)? MOTION_BLUR: MOTION_NONE;
+		return MOTION_BLUR;
 	else if(Pass::contains(film->passes, PASS_MOTION))
 		return MOTION_PASS;
 	else
@@ -323,6 +361,7 @@ void Scene::reset()
 
 	/* ensure all objects are updated */
 	camera->tag_update();
+	dicing_camera->tag_update();
 	film->tag_update(this);
 	background->tag_update(this);
 	integrator->tag_update(this);

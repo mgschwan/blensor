@@ -62,6 +62,7 @@
 #include "DNA_object_types.h"
 
 #include "BKE_camera.h"
+#include "BKE_colorband.h"
 #include "BKE_context.h"
 #include "BKE_colortools.h"
 #include "BKE_depsgraph.h"
@@ -2691,7 +2692,7 @@ static void project_paint_face_init(
 		int face_seam_flag;
 
 		if (threaded)
-			BLI_lock_thread(LOCK_CUSTOM1);  /* Other threads could be modifying these vars */
+			BLI_thread_lock(LOCK_CUSTOM1);  /* Other threads could be modifying these vars */
 
 		face_seam_flag = ps->faceSeamFlags[tri_index];
 
@@ -2708,7 +2709,7 @@ static void project_paint_face_init(
 		if ((face_seam_flag & (PROJ_FACE_SEAM1 | PROJ_FACE_SEAM2 | PROJ_FACE_SEAM3)) == 0) {
 
 			if (threaded)
-				BLI_unlock_thread(LOCK_CUSTOM1);  /* Other threads could be modifying these vars */
+				BLI_thread_unlock(LOCK_CUSTOM1);  /* Other threads could be modifying these vars */
 
 		}
 		else {
@@ -2734,7 +2735,7 @@ static void project_paint_face_init(
 
 			/* ps->faceSeamUVs cant be modified when threading, now this is done we can unlock */
 			if (threaded)
-				BLI_unlock_thread(LOCK_CUSTOM1);  /* Other threads could be modifying these vars */
+				BLI_thread_unlock(LOCK_CUSTOM1);  /* Other threads could be modifying these vars */
 
 			vCoSS[0] = ps->screenCoords[lt_vtri[0]];
 			vCoSS[1] = ps->screenCoords[lt_vtri[1]];
@@ -2777,7 +2778,7 @@ static void project_paint_face_init(
 						interp_v3_v3v3(edge_verts_inset_clip[1], insetCos[fidx1], insetCos[fidx2], fac2);
 
 
-						if (pixel_bounds_uv((const float (*)[2])seam_subsection, &bounds_px, ibuf->x, ibuf->y)) {
+						if (pixel_bounds_uv(seam_subsection, &bounds_px, ibuf->x, ibuf->y)) {
 							/* bounds between the seam rect and the uvspace bucket pixels */
 
 							has_isect = 0;
@@ -4132,7 +4133,7 @@ static bool project_bucket_iter_next(
 	const int diameter = 2 * ps->brush_size;
 
 	if (ps->thread_tot > 1)
-		BLI_lock_thread(LOCK_CUSTOM1);
+		BLI_thread_lock(LOCK_CUSTOM1);
 
 	//printf("%d %d\n", ps->context_bucket_x, ps->context_bucket_y);
 
@@ -4149,7 +4150,7 @@ static bool project_bucket_iter_next(
 				ps->context_bucket_x++;
 
 				if (ps->thread_tot > 1)
-					BLI_unlock_thread(LOCK_CUSTOM1);
+					BLI_thread_unlock(LOCK_CUSTOM1);
 
 				return 1;
 			}
@@ -4158,7 +4159,7 @@ static bool project_bucket_iter_next(
 	}
 
 	if (ps->thread_tot > 1)
-		BLI_unlock_thread(LOCK_CUSTOM1);
+		BLI_thread_unlock(LOCK_CUSTOM1);
 	return 0;
 }
 
@@ -4578,7 +4579,7 @@ static void *do_projectpaint_thread(void *ph_v)
 								break;
 							}
 						}
-						do_colorband(brush->gradient, f, color_f);
+						BKE_colorband_evaluate(brush->gradient, f, color_f);
 						color_f[3] *= ((float)projPixel->mask) * (1.0f / 65535.0f) * brush->alpha;
 
 						if (is_floatbuf) {
@@ -4877,7 +4878,7 @@ static bool project_paint_op(void *state, const float lastpos[2], const float po
 	}
 
 	if (ps->thread_tot > 1)
-		BLI_init_threads(&threads, do_projectpaint_thread, ps->thread_tot);
+		BLI_threadpool_init(&threads, do_projectpaint_thread, ps->thread_tot);
 
 	pool = BKE_image_pool_new();
 
@@ -4907,11 +4908,11 @@ static bool project_paint_op(void *state, const float lastpos[2], const float po
 		handles[a].pool = pool;
 
 		if (ps->thread_tot > 1)
-			BLI_insert_thread(&threads, &handles[a]);
+			BLI_threadpool_insert(&threads, &handles[a]);
 	}
 
 	if (ps->thread_tot > 1) /* wait for everything to be done */
-		BLI_end_threads(&threads);
+		BLI_threadpool_end(&threads);
 	else
 		do_projectpaint_thread(&handles[0]);
 
@@ -5460,7 +5461,7 @@ static int texture_paint_image_from_view_exec(bContext *C, wmOperator *op)
 
 	ibuf = ED_view3d_draw_offscreen_imbuf(
 	        scene, CTX_wm_view3d(C), CTX_wm_region(C),
-	        w, h, IB_rect, false, R_ALPHAPREMUL, 0, false, NULL,
+	        w, h, IB_rect, V3D_OFSDRAW_NONE, R_ALPHAPREMUL, 0, NULL,
 	        NULL, NULL, err_out);
 	if (!ibuf) {
 		/* Mostly happens when OpenGL offscreen buffer was failed to create, */
@@ -5631,7 +5632,7 @@ bool BKE_paint_proj_mesh_data_check(Scene *scene, Object *ob, bool *uvs, bool *m
 
 /* Add layer operator */
 
-static EnumPropertyItem layer_type_items[] = {
+static const EnumPropertyItem layer_type_items[] = {
 	{MAP_COL, "DIFFUSE_COLOR", 0, "Diffuse Color", ""},
 	{MAP_REF, "DIFFUSE_INTENSITY", 0, "Diffuse Intensity", ""},
 	{MAP_ALPHA, "ALPHA", 0, "Alpha", ""},
@@ -5904,7 +5905,7 @@ static int add_simple_uvs_exec(bContext *C, wmOperator *UNUSED(op))
 	        }));
 	/* select all uv loops first - pack parameters needs this to make sure charts are registered */
 	ED_uvedit_select_all(bm);
-	ED_uvedit_unwrap_cube_project(ob, bm, 1.0, false);
+	ED_uvedit_unwrap_cube_project(bm, 1.0, false, NULL);
 	/* set the margin really quickly before the packing operation*/
 	scene->toolsettings->uvcalc_margin = 0.001f;
 	ED_uvedit_pack_islands(scene, ob, bm, false, false, true);

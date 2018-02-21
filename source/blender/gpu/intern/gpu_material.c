@@ -47,13 +47,13 @@
 #include "BLI_utildefines.h"
 
 #include "BKE_anim.h"
+#include "BKE_colorband.h"
 #include "BKE_colortools.h"
 #include "BKE_global.h"
 #include "BKE_image.h"
 #include "BKE_main.h"
 #include "BKE_node.h"
 #include "BKE_scene.h"
-#include "BKE_texture.h"
 #include "BKE_group.h"
 
 #include "IMB_imbuf_types.h"
@@ -312,9 +312,11 @@ void GPU_material_free(ListBase *gpumaterial)
 	BLI_freelistN(gpumaterial);
 }
 
-bool GPU_lamp_override_visible(GPULamp *lamp, SceneRenderLayer *srl, Material *ma)
+bool GPU_lamp_visible(GPULamp *lamp, SceneRenderLayer *srl, Material *ma)
 {
-	if (srl && srl->light_override)
+	if (lamp->hide)
+		return false;
+	else if (srl && srl->light_override)
 		return BKE_group_object_exists(srl->light_override, lamp->ob);
 	else if (ma && ma->group)
 		return BKE_group_object_exists(ma->group, lamp->ob);
@@ -338,8 +340,8 @@ void GPU_material_bind(
 			for (LinkData *nlink = material->lamps.first; nlink; nlink = nlink->next) {
 				GPULamp *lamp = nlink->data;
 				
-				if (!lamp->hide && (lamp->lay & viewlay) && (!(lamp->mode & LA_LAYER) || (lamp->lay & oblay)) &&
-				    GPU_lamp_override_visible(lamp, srl, material->ma))
+				if ((lamp->lay & viewlay) && (!(lamp->mode & LA_LAYER) || (lamp->lay & oblay)) &&
+				    GPU_lamp_visible(lamp, srl, material->ma))
 				{
 					lamp->dynenergy = lamp->energy;
 					copy_v3_v3(lamp->dyncol, lamp->col);
@@ -450,7 +452,7 @@ void GPU_material_bind_uniforms(
 			GPU_shader_uniform_vector(shader, material->partscalarpropsloc, 4, 1, pi->scalprops);
 		}
 		if (material->builtins & GPU_PARTICLE_LOCATION) {
-			GPU_shader_uniform_vector(shader, material->partcoloc, 3, 1, pi->location);
+			GPU_shader_uniform_vector(shader, material->partcoloc, 4, 1, pi->location);
 		}
 		if (material->builtins & GPU_PARTICLE_VELOCITY) {
 			GPU_shader_uniform_vector(shader, material->partvel, 3, 1, pi->velocity);
@@ -677,7 +679,7 @@ static void ramp_blend(
 	GPU_link(mat, names[type], fac, col1, col2, r_col);
 }
 
-static void do_colorband_blend(
+static void BKE_colorband_eval_blend(
         GPUMaterial *mat, ColorBand *coba, GPUNodeLink *fac, float rampfac, int type,
         GPUNodeLink *incol, GPUNodeLink **r_col)
 {
@@ -686,7 +688,7 @@ static void do_colorband_blend(
 	int size;
 
 	/* do colorband */
-	colorband_table_RGBA(coba, &array, &size);
+	BKE_colorband_evaluate_table_rgba(coba, &array, &size);
 	GPU_link(mat, "valtorgb", fac, GPU_texture(size, array), &col, &tmp);
 
 	/* use alpha in fac */
@@ -709,7 +711,7 @@ static void ramp_diffuse_result(GPUShadeInput *shi, GPUNodeLink **diff)
 				GPU_link(mat, "ramp_rgbtobw", *diff, &fac);
 				
 				/* colorband + blend */
-				do_colorband_blend(mat, ma->ramp_col, fac, ma->rampfac_col, ma->rampblend_col, *diff, diff);
+				BKE_colorband_eval_blend(mat, ma->ramp_col, fac, ma->rampfac_col, ma->rampblend_col, *diff, diff);
 			}
 		}
 	}
@@ -746,7 +748,7 @@ static void add_to_diffuse(
 			}
 
 			/* colorband + blend */
-			do_colorband_blend(mat, ma->ramp_col, fac, ma->rampfac_col, ma->rampblend_col, shi->rgb, &addcol);
+			BKE_colorband_eval_blend(mat, ma->ramp_col, fac, ma->rampfac_col, ma->rampblend_col, shi->rgb, &addcol);
 		}
 	}
 	else
@@ -768,7 +770,7 @@ static void ramp_spec_result(GPUShadeInput *shi, GPUNodeLink **spec)
 		GPU_link(mat, "ramp_rgbtobw", *spec, &fac);
 		
 		/* colorband + blend */
-		do_colorband_blend(mat, ma->ramp_spec, fac, ma->rampfac_spec, ma->rampblend_spec, *spec, spec);
+		BKE_colorband_eval_blend(mat, ma->ramp_spec, fac, ma->rampfac_spec, ma->rampblend_spec, *spec, spec);
 	}
 }
 
@@ -800,7 +802,7 @@ static void do_specular_ramp(GPUShadeInput *shi, GPUNodeLink *is, GPUNodeLink *t
 		}
 		
 		/* colorband + blend */
-		do_colorband_blend(mat, ma->ramp_spec, fac, ma->rampfac_spec, ma->rampblend_spec, *spec, spec);
+		BKE_colorband_eval_blend(mat, ma->ramp_spec, fac, ma->rampfac_spec, ma->rampblend_spec, *spec, spec);
 	}
 }
 

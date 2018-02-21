@@ -1291,7 +1291,7 @@ static void p_chart_fill_boundary(PChart *chart, PEdge *be, int nedges)
 		while (nedges > 2) {
 			PEdge *ne, *ne1, *ne2;
 
-			e = (PEdge *)BLI_heap_popmin(heap);
+			e = (PEdge *)BLI_heap_pop_min(heap);
 
 			e1 = p_boundary_edge_prev(e);
 			e2 = p_boundary_edge_next(e);
@@ -2185,12 +2185,12 @@ static void p_chart_simplify_compute(PChart *chart)
 		e->u.nextcollapse = NULL;
 
 	/* pop edge collapse out of heap one by one */
-	while (!BLI_heap_empty(heap)) {
+	while (!BLI_heap_is_empty(heap)) {
 		if (ncollapsed == NCOLLAPSE)
 			break;
 
 		HeapNode *link = BLI_heap_top(heap);
-		PEdge *edge = (PEdge *)BLI_heap_popmin(heap), *pair = edge->pair;
+		PEdge *edge = (PEdge *)BLI_heap_pop_min(heap), *pair = edge->pair;
 		PVert *oldv, *keepv;
 		PEdge *wheele, *nexte;
 
@@ -4483,7 +4483,7 @@ static void param_pack_rotate(ParamHandle *handle)
 
 		p_chart_uv_to_array(chart, points);
 
-		angle = BLI_convexhull_aabb_fit_points_2d((const float (*)[2])points, chart->nverts);
+		angle = BLI_convexhull_aabb_fit_points_2d(points, chart->nverts);
 
 		MEM_freeN(points);
 

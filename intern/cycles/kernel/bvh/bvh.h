@@ -68,17 +68,17 @@ CCL_NAMESPACE_BEGIN
 
 /* Subsurface scattering BVH traversal */
 
-#if defined(__SUBSURFACE__)
-#  define BVH_FUNCTION_NAME bvh_intersect_subsurface
+#if defined(__BVH_LOCAL__)
+#  define BVH_FUNCTION_NAME bvh_intersect_local
 #  define BVH_FUNCTION_FEATURES BVH_HAIR
-#  include "kernel/bvh/bvh_subsurface.h"
+#  include "kernel/bvh/bvh_local.h"
 
 #  if defined(__OBJECT_MOTION__)
-#    define BVH_FUNCTION_NAME bvh_intersect_subsurface_motion
+#    define BVH_FUNCTION_NAME bvh_intersect_local_motion
 #    define BVH_FUNCTION_FEATURES BVH_MOTION|BVH_HAIR
-#    include "kernel/bvh/bvh_subsurface.h"
+#    include "kernel/bvh/bvh_local.h"
 #  endif
-#endif  /* __SUBSURFACE__ */
+#endif  /* __BVH_LOCAL__ */
 
 /* Volume BVH traversal */
 
@@ -201,31 +201,31 @@ ccl_device_intersect bool scene_intersect(KernelGlobals *kg,
 #endif /* __KERNEL_CPU__ */
 }
 
-#ifdef __SUBSURFACE__
+#ifdef __BVH_LOCAL__
 /* Note: ray is passed by value to work around a possible CUDA compiler bug. */
-ccl_device_intersect void scene_intersect_subsurface(KernelGlobals *kg,
-                                                     const Ray ray,
-                                                     SubsurfaceIntersection *ss_isect,
-                                                     int subsurface_object,
-                                                     uint *lcg_state,
-                                                     int max_hits)
+ccl_device_intersect void scene_intersect_local(KernelGlobals *kg,
+                                                const Ray ray,
+                                                LocalIntersection *local_isect,
+                                                int local_object,
+                                                uint *lcg_state,
+                                                int max_hits)
 {
 #ifdef __OBJECT_MOTION__
 	if(kernel_data.bvh.have_motion) {
-		return bvh_intersect_subsurface_motion(kg,
-		                                       &ray,
-		                                       ss_isect,
-		                                       subsurface_object,
-		                                       lcg_state,
-		                                       max_hits);
+		return bvh_intersect_local_motion(kg,
+		                                  &ray,
+		                                  local_isect,
+		                                  local_object,
+		                                  lcg_state,
+		                                  max_hits);
 	}
 #endif /* __OBJECT_MOTION__ */
-	return bvh_intersect_subsurface(kg,
-	                                &ray,
-	                                ss_isect,
-	                                subsurface_object,
-	                                lcg_state,
-	                                max_hits);
+	return bvh_intersect_local(kg,
+	                            &ray,
+	                            local_isect,
+	                            local_object,
+	                            lcg_state,
+	                            max_hits);
 }
 #endif
 
@@ -233,7 +233,7 @@ ccl_device_intersect void scene_intersect_subsurface(KernelGlobals *kg,
 ccl_device_intersect bool scene_intersect_shadow_all(KernelGlobals *kg,
                                                      const Ray *ray,
                                                      Intersection *isect,
-                                                     int skip_object,
+                                                     uint visibility,
                                                      uint max_hits,
                                                      uint *num_hits)
 {
@@ -244,7 +244,7 @@ ccl_device_intersect bool scene_intersect_shadow_all(KernelGlobals *kg,
 			return bvh_intersect_shadow_all_hair_motion(kg,
 			                                            ray,
 			                                            isect,
-			                                            skip_object,
+			                                            visibility,
 			                                            max_hits,
 			                                            num_hits);
 		}
@@ -253,7 +253,7 @@ ccl_device_intersect bool scene_intersect_shadow_all(KernelGlobals *kg,
 		return bvh_intersect_shadow_all_motion(kg,
 		                                       ray,
 		                                       isect,
-		                                       skip_object,
+		                                       visibility,
 		                                       max_hits,
 		                                       num_hits);
 	}
@@ -264,7 +264,7 @@ ccl_device_intersect bool scene_intersect_shadow_all(KernelGlobals *kg,
 		return bvh_intersect_shadow_all_hair(kg,
 		                                     ray,
 		                                     isect,
-		                                     skip_object,
+		                                     visibility,
 		                                     max_hits,
 		                                     num_hits);
 	}
@@ -275,7 +275,7 @@ ccl_device_intersect bool scene_intersect_shadow_all(KernelGlobals *kg,
 		return bvh_intersect_shadow_all_instancing(kg,
 		                                           ray,
 		                                           isect,
-		                                           skip_object,
+		                                           visibility,
 		                                           max_hits,
 		                                           num_hits);
 	}
@@ -284,7 +284,7 @@ ccl_device_intersect bool scene_intersect_shadow_all(KernelGlobals *kg,
 	return bvh_intersect_shadow_all(kg,
 	                                ray,
 	                                isect,
-	                                skip_object,
+	                                visibility,
 	                                max_hits,
 	                                num_hits);
 }

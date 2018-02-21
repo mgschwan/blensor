@@ -58,7 +58,7 @@
 #include "DNA_meshdata_types.h"
 #include "DNA_nla_types.h"
 #include "DNA_node_types.h"
-#include "DNA_object_fluidsim.h" // NT
+#include "DNA_object_fluidsim_types.h"
 #include "DNA_object_types.h"
 #include "DNA_property_types.h"
 #include "DNA_view3d_types.h"
@@ -113,7 +113,7 @@ static void vcol_to_fcol(Mesh *me)
 	if (me->totface == 0 || me->mcol == NULL)
 		return;
 
-	mcoln = mcolmain = MEM_mallocN(4*sizeof(int)*me->totface, "mcoln");
+	mcoln = mcolmain = MEM_malloc_arrayN(me->totface, 4 * sizeof(int), "mcoln");
 	mcol = (unsigned int *)me->mcol;
 	mface = me->mface;
 	for (a = me->totface; a > 0; a--, mface++) {
@@ -2911,12 +2911,12 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 		Scene *sce;
 		for (sce = main->scene.first; sce; sce = sce->id.next) {
 			if (sce->toolsettings->skgen_subdivisions[0] == sce->toolsettings->skgen_subdivisions[1] ||
-				sce->toolsettings->skgen_subdivisions[0] == sce->toolsettings->skgen_subdivisions[2] ||
-				sce->toolsettings->skgen_subdivisions[1] == sce->toolsettings->skgen_subdivisions[2])
+			    sce->toolsettings->skgen_subdivisions[0] == sce->toolsettings->skgen_subdivisions[2] ||
+			    sce->toolsettings->skgen_subdivisions[1] == sce->toolsettings->skgen_subdivisions[2])
 			{
-					sce->toolsettings->skgen_subdivisions[0] = SKGEN_SUB_CORRELATION;
-					sce->toolsettings->skgen_subdivisions[1] = SKGEN_SUB_LENGTH;
-					sce->toolsettings->skgen_subdivisions[2] = SKGEN_SUB_ANGLE;
+				sce->toolsettings->skgen_subdivisions[0] = SKGEN_SUB_CORRELATION;
+				sce->toolsettings->skgen_subdivisions[1] = SKGEN_SUB_LENGTH;
+				sce->toolsettings->skgen_subdivisions[2] = SKGEN_SUB_ANGLE;
 			}
 		}
 	}
@@ -3029,7 +3029,7 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 				psys = MEM_callocN(sizeof(ParticleSystem), "particle_system");
 				psys->pointcache = BKE_ptcache_add(&psys->ptcaches);
 
-				part = psys->part = psys_new_settings("ParticleSettings", main);
+				part = psys->part = BKE_particlesettings_add(main, "ParticleSettings");
 
 				/* needed for proper libdata lookup */
 				blo_do_versions_oldnewmap_insert(fd->libmap, psys->part, psys->part, 0);
@@ -3148,7 +3148,7 @@ void blo_do_versions_pre250(FileData *fd, Library *lib, Main *main)
 				pset->totaddkey = 5;
 				pset->brushtype = PE_BRUSH_NONE;
 
-				for (a = 0; a < PE_TOT_BRUSH; a++) {
+				for (a = 0; a < ARRAY_SIZE(pset->brush); a++) {
 					pset->brush[a].strength = 50;
 					pset->brush[a].size = 50;
 					pset->brush[a].step = 10;

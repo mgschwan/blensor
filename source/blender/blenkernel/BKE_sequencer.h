@@ -335,7 +335,8 @@ bool BKE_sequence_base_shuffle(
 bool BKE_sequence_base_shuffle_time(ListBase *seqbasep, struct Scene *evil_scene);
 bool BKE_sequence_base_isolated_sel_check(struct ListBase *seqbase);
 void BKE_sequencer_free_imbuf(struct Scene *scene, struct ListBase *seqbasep, bool for_render);
-struct Sequence *BKE_sequence_dupli_recursive(struct Scene *scene, struct Scene *scene_to, struct Sequence *seq, int dupe_flag);
+struct Sequence *BKE_sequence_dupli_recursive(
+        const struct Scene *scene_src, struct Scene *scene_dst, struct Sequence *seq, int dupe_flag);
 int BKE_sequence_swap(struct Sequence *seq_a, struct Sequence *seq_b, const char **error_str);
 
 bool BKE_sequence_check_depend(struct Sequence *seq, struct Sequence *cur);
@@ -352,8 +353,8 @@ void BKE_sequencer_refresh_sound_length(struct Scene *scene);
 
 void BKE_sequence_base_unique_name_recursive(ListBase *seqbasep, struct Sequence *seq);
 void BKE_sequence_base_dupli_recursive(
-        struct Scene *scene, struct Scene *scene_to, ListBase *nseqbase, ListBase *seqbase,
-        int dupe_flag);
+        const struct Scene *scene_src, struct Scene *scene_dst, struct ListBase *nseqbase, const struct ListBase *seqbase,
+        int dupe_flag, const int flag);
 bool BKE_sequence_is_valid_check(struct Sequence *seq);
 
 void BKE_sequencer_clear_scene_in_allseqs(struct Main *bmain, struct Scene *sce);
@@ -420,11 +421,21 @@ struct Sequence *BKE_sequencer_add_sound_strip(struct bContext *C, ListBase *seq
 struct Sequence *BKE_sequencer_add_movie_strip(struct bContext *C, ListBase *seqbasep, struct SeqLoadInfo *seq_load);
 
 /* view3d draw callback, run when not in background view */
+/* NOTE: Keep in sync with V3D_OFSDRAW_* flags. */
+enum {
+    SEQ_OFSDRAW_NONE             = (0),
+    SEQ_OFSDRAW_USE_BACKGROUND   = (1 << 0),
+    SEQ_OFSDRAW_USE_FULL_SAMPLE  = (1 << 1),
+    SEQ_OFSDRAW_USE_GPENCIL      = (1 << 2),
+    SEQ_OFSDRAW_USE_SOLID_TEX    = (1 << 2),
+    SEQ_OFSDRAW_USE_CAMERA_DOF   = (1 << 3),
+};
+
 typedef struct ImBuf *(*SequencerDrawView)(
-        struct Scene *, struct Object *, int, int,
-        unsigned int, int, bool, bool, bool,
-        int, int, bool, const char *,
-        struct GPUFX *, struct GPUOffScreen *, char[256]);
+        struct Scene *scene, struct Object *camera, int width, int height,
+        unsigned int flag, unsigned int draw_flags, int drawtype, int alpha_mode,
+        int samples, const char *viewname,
+        struct GPUFX *fx, struct GPUOffScreen *ofs, char err_out[256]);
 extern SequencerDrawView sequencer_view3d_cb;
 
 /* copy/paste */

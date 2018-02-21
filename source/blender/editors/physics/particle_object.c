@@ -197,7 +197,7 @@ static int new_particle_settings_exec(bContext *C, wmOperator *UNUSED(op))
 	if (psys->part)
 		part= BKE_particlesettings_copy(bmain, psys->part);
 	else
-		part= psys_new_settings("ParticleSettings", bmain);
+		part= BKE_particlesettings_add(bmain, "ParticleSettings");
 
 	ob= ptr.id.data;
 
@@ -977,7 +977,7 @@ static void remove_particle_systems_from_object(Object *ob_to)
 	
 	if (ob_to->type != OB_MESH)
 		return;
-	if (!ob_to->data || ID_IS_LINKED_DATABLOCK(ob_to->data))
+	if (!ob_to->data || ID_IS_LINKED(ob_to->data))
 		return;
 	
 	for (md = ob_to->modifiers.first; md; md = md_next) {
@@ -1013,7 +1013,7 @@ static bool copy_particle_systems_to_object(Main *bmain,
 	
 	if (ob_to->type != OB_MESH)
 		return false;
-	if (!ob_to->data || ID_IS_LINKED_DATABLOCK(ob_to->data))
+	if (!ob_to->data || ID_IS_LINKED(ob_to->data))
 		return false;
 	
 	/* For remapping we need a valid DM.
@@ -1035,7 +1035,7 @@ static bool copy_particle_systems_to_object(Main *bmain,
 	     psys_from;
 	     psys_from = PSYS_FROM_NEXT(psys_from), ++i) {
 		
-		psys = BKE_object_copy_particlesystem(psys_from);
+		psys = BKE_object_copy_particlesystem(psys_from, 0);
 		tmp_psys[i] = psys;
 		
 		if (psys_start == NULL)
@@ -1183,7 +1183,7 @@ static int copy_particle_systems_exec(bContext *C, wmOperator *op)
 
 void PARTICLE_OT_copy_particle_systems(wmOperatorType *ot)
 {
-	static EnumPropertyItem space_items[] = {
+	static const EnumPropertyItem space_items[] = {
 		{PAR_COPY_SPACE_OBJECT, "OBJECT", 0, "Object", "Copy inside each object's local space"},
 		{PAR_COPY_SPACE_WORLD, "WORLD", 0, "World", "Copy in world space"},
 		{0, NULL, 0, NULL, NULL}

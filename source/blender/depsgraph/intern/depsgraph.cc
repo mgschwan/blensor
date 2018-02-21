@@ -51,13 +51,16 @@ extern "C" {
 #include "RNA_access.h"
 }
 
+#include <algorithm>
 #include <cstring>
 
 #include "DEG_depsgraph.h"
 
 #include "intern/nodes/deg_node.h"
 #include "intern/nodes/deg_node_component.h"
+#include "intern/nodes/deg_node_id.h"
 #include "intern/nodes/deg_node_operation.h"
+#include "intern/nodes/deg_node_time.h"
 
 #include "intern/depsgraph_intern.h"
 #include "util/deg_util_foreach.h"
@@ -67,6 +70,14 @@ namespace DEG {
 static DEG_EditorUpdateIDCb deg_editor_update_id_cb = NULL;
 static DEG_EditorUpdateSceneCb deg_editor_update_scene_cb = NULL;
 static DEG_EditorUpdateScenePreCb deg_editor_update_scene_pre_cb = NULL;
+
+/* TODO(sergey): Find a better place for this. */
+template <typename T>
+static void remove_from_vector(vector<T> *vector, const T& value)
+{
+	vector->erase(std::remove(vector->begin(), vector->end(), value),
+	              vector->end());
+}
 
 Depsgraph::Depsgraph()
   : time_source(NULL),
@@ -91,72 +102,60 @@ Depsgraph::~Depsgraph()
 
 /* Query Conditions from RNA ----------------------- */
 
-static bool pointer_to_id_node_criteria(const PointerRNA *ptr,
-                                        const PropertyRNA *prop,
-                                        ID **id)
+static bool pointer_to_component_node_criteria(
+        const PointerRNA *ptr,
+        const PropertyRNA *prop,
+        ID **id,
+        eDepsNode_Type *type,
+        const char **subdata,
+        eDepsOperation_Code *operation_code,
+        const char **operation_name,
+        int *operation_name_tag)
 {
-	if (!ptr->type)
+	if (ptr->type == NULL) {
 		return false;
-
-	if (!prop) {
-		if (RNA_struct_is_ID(ptr->type)) {
-			*id = (ID *)ptr->data;
-			return true;
-		}
 	}
-
-	return false;
-}
-
-static bool pointer_to_component_node_criteria(const PointerRNA *ptr,
-                                               const PropertyRNA *prop,
-                                               ID **id,
-                                               eDepsNode_Type *type,
-                                               const char **subdata)
-{
-	if (!ptr->type)
-		return false;
-
 	/* Set default values for returns. */
-	*id      = (ID *)ptr->id.data;  /* For obvious reasons... */
-	*subdata = "";                 /* Default to no subdata (e.g. bone) name
-	                                * lookup in most cases. */
-
-	/* Handling of commonly known scenarios... */
+	*id = (ID *)ptr->id.data;
+	*subdata = "";
+	*operation_code = DEG_OPCODE_OPERATION;
+	*operation_name = "";
+	*operation_name_tag = -1;
+	/* Handling of commonly known scenarios. */
 	if (ptr->type == &RNA_PoseBone) {
 		bPoseChannel *pchan = (bPoseChannel *)ptr->data;
-
-		/* Bone - generally, we just want the bone component... */
-		*type = DEG_NODE_TYPE_BONE;
-		*subdata = pchan->name;
-
+		if (prop != NULL && RNA_property_is_idprop(prop)) {
+			*type = DEG_NODE_TYPE_PARAMETERS;
+			*subdata = "";
+			*operation_code = DEG_OPCODE_PARAMETERS_EVAL;
+			*operation_name = pchan->name;;
+		}
+		else {
+			/* Bone - generally, we just want the bone component. */
+			*type = DEG_NODE_TYPE_BONE;
+			*subdata = pchan->name;
+		}
 		return true;
 	}
 	else if (ptr->type == &RNA_Bone) {
 		Bone *bone = (Bone *)ptr->data;
-
 		/* armature-level bone, but it ends up going to bone component anyway */
-		// TODO: the ID in thise case will end up being bArmature, not Object as needed!
+		// NOTE: the ID in thise case will end up being bArmature.
 		*type = DEG_NODE_TYPE_BONE;
 		*subdata = bone->name;
-		//*id = ...
-
 		return true;
 	}
 	else if (RNA_struct_is_a(ptr->type, &RNA_Constraint)) {
-		Object *ob = (Object *)ptr->id.data;
+		Object *object = (Object *)ptr->id.data;
 		bConstraint *con = (bConstraint *)ptr->data;
-
-		/* object or bone? */
-		if (BLI_findindex(&ob->constraints, con) != -1) {
-			/* object transform */
-			// XXX: for now, we can't address the specific constraint or the constraint stack...
+		/* Check whether is object or bone constraint. */
+		if (BLI_findindex(&object->constraints, con) != -1) {
+			/* Constraint is defining object transform. */
 			*type = DEG_NODE_TYPE_TRANSFORM;
 			return true;
 		}
-		else if (ob->pose) {
-			bPoseChannel *pchan;
-			for (pchan = (bPoseChannel *)ob->pose->chanbase.first; pchan; pchan = pchan->next) {
+		else if (object->pose != NULL) {
+			LISTBASE_FOREACH(bPoseChannel *, pchan, &object->pose->chanbase) {
 				if (BLI_findindex(&pchan->constraints, con) != -1) {
 					/* bone transforms */
 					*type = DEG_NODE_TYPE_BONE;
@@ -167,23 +166,12 @@ static bool pointer_to_component_node_criteria(const PointerRNA *ptr,
 		}
 	}
 	else if (RNA_struct_is_a(ptr->type, &RNA_Modifier)) {
-		//ModifierData *md = (ModifierData *)ptr->data;
-
-		/* Modifier */
-		/* NOTE: subdata is not the same as "operation name",
-		 * so although we have unique ops for modifiers,
-		 * we can't lump them together
-		 */
-		*type = DEG_NODE_TYPE_BONE;
-		//*subdata = md->name;
-
+		*type = DEG_NODE_TYPE_GEOMETRY;
 		return true;
 	}
 	else if (ptr->type == &RNA_Object) {
-		//Object *ob = (Object *)ptr->data;
-
 		/* Transforms props? */
-		if (prop) {
+		if (prop != NULL) {
 			const char *prop_identifier = RNA_property_identifier((PropertyRNA *)prop);
 			/* TODO(sergey): How to optimize this? */
 			if (strstr(prop_identifier, "location") ||
@@ -204,12 +192,13 @@ static bool pointer_to_component_node_criteria(const PointerRNA *ptr,
 		}
 	}
 	else if (ptr->type == &RNA_ShapeKey) {
-		Key *key = (Key *)ptr->id.data;
-
-		/* ShapeKeys are currently handled as geometry on the geometry that owns it */
-		*id = key->from; // XXX
-		*type = DEG_NODE_TYPE_PARAMETERS;
-
+		*id = (ID *)ptr->id.data;
+		*type = DEG_NODE_TYPE_GEOMETRY;
+		return true;
+	}
+	else if (ptr->type == &RNA_Key) {
+		*id = (ID *)ptr->id.data;
+		*type = DEG_NODE_TYPE_GEOMETRY;
 		return true;
 	}
 	else if (RNA_struct_is_a(ptr->type, &RNA_Sequence)) {
@@ -219,13 +208,14 @@ static bool pointer_to_component_node_criteria(const PointerRNA *ptr,
 		*subdata = seq->name; // xxx?
 		return true;
 	}
-
-	if (prop) {
-		/* All unknown data effectively falls under "parameter evaluation" */
+	if (prop != NULL) {
+		/* All unknown data effectively falls under "parameter evaluation". */
 		*type = DEG_NODE_TYPE_PARAMETERS;
+		*operation_code = DEG_OPCODE_PARAMETERS_EVAL;
+		*operation_name = "";
+		*operation_name_tag = -1;
 		return true;
 	}
-
 	return false;
 }
 
@@ -234,20 +224,32 @@ DepsNode *Depsgraph::find_node_from_pointer(const PointerRNA *ptr,
                                             const PropertyRNA *prop) const
 {
 	ID *id;
-	eDepsNode_Type type;
-	const char *name;
+	eDepsNode_Type node_type;
+	const char *component_name, *operation_name;
+	eDepsOperation_Code operation_code;
+	int operation_name_tag;
 
-	/* Get querying conditions. */
-	if (pointer_to_id_node_criteria(ptr, prop, &id)) {
-		return find_id_node(id);
-	}
-	else if (pointer_to_component_node_criteria(ptr, prop, &id, &type, &name)) {
+	if (pointer_to_component_node_criteria(
+	                 ptr, prop,
+	                 &id, &node_type, &component_name,
+	                 &operation_code, &operation_name, &operation_name_tag))
+	{
 		IDDepsNode *id_node = find_id_node(id);
-		if (id_node != NULL) {
-			return id_node->find_component(type, name);
+		if (id_node == NULL) {
+			return NULL;
 		}
+		ComponentDepsNode *comp_node =
+		        id_node->find_component(node_type, component_name);
+		if (comp_node == NULL) {
+			return NULL;
+		}
+		if (operation_code == DEG_OPCODE_OPERATION) {
+			return comp_node;
+		}
+		return comp_node->find_operation(operation_code,
+		                                 operation_name,
+		                                 operation_name_tag);
 	}
-
 	return NULL;
 }
 
@@ -262,7 +264,7 @@ static void id_node_deleter(void *value)
 TimeSourceDepsNode *Depsgraph::add_time_source()
 {
 	if (time_source == NULL) {
-		DepsNodeFactory *factory = deg_get_node_factory(DEG_NODE_TYPE_TIMESOURCE);
+		DepsNodeFactory *factory = deg_type_get_factory(DEG_NODE_TYPE_TIMESOURCE);
 		time_source = (TimeSourceDepsNode *)factory->create_node(NULL, "", "Time Source");
 	}
 	return time_source;
@@ -282,11 +284,12 @@ IDDepsNode *Depsgraph::add_id_node(ID *id, const char *name)
 {
 	IDDepsNode *id_node = find_id_node(id);
 	if (!id_node) {
-		DepsNodeFactory *factory = deg_get_node_factory(DEG_NODE_TYPE_ID_REF);
+		DepsNodeFactory *factory = deg_type_get_factory(DEG_NODE_TYPE_ID_REF);
 		id_node = (IDDepsNode *)factory->create_node(id, "", name);
 		id->tag |= LIB_TAG_DOIT;
 		/* register */
 		BLI_ghash_insert(id_hash, id, id_node);
+		id_nodes.push_back(id_node);
 	}
 	return id_node;
 }
@@ -294,22 +297,31 @@ IDDepsNode *Depsgraph::add_id_node(ID *id, const char *name)
 void Depsgraph::clear_id_nodes()
 {
 	BLI_ghash_clear(id_hash, NULL, id_node_deleter);
+	id_nodes.clear();
 }
 
 /* Add new relationship between two nodes. */
 DepsRelation *Depsgraph::add_new_relation(OperationDepsNode *from,
                                           OperationDepsNode *to,
-                                          const char *description)
+                                          const char *description,
+                                          bool check_unique)
 {
+	DepsRelation *rel = NULL;
+	if (check_unique) {
+		rel = check_nodes_connected(from, to, description);
+	}
+	if (rel != NULL) {
+		return rel;
+	}
 	/* Create new relation, and add it to the graph. */
-	DepsRelation *rel = OBJECT_GUARDED_NEW(DepsRelation, from, to, description);
+	rel = OBJECT_GUARDED_NEW(DepsRelation, from, to, description);
 	/* TODO(sergey): Find a better place for this. */
 #ifdef WITH_OPENSUBDIV
 	ComponentDepsNode *comp_node = from->owner;
 	if (comp_node->type == DEG_NODE_TYPE_GEOMETRY) {
 		IDDepsNode *id_to = to->owner->owner;
 		IDDepsNode *id_from = from->owner->owner;
-		if (id_to != id_from && (id_to->id->tag & LIB_TAG_ID_RECALC_ALL)) {
+		if (id_to != id_from && (id_to->id->recalc & ID_RECALC_ALL)) {
 			if ((id_from->eval_flags & DAG_EVAL_NEED_CPU) == 0) {
 				id_from->tag_update(this);
 				id_from->eval_flags |= DAG_EVAL_NEED_CPU;
@@ -322,11 +334,36 @@ DepsRelation *Depsgraph::add_new_relation(OperationDepsNode *from,
 
 /* Add new relation between two nodes */
 DepsRelation *Depsgraph::add_new_relation(DepsNode *from, DepsNode *to,
-                                          const char *description)
+                                          const char *description,
+                                          bool check_unique)
 {
+	DepsRelation *rel = NULL;
+	if (check_unique) {
+		rel = check_nodes_connected(from, to, description);
+	}
+	if (rel != NULL) {
+		return rel;
+	}
 	/* Create new relation, and add it to the graph. */
-	DepsRelation *rel = OBJECT_GUARDED_NEW(DepsRelation, from, to, description);
+	rel = OBJECT_GUARDED_NEW(DepsRelation, from, to, description);
 	return rel;
+}
+
+DepsRelation *Depsgraph::check_nodes_connected(const DepsNode *from,
+                                               const DepsNode *to,
+                                               const char *description)
+{
+	foreach (DepsRelation *rel, from->outlinks) {
+		BLI_assert(rel->from == from);
+		if (rel->to != to) {
+			continue;
+		}
+		if (description != NULL && !STREQ(rel->name, description)) {
+			continue;
+		}
+		return rel;
+	}
+	return NULL;
 }
 
 /* ************************ */
@@ -340,24 +377,6 @@ DepsRelation::DepsRelation(DepsNode *from,
     name(description),
     flag(0)
 {
-#ifndef NDEBUG
-/*
-	for (OperationDepsNode::Relations::const_iterator it = from->outlinks.begin();
-	     it != from->outlinks.end();
-	     ++it)
-	{
-		DepsRelation *rel = *it;
-		if (rel->from == from &&
-		    rel->to == to &&
-		    rel->type == type &&
-		    rel->name == description)
-		{
-			BLI_assert(!"Duplicated relation, should not happen!");
-		}
-	}
-*/
-#endif
-
 	/* Hook it up to the nodes which use it.
 	 *
 	 * NOTE: We register relation in the nodes which this link connects to here
@@ -379,7 +398,15 @@ DepsRelation::DepsRelation(DepsNode *from,
 DepsRelation::~DepsRelation()
 {
 	/* Sanity check. */
-	BLI_assert(this->from && this->to);
+	BLI_assert(from != NULL && to != NULL);
+}
+
+void DepsRelation::unlink()
+{
+	/* Sanity check. */
+	BLI_assert(from != NULL && to != NULL);
+	remove_from_vector(&from->outlinks, this);
+	remove_from_vector(&to->inlinks, this);
 }
 
 /* Low level tagging -------------------------------------- */
@@ -400,7 +427,6 @@ void Depsgraph::add_entry_tag(OperationDepsNode *node)
 void Depsgraph::clear_all_nodes()
 {
 	clear_id_nodes();
-	BLI_ghash_clear(id_hash, NULL, NULL);
 	if (time_source != NULL) {
 		OBJECT_GUARDED_DELETE(time_source, TimeSourceDepsNode);
 		time_source = NULL;

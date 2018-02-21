@@ -46,6 +46,7 @@ namespace DEG {
 struct Depsgraph;
 struct OperationDepsNode;
 struct BoneComponentDepsNode;
+struct IDDepsNode;
 
 /* ID Component - Base type for all components */
 struct ComponentDepsNode : public DepsNode {
@@ -74,17 +75,25 @@ struct ComponentDepsNode : public DepsNode {
 
 	string identifier() const;
 
-	/* Find an existing operation, will throw an assert() if it does not exist. */
+	/* Find an existing operation, if requested operation does not exist
+	 * NULL will be returned.
+	 */
 	OperationDepsNode *find_operation(OperationIDKey key) const;
 	OperationDepsNode *find_operation(eDepsOperation_Code opcode,
-	                                  const char *name,
-	                                  int name_tag) const;
-
-	/* Check operation exists and return it. */
-	OperationDepsNode *has_operation(OperationIDKey key) const;
-	OperationDepsNode *has_operation(eDepsOperation_Code opcode,
 	                                 const char *name,
 	                                 int name_tag) const;
+
+	/* Find an existing operation, will throw an assert() if it does not exist. */
+	OperationDepsNode *get_operation(OperationIDKey key) const;
+	OperationDepsNode *get_operation(eDepsOperation_Code opcode,
+	                                 const char *name,
+	                                 int name_tag) const;
+
+	/* Check operation exists and return it. */
+	bool has_operation(OperationIDKey key) const;
+	bool has_operation(eDepsOperation_Code opcode,
+	                   const char *name,
+	                   int name_tag) const;
 
 	/**
 	 * Create a new node for representing an operation and add this to graph
@@ -114,19 +123,6 @@ struct ComponentDepsNode : public DepsNode {
 	void clear_operations();
 
 	void tag_update(Depsgraph *graph);
-
-	/* Evaluation Context Management .................. */
-
-	/* Initialize component's evaluation context used for the specified
-	 * purpose.
-	 */
-	virtual bool eval_context_init(EvaluationContext * /*eval_ctx*/) { return false; }
-	/* Free data in component's evaluation context which is used for
-	 * the specified purpose
-	 *
-	 * NOTE: this does not free the actual context in question
-	 */
-	virtual void eval_context_free(EvaluationContext * /*eval_ctx*/) {}
 
 	OperationDepsNode *get_entry_operation();
 	OperationDepsNode *get_exit_operation();
@@ -158,33 +154,34 @@ struct ComponentDepsNode : public DepsNode {
 
 /* ---------------------------------------- */
 
-struct ParametersComponentDepsNode : public ComponentDepsNode {
-	DEG_DEPSNODE_DECLARE;
-};
+#define DEG_COMPONENT_NODE_DEFINE_TYPEINFO(NodeType, type_, tname_, id_recalc_tag) \
+    const DepsNode::TypeInfo NodeType::typeinfo = \
+        DepsNode::TypeInfo(type_, tname_, id_recalc_tag)
 
-struct AnimationComponentDepsNode : public ComponentDepsNode {
-	DEG_DEPSNODE_DECLARE;
-};
+#define DEG_COMPONENT_NODE_DECLARE DEG_DEPSNODE_DECLARE
 
-struct TransformComponentDepsNode : public ComponentDepsNode {
-	DEG_DEPSNODE_DECLARE;
-};
+#define DEG_COMPONENT_NODE_DEFINE(name, NAME, id_recalc_tag)            \
+    DEG_COMPONENT_NODE_DEFINE_TYPEINFO(name ## ComponentDepsNode,       \
+                                       DEG_NODE_TYPE_ ## NAME,          \
+                                       #name  " Component",             \
+                                       id_recalc_tag) ;                 \
+    static DepsNodeFactoryImpl<name ## ComponentDepsNode> DNTI_ ## NAME
 
-struct ProxyComponentDepsNode : public ComponentDepsNode {
-	DEG_DEPSNODE_DECLARE;
-};
+#define DEG_COMPONENT_NODE_DECLARE_GENERIC(name)                   \
+	struct name ## ComponentDepsNode : public ComponentDepsNode {  \
+		DEG_COMPONENT_NODE_DECLARE;                                \
+	}
 
-struct GeometryComponentDepsNode : public ComponentDepsNode {
-	DEG_DEPSNODE_DECLARE;
-};
-
-struct SequencerComponentDepsNode : public ComponentDepsNode {
-	DEG_DEPSNODE_DECLARE;
-};
-
-struct PoseComponentDepsNode : public ComponentDepsNode {
-	DEG_DEPSNODE_DECLARE;
-};
+DEG_COMPONENT_NODE_DECLARE_GENERIC(Animation);
+DEG_COMPONENT_NODE_DECLARE_GENERIC(Cache);
+DEG_COMPONENT_NODE_DECLARE_GENERIC(Geometry);
+DEG_COMPONENT_NODE_DECLARE_GENERIC(Parameters);
+DEG_COMPONENT_NODE_DECLARE_GENERIC(Particles);
+DEG_COMPONENT_NODE_DECLARE_GENERIC(Proxy);
+DEG_COMPONENT_NODE_DECLARE_GENERIC(Pose);
+DEG_COMPONENT_NODE_DECLARE_GENERIC(Sequencer);
+DEG_COMPONENT_NODE_DECLARE_GENERIC(Shading);
+DEG_COMPONENT_NODE_DECLARE_GENERIC(Transform);
 
 /* Bone Component */
 struct BoneComponentDepsNode : public ComponentDepsNode {
@@ -192,21 +189,8 @@ struct BoneComponentDepsNode : public ComponentDepsNode {
 
 	struct bPoseChannel *pchan;     /* the bone that this component represents */
 
-	DEG_DEPSNODE_DECLARE;
+	DEG_COMPONENT_NODE_DECLARE;
 };
-
-struct ParticlesComponentDepsNode : public ComponentDepsNode {
-	DEG_DEPSNODE_DECLARE;
-};
-
-struct ShadingComponentDepsNode : public ComponentDepsNode {
-	DEG_DEPSNODE_DECLARE;
-};
-
-struct CacheComponentDepsNode : public ComponentDepsNode {
-	DEG_DEPSNODE_DECLARE;
-};
-
 
 void deg_register_component_depsnodes();
 

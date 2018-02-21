@@ -73,16 +73,27 @@
 
 /* tunable parameters */
 #  define CUDA_THREADS_BLOCK_WIDTH 16
-#  define CUDA_KERNEL_MAX_REGISTERS 48
+/* CUDA 9.0 seems to cause slowdowns on high-end Pascal cards unless we increase the number of registers */
+#  if __CUDACC_VER_MAJOR__ == 9 && __CUDA_ARCH__ >= 600
+#    define CUDA_KERNEL_MAX_REGISTERS 64
+#  else
+#    define CUDA_KERNEL_MAX_REGISTERS 48
+#  endif
 #  define CUDA_KERNEL_BRANCHED_MAX_REGISTERS 63
+
 
 /* unknown architecture */
 #else
 #  error "Unknown or unsupported CUDA architecture, can't determine launch bounds"
 #endif
 
-/* compute number of threads per block and minimum blocks per multiprocessor
- * given the maximum number of registers per thread */
+/* For split kernel using all registers seems fastest for now, but this
+ * is unlikely to be optimal once we resolve other bottlenecks. */
+
+#define CUDA_KERNEL_SPLIT_MAX_REGISTERS CUDA_THREAD_MAX_REGISTERS
+
+/* Compute number of threads per block and minimum blocks per multiprocessor
+ * given the maximum number of registers per thread. */
 
 #define CUDA_LAUNCH_BOUNDS(threads_block_width, thread_num_registers) \
 	__launch_bounds__( \

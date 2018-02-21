@@ -1321,7 +1321,7 @@ static size_t animfilter_action(bAnimContext *ac, ListBase *anim_data, bDopeShee
 	/* don't include anything from this action if it is linked in from another file,
 	 * and we're getting stuff for editing...
 	 */
-	if ((filter_mode & ANIMFILTER_FOREDIT) && ID_IS_LINKED_DATABLOCK(act))
+	if ((filter_mode & ANIMFILTER_FOREDIT) && ID_IS_LINKED(act))
 		return 0;
 		
 	/* do groups */
@@ -2247,6 +2247,8 @@ static void animfilter_modifier_idpoin_cb(void *afm_ptr, Object *ob, ID **idpoin
 		}
 		
 		/* TODO: images? */
+		default:
+			break;
 	}
 }
 

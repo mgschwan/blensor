@@ -15,6 +15,7 @@
  */
 
 #include "device/device.h"
+#include "render/background.h"
 #include "render/integrator.h"
 #include "render/film.h"
 #include "render/light.h"
@@ -31,7 +32,6 @@ NODE_DEFINE(Integrator)
 {
 	NodeType *type = NodeType::add("integrator", create);
 
-	SOCKET_INT(min_bounce, "Min Bounce", 2);
 	SOCKET_INT(max_bounce, "Max Bounce", 7);
 
 	SOCKET_INT(max_diffuse_bounce, "Max Diffuse Bounce", 7);
@@ -39,9 +39,7 @@ NODE_DEFINE(Integrator)
 	SOCKET_INT(max_transmission_bounce, "Max Transmission Bounce", 7);
 	SOCKET_INT(max_volume_bounce, "Max Volume Bounce", 7);
 
-	SOCKET_INT(transparent_min_bounce, "Transparent Min Bounce", 2);
 	SOCKET_INT(transparent_max_bounce, "Transparent Max Bounce", 7);
-	SOCKET_BOOLEAN(transparent_shadows, "Transparent Shadows", false);
 
 	SOCKET_INT(ao_bounces, "AO Bounces", 0);
 
@@ -104,7 +102,6 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
 
 	/* integrator parameters */
 	kintegrator->max_bounce = max_bounce + 1;
-	kintegrator->min_bounce = min_bounce + 1;
 
 	kintegrator->max_diffuse_bounce = max_diffuse_bounce + 1;
 	kintegrator->max_glossy_bounce = max_glossy_bounce + 1;
@@ -112,7 +109,6 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
 	kintegrator->max_volume_bounce = max_volume_bounce + 1;
 
 	kintegrator->transparent_max_bounce = transparent_max_bounce + 1;
-	kintegrator->transparent_min_bounce = transparent_min_bounce + 1;
 
 	if(ao_bounces == 0) {
 		kintegrator->ao_bounces = INT_MAX;
@@ -125,18 +121,13 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
 	 * We only need to enable transparent shadows, if we actually have 
 	 * transparent shaders in the scene. Otherwise we can disable it
 	 * to improve performance a bit. */
-	if(transparent_shadows) {
-		kintegrator->transparent_shadows = false;
-		foreach(Shader *shader, scene->shaders) {
-			/* keep this in sync with SD_HAS_TRANSPARENT_SHADOW in shader.cpp */
-			if((shader->has_surface_transparent && shader->use_transparent_shadow) || shader->has_volume) {
-				kintegrator->transparent_shadows = true;
-				break;
-			}
+	kintegrator->transparent_shadows = false;
+	foreach(Shader *shader, scene->shaders) {
+		/* keep this in sync with SD_HAS_TRANSPARENT_SHADOW in shader.cpp */
+		if((shader->has_surface_transparent && shader->use_transparent_shadow) || shader->has_volume) {
+			kintegrator->transparent_shadows = true;
+			break;
 		}
-	}
-	else {
-		kintegrator->transparent_shadows = false;
 	}
 
 	kintegrator->volume_max_steps = volume_max_steps;
@@ -155,6 +146,7 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
 	kintegrator->sample_clamp_indirect = (sample_clamp_indirect == 0.0f)? FLT_MAX: sample_clamp_indirect*3.0f;
 
 	kintegrator->branched = (method == BRANCHED_PATH);
+	kintegrator->volume_decoupled = device->info.has_volume_decoupled;
 	kintegrator->diffuse_samples = diffuse_samples;
 	kintegrator->glossy_samples = glossy_samples;
 	kintegrator->transmission_samples = transmission_samples;
@@ -195,16 +187,19 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
 		max_samples = max(max_samples, volume_samples);
 	}
 
-	max_samples *= (max_bounce + transparent_max_bounce + 3 + BSSRDF_MAX_HITS);
+	uint total_bounces = max_bounce + transparent_max_bounce + 3 +
+	                     max(BSSRDF_MAX_HITS, BSSRDF_MAX_BOUNCES);
+
+	max_samples *= total_bounces;
 
 	int dimensions = PRNG_BASE_NUM + max_samples*PRNG_BOUNCE_NUM;
 	dimensions = min(dimensions, SOBOL_MAX_DIMENSIONS);
 
-	uint *directions = dscene->sobol_directions.resize(SOBOL_BITS*dimensions);
+	uint *directions = dscene->sobol_directions.alloc(SOBOL_BITS*dimensions);
 
 	sobol_generate_direction_vectors((uint(*)[SOBOL_BITS])directions, dimensions);
 
-	device->tex_alloc("__sobol_directions", dscene->sobol_directions);
+	dscene->sobol_directions.copy_to_device();
 
 	/* Clamping. */
 	bool use_sample_clamp = (sample_clamp_direct != 0.0f ||
@@ -217,10 +212,9 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
 	need_update = false;
 }
 
-void Integrator::device_free(Device *device, DeviceScene *dscene)
+void Integrator::device_free(Device *, DeviceScene *dscene)
 {
-	device->tex_free(dscene->sobol_directions);
-	dscene->sobol_directions.clear();
+	dscene->sobol_directions.free();
 }
 
 bool Integrator::modified(const Integrator& integrator)

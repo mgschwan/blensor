@@ -48,77 +48,15 @@
 
 #ifdef RNA_RUNTIME
 
+#include "DNA_anim_types.h"
+
+#include "BKE_animsys.h"
 #include "BKE_depsgraph.h"
 #include "BKE_node.h"
 
 #include "IMB_imbuf.h"
 
 #include "WM_api.h"
-
-static MovieTrackingObject *tracking_object_from_track(MovieClip *clip,
-                                                       MovieTrackingTrack *track)
-{
-	MovieTracking *tracking = &clip->tracking;
-	ListBase *tracksbase = &tracking->tracks;
-	/* TODO: it's a bit difficult to find list track came from knowing just
-	 *       movie clip ID and MovieTracking structure, so keep this naive
-	 *       search for a while */
-	if (BLI_findindex(tracksbase, track) == -1) {
-		MovieTrackingObject *object = tracking->objects.first;
-		while (object) {
-			if (BLI_findindex(&object->tracks, track) != -1) {
-				return object;
-			}
-			object = object->next;
-		}
-	}
-	return NULL;
-}
-
-static ListBase *tracking_tracksbase_from_track(MovieClip *clip,
-                                                MovieTrackingTrack *track)
-{
-	MovieTracking *tracking = &clip->tracking;
-	MovieTrackingObject *object = tracking_object_from_track(clip, track);
-	if (object != NULL) {
-		return &object->tracks;
-	}
-	return &tracking->tracks;
-}
-
-static MovieTrackingObject *tracking_object_from_plane_track(
-        MovieClip *clip,
-        MovieTrackingPlaneTrack *plane_track)
-{
-	MovieTracking *tracking = &clip->tracking;
-	ListBase *plane_tracks_base = &tracking->plane_tracks;
-	/* TODO: it's a bit difficult to find list track came from knowing just
-	 *       movie clip ID and MovieTracking structure, so keep this naive
-	 *       search for a while */
-	if (BLI_findindex(plane_tracks_base, plane_track) == -1) {
-		MovieTrackingObject *object = tracking->objects.first;
-		while (object) {
-			if (BLI_findindex(&object->plane_tracks, plane_track) != -1) {
-				return object;
-			}
-			object = object->next;
-		}
-	}
-	return NULL;
-}
-
-static ListBase *tracking_tracksbase_from_plane_track(
-        MovieClip *clip,
-        MovieTrackingPlaneTrack *plane_track)
-{
-	MovieTracking *tracking = &clip->tracking;
-	MovieTrackingObject *object = tracking_object_from_plane_track(clip,
-	                                                               plane_track);
-	if (object != NULL) {
-		return &object->plane_tracks;
-	}
-	return &tracking->plane_tracks;
-}
 
 static char *rna_tracking_path(PointerRNA *UNUSED(ptr))
 {
@@ -149,19 +87,12 @@ static char *rna_trackingTrack_path(PointerRNA *ptr)
 {
 	MovieClip *clip = (MovieClip *)ptr->id.data;
 	MovieTrackingTrack *track = (MovieTrackingTrack *)ptr->data;
-	MovieTrackingObject *object = tracking_object_from_track(clip, track);
-	char track_name_esc[sizeof(track->name) * 2];
-	BLI_strescape(track_name_esc, track->name, sizeof(track_name_esc));
-	if (object == NULL) {
-		return BLI_sprintfN("tracking.tracks[\"%s\"]", track_name_esc);
-	}
-	else {
-		char object_name_esc[sizeof(object->name) * 2];
-		BLI_strescape(object_name_esc, object->name, sizeof(object_name_esc));
-		return BLI_sprintfN("tracking.objects[\"%s\"].tracks[\"%s\"]",
-		                    object_name_esc,
-		                    track_name_esc);
-	}
+	/* Escaped object name, escaped track name, rest of the path. */
+	char rna_path[MAX_NAME * 4 + 64];
+	BKE_tracking_get_rna_path_for_track(&clip->tracking,
+	                                    track,
+	                                    rna_path, sizeof(rna_path));
+	return BLI_strdup(rna_path);
 }
 
 static void rna_trackingTracks_begin(CollectionPropertyIterator *iter, PointerRNA *ptr)
@@ -255,9 +186,26 @@ static void rna_trackingTrack_name_set(PointerRNA *ptr, const char *value)
 {
 	MovieClip *clip = (MovieClip *)ptr->id.data;
 	MovieTrackingTrack *track = (MovieTrackingTrack *)ptr->data;
-	ListBase *tracksbase = tracking_tracksbase_from_track(clip, track);
+	ListBase *tracksbase =
+	        BKE_tracking_find_tracks_list_for_track(&clip->tracking, track);
+	/* Store old name, for the animation fix later. */
+	char old_name[sizeof(track->name)];
+	BLI_strncpy(old_name, track->name, sizeof(track->name));
+	/* Update the name, */
 	BLI_strncpy(track->name, value, sizeof(track->name));
 	BKE_tracking_track_unique_name(tracksbase, track);
+	/* Fix animation paths. */
+	AnimData *adt = BKE_animdata_from_id(&clip->id);
+	if (adt != NULL) {
+		char rna_path[MAX_NAME * 2 + 64];
+		BKE_tracking_get_rna_path_prefix_for_track(&clip->tracking,
+		                                           track,
+		                                           rna_path, sizeof(rna_path));
+		BKE_animdata_fix_paths_rename(&clip->id, adt, NULL,
+		                              rna_path,
+		                              old_name, track->name,
+		                              0, 0, 1);
+	}
 }
 
 static int rna_trackingTrack_select_get(PointerRNA *ptr)
@@ -326,28 +274,40 @@ static char *rna_trackingPlaneTrack_path(PointerRNA *ptr)
 {
 	MovieClip *clip = (MovieClip *)ptr->id.data;
 	MovieTrackingPlaneTrack *plane_track = (MovieTrackingPlaneTrack *)ptr->data;
-	char track_name_esc[sizeof(plane_track->name) * 2];
-	MovieTrackingObject *object = tracking_object_from_plane_track(clip, plane_track);
-	BLI_strescape(track_name_esc, plane_track->name, sizeof(track_name_esc));
-	if (object == NULL) {
-		return BLI_sprintfN("tracking.plane_tracks[\"%s\"]", track_name_esc);
-	}
-	else {
-		char object_name_esc[sizeof(object->name) * 2];
-		BLI_strescape(object_name_esc, object->name, sizeof(object_name_esc));
-		return BLI_sprintfN("tracking.objects[\"%s\"].plane_tracks[\"%s\"]",
-		                    object_name_esc,
-		                    track_name_esc);
-	}
+	/* Escaped object name, escaped track name, rest of the path. */
+	char rna_path[MAX_NAME * 4 + 64];
+	BKE_tracking_get_rna_path_for_plane_track(&clip->tracking,
+	                                          plane_track,
+	                                          rna_path, sizeof(rna_path));
+	return BLI_strdup(rna_path);
 }
 
 static void rna_trackingPlaneTrack_name_set(PointerRNA *ptr, const char *value)
 {
 	MovieClip *clip = (MovieClip *)ptr->id.data;
 	MovieTrackingPlaneTrack *plane_track = (MovieTrackingPlaneTrack *)ptr->data;
-	ListBase *plane_tracks_base = tracking_tracksbase_from_plane_track(clip, plane_track);
+	ListBase *plane_tracks_base =
+	        BKE_tracking_find_tracks_list_for_plane_track(&clip->tracking,
+	                                                      plane_track);
+	/* Store old name, for the animation fix later. */
+	char old_name[sizeof(plane_track->name)];
+	BLI_strncpy(old_name, plane_track->name, sizeof(plane_track->name));
+	/* Update the name, */
 	BLI_strncpy(plane_track->name, value, sizeof(plane_track->name));
 	BKE_tracking_plane_track_unique_name(plane_tracks_base, plane_track);
+	/* Fix animation paths. */
+	AnimData *adt = BKE_animdata_from_id(&clip->id);
+	if (adt != NULL) {
+		char rna_path[MAX_NAME * 2 + 64];
+		BKE_tracking_get_rna_path_prefix_for_plane_track(&clip->tracking,
+		                                                 plane_track,
+		                                                 rna_path,
+		                                                 sizeof(rna_path));
+		BKE_animdata_fix_paths_rename(&clip->id, adt, NULL,
+		                              rna_path,
+		                              old_name, plane_track->name,
+		                              0, 0, 1);
+	}
 }
 
 static char *rna_trackingCamera_path(PointerRNA *UNUSED(ptr))
@@ -826,7 +786,7 @@ static void rna_trackingCameras_matrix_from_frame(ID *id, MovieTrackingReconstru
 
 #else
 
-static EnumPropertyItem tracker_motion_model[] = {
+static const EnumPropertyItem tracker_motion_model[] = {
 	{TRACK_MOTION_MODEL_HOMOGRAPHY, "Perspective", 0, "Perspective",
 	              "Search for markers that are perspectively deformed (homography) between frames"},
 	{TRACK_MOTION_MODEL_AFFINE, "Affine", 0, "Affine",
@@ -842,7 +802,7 @@ static EnumPropertyItem tracker_motion_model[] = {
 	{0, NULL, 0, NULL, NULL}
 };
 
-static EnumPropertyItem pattern_match_items[] = {
+static const EnumPropertyItem pattern_match_items[] = {
 	{TRACK_MATCH_KEYFRAME, "KEYFRAME", 0, "Keyframe", "Track pattern from keyframe to next frame"},
 	{TRACK_MATCH_PREVFRAME, "PREV_FRAME", 0, "Previous frame", "Track pattern from current frame to next frame"},
 	{0, NULL, 0, NULL, NULL}
@@ -853,7 +813,7 @@ static void rna_def_trackingSettings(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
-	static EnumPropertyItem speed_items[] = {
+	static const EnumPropertyItem speed_items[] = {
 		{0, "FASTEST", 0, "Fastest", "Track as fast as it's possible"},
 		{TRACKING_SPEED_DOUBLE, "DOUBLE", 0, "Double", "Track with double speed"},
 		{TRACKING_SPEED_REALTIME, "REALTIME", 0, "Realtime", "Track with realtime speed"},
@@ -862,14 +822,14 @@ static void rna_def_trackingSettings(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem cleanup_items[] = {
+	static const EnumPropertyItem cleanup_items[] = {
 		{TRACKING_CLEAN_SELECT, "SELECT", 0, "Select", "Select unclean tracks"},
 		{TRACKING_CLEAN_DELETE_TRACK, "DELETE_TRACK", 0, "Delete Track", "Delete unclean tracks"},
 		{TRACKING_CLEAN_DELETE_SEGMENT, "DELETE_SEGMENTS", 0, "Delete Segments", "Delete unclean segments of tracks"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem refine_items[] = {
+	static const EnumPropertyItem refine_items[] = {
 		{0, "NONE", 0, "Nothing", "Do not refine camera intrinsics"},
 		{REFINE_FOCAL_LENGTH, "FOCAL_LENGTH", 0, "Focal Length", "Refine focal length"},
 		{REFINE_FOCAL_LENGTH | REFINE_RADIAL_DISTORTION_K1, "FOCAL_LENGTH_RADIAL_K1", 0, "Focal length, K1",
@@ -1085,14 +1045,14 @@ static void rna_def_trackingCamera(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
-	static EnumPropertyItem distortion_model_items[] = {
+	static const EnumPropertyItem distortion_model_items[] = {
 		{TRACKING_DISTORTION_MODEL_POLYNOMIAL, "POLYNOMIAL", 0, "Polynomial", "Radial distortion model which fits common cameras"},
 		{TRACKING_DISTORTION_MODEL_DIVISION, "DIVISION", 0, "Divisions", "Division distortion model which "
 		                                                                 "better represents wide-angle cameras"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem camera_units_items[] = {
+	static const EnumPropertyItem camera_units_items[] = {
 		{CAMERA_UNITS_PX, "PIXELS", 0, "px", "Use pixels for units of focal length"},
 		{CAMERA_UNITS_MM, "MILLIMETERS", 0, "mm", "Use millimeters for units of focal length"},
 		{0, NULL, 0, NULL, NULL}
@@ -1650,6 +1610,7 @@ static void rna_def_trackingPlaneTrack(BlenderRNA *brna)
 	/* auto keyframing */
 	prop = RNA_def_property(srna, "use_auto_keying", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "flag", PLANE_TRACK_AUTOKEY);
+	RNA_def_property_clear_flag(prop, PROP_ANIMATABLE);
 	RNA_def_property_ui_text(prop, "Auto Keyframe", "Automatic keyframe insertion when moving plane corners");
 	RNA_def_property_ui_icon(prop, ICON_REC, 0);
 
@@ -1673,7 +1634,7 @@ static void rna_def_trackingStabilization(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
-	static EnumPropertyItem filter_items[] = {
+	static const EnumPropertyItem filter_items[] = {
 		{TRACKING_FILTER_NEAREST,  "NEAREST",  0, "Nearest",  "No interpolation, use nearest neighbor pixel"},
 		{TRACKING_FILTER_BILINEAR, "BILINEAR", 0, "Bilinear", "Simple interpolation between adjacent pixels"},
 		{TRACKING_FILTER_BICUBIC,  "BICUBIC",  0, "Bicubic",  "High quality pixel interpolation"},
@@ -2124,7 +2085,7 @@ static void rna_def_trackingDopesheet(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
-	static EnumPropertyItem sort_items[] = {
+	static const EnumPropertyItem sort_items[] = {
 		{TRACKING_DOPE_SORT_NAME, "NAME", 0, "Name", "Sort channels by their names"},
 		{TRACKING_DOPE_SORT_LONGEST, "LONGEST", 0, "Longest", "Sort channels by longest tracked segment"},
 		{TRACKING_DOPE_SORT_TOTAL, "TOTAL", 0, "Total", "Sort channels by overall amount of tracked segments"},

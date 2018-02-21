@@ -52,7 +52,7 @@ struct rcti;
 /* **** Common functions **** */
 
 void BKE_tracking_free(struct MovieTracking *tracking);
-void BKE_tracking_copy(struct MovieTracking *tracking_dst, const struct MovieTracking *tracking_src);
+void BKE_tracking_copy(struct MovieTracking *tracking_dst, const struct MovieTracking *tracking_src, const int flag);
 
 void BKE_tracking_settings_init(struct MovieTracking *tracking);
 
@@ -287,6 +287,46 @@ void BKE_tracking_stabilization_data_to_mat4(int width, int height, float aspect
 /* Dopesheet */
 void BKE_tracking_dopesheet_tag_update(struct MovieTracking *tracking);
 void BKE_tracking_dopesheet_update(struct MovieTracking *tracking);
+
+/* **** Query/search **** */
+
+struct MovieTrackingObject *BKE_tracking_find_object_for_track(
+        const struct MovieTracking *tracking,
+        const struct MovieTrackingTrack *track);
+struct ListBase *BKE_tracking_find_tracks_list_for_track(
+        struct MovieTracking *tracking,
+        const struct MovieTrackingTrack *track);
+
+struct MovieTrackingObject *BKE_tracking_find_object_for_plane_track(
+        const struct MovieTracking *tracking,
+        const struct MovieTrackingPlaneTrack *plane_track);
+struct ListBase *BKE_tracking_find_tracks_list_for_plane_track(
+        struct MovieTracking *tracking,
+        const struct MovieTrackingPlaneTrack *plane_track);
+
+
+void BKE_tracking_get_rna_path_for_track(
+        const struct MovieTracking *tracking,
+        const struct MovieTrackingTrack *track,
+        char *rna_path,
+        size_t rna_path_len);
+void BKE_tracking_get_rna_path_prefix_for_track(
+        const struct MovieTracking *tracking,
+        const struct MovieTrackingTrack *track,
+        char *rna_path,
+        size_t rna_path_len);
+void BKE_tracking_get_rna_path_for_plane_track(
+        const struct MovieTracking *tracking,
+        const struct MovieTrackingPlaneTrack *plane_track,
+        char *rna_path,
+        size_t rna_path_len);
+void BKE_tracking_get_rna_path_prefix_for_plane_track(
+        const struct MovieTracking *tracking,
+        const struct MovieTrackingPlaneTrack *plane_track,
+        char *rna_path,
+        size_t rna_path_len);
+
+/* **** Utility macros **** */
 
 #define TRACK_SELECTED(track)               ((track)->flag & SELECT || (track)->pat_flag & SELECT || (track)->search_flag & SELECT)
 

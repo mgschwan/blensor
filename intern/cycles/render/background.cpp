@@ -38,7 +38,10 @@ NODE_DEFINE(Background)
 	SOCKET_BOOLEAN(use_shader, "Use Shader", true);
 	SOCKET_BOOLEAN(use_ao, "Use AO", false);
 	SOCKET_UINT(visibility, "Visibility", PATH_RAY_ALL_VISIBILITY);
+
 	SOCKET_BOOLEAN(transparent, "Transparent", false);
+	SOCKET_BOOLEAN(transparent_glass, "Transparent Glass", false);
+	SOCKET_FLOAT(transparent_roughness_threshold, "Transparent Roughness Threshold", 0.0f);
 
 	SOCKET_NODE(shader, "Shader", &Shader::node_type);
 
@@ -74,17 +77,21 @@ void Background::device_update(Device *device, DeviceScene *dscene, Scene *scene
 	/* set shader index and transparent option */
 	KernelBackground *kbackground = &dscene->data.background;
 
-	if(use_ao) {
-		kbackground->ao_factor = ao_factor;
-		kbackground->ao_distance = ao_distance;
-	}
-	else {
-		kbackground->ao_factor = 0.0f;
-		kbackground->ao_distance = FLT_MAX;
-	}
+	kbackground->ao_factor = (use_ao)? ao_factor: 0.0f;
+	kbackground->ao_bounces_factor = ao_factor;
+	kbackground->ao_distance = ao_distance;
 
 	kbackground->transparent = transparent;
 	kbackground->surface_shader = scene->shader_manager->get_shader_id(bg_shader);
+
+	if(transparent && transparent_glass) {
+		/* Square twice, once for principled BSDF convention, and once for
+		 * faster comparison in kernel with anisotropic roughness. */
+		kbackground->transparent_roughness_squared_threshold = sqr(sqr(transparent_roughness_threshold));
+	}
+	else {
+		kbackground->transparent_roughness_squared_threshold = -1.0f;
+	}
 
 	if(bg_shader->has_volume)
 		kbackground->volume_shader = kbackground->surface_shader;

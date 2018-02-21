@@ -360,7 +360,7 @@ typedef void (*StringPropertySetFunc)(struct PointerRNA *ptr, struct PropertyRNA
 typedef int (*EnumPropertyGetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop);
 typedef void (*EnumPropertySetFunc)(struct PointerRNA *ptr, struct PropertyRNA *prop, int value);
 /* same as PropEnumItemFunc */
-typedef EnumPropertyItem *(*EnumPropertyItemFunc)(struct bContext *C, PointerRNA *ptr, struct PropertyRNA *prop, bool *r_free);
+typedef const EnumPropertyItem *(*EnumPropertyItemFunc)(struct bContext *C, PointerRNA *ptr, struct PropertyRNA *prop, bool *r_free);
 
 typedef struct PropertyRNA PropertyRNA;
 
@@ -398,22 +398,46 @@ typedef struct ParameterDynAlloc {
 /* Function */
 
 typedef enum FunctionFlag {
-	FUNC_NO_SELF           = (1 << 0), /* for static functions */
-	FUNC_USE_SELF_TYPE     = (1 << 1), /* for class methods, only used when FUNC_NO_SELF is set */
+	/***** Options affecting callback signature. *****/
+	/* Those add additionnal parameters at the beginning of the C callback, like that:
+	 *     rna_my_func([ID *_selfid],
+	 *                 [<DNA_STRUCT> *self|StructRNA *type],
+	 *                 [Main *bmain],
+	 *                 [bContext *C],
+	 *                 [ReportList *reports],
+	 *                 <other RNA-defined parameters>);
+	 */
+	/* Pass ID owning 'self' data (i.e. ptr->id.data, might be same as self in case data is an ID...). */
+	FUNC_USE_SELF_ID       = (1 << 11),
+
+	/* Do not pass the object (DNA struct pointer) from which it is called, used to define static or class functions. */
+	FUNC_NO_SELF           = (1 << 0),
+	/* Pass RNA type, used to define class functions, only valid when FUNC_NO_SELF is set. */
+	FUNC_USE_SELF_TYPE     = (1 << 1),
+
+	/* Pass Main, bContext and/or ReportList. */
 	FUNC_USE_MAIN          = (1 << 2),
 	FUNC_USE_CONTEXT       = (1 << 3),
 	FUNC_USE_REPORTS       = (1 << 4),
-	FUNC_USE_SELF_ID       = (1 << 11),
+
+
+	/***** Registering of python subclasses. *****/
+	/* This function is part of the registerable class' interface, and can be implemented/redefined in python. */
+	FUNC_REGISTER          = (1 << 5),
+	/* Subclasses can choose not to implement this function. */
+	FUNC_REGISTER_OPTIONAL = FUNC_REGISTER | (1 << 6),
+	/* If not set, the python function implementing this call is not allowed to write into data-blocks.
+	 * Except for WindowManager and Screen currently, see rna_id_write_error() in bpy_rna.c */
 	FUNC_ALLOW_WRITE       = (1 << 12),
 
-	/* registering */
-	FUNC_REGISTER          = (1 << 5),
-	FUNC_REGISTER_OPTIONAL = FUNC_REGISTER | (1 << 6),
-
-	/* internal flags */
+	/***** Internal flags. *****/
+	/* UNUSED CURRENTLY? ??? */
 	FUNC_BUILTIN           = (1 << 7),
+	/* UNUSED CURRENTLY. ??? */
 	FUNC_EXPORT            = (1 << 8),
+	/* Function has been defined at runtime, not statically in RNA source code. */
 	FUNC_RUNTIME           = (1 << 9),
+	/* UNUSED CURRENTLY? Function owns its identifier and description strings, and has to free them when deleted. */
 	FUNC_FREE_POINTERS     = (1 << 10),
 } FunctionFlag;
 
@@ -436,6 +460,8 @@ typedef enum StructFlag {
 	STRUCT_NO_IDPROPERTIES = (1 << 6), /* Menus and Panels don't need properties */
 	STRUCT_NO_DATABLOCK_IDPROPERTIES = (1 << 7), /* e.g. for Operator */
 	STRUCT_CONTAINS_DATABLOCK_IDPROPERTIES = (1 << 8), /* for PropertyGroup which contains pointers to datablocks */
+	STRUCT_PUBLIC_NAMESPACE = (1 << 9), /* Added to type-map #BlenderRNA.structs_map */
+	STRUCT_PUBLIC_NAMESPACE_INHERIT = (1 << 10), /* All subtypes are added too. */
 } StructFlag;
 
 typedef int (*StructValidateFunc)(struct PointerRNA *ptr, void *data, int *have_function);

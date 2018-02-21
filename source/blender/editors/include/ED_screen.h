@@ -47,6 +47,7 @@ struct bScreen;
 struct ARegion;
 struct uiBlock;
 struct rcti;
+struct Main;
 
 /* regions */
 void    ED_region_do_listen(struct bScreen *sc, struct ScrArea *sa, struct ARegion *ar, struct wmNotifier *note);
@@ -98,7 +99,9 @@ int     ED_area_headersize(void);
 
 /* screens */
 void    ED_screens_initialize(struct wmWindowManager *wm);
-void    ED_screen_draw(struct wmWindow *win);
+void    ED_screen_draw_edges(struct wmWindow *win);
+void    ED_screen_draw_join_shape(struct ScrArea *sa1, struct ScrArea *sa2);
+void    ED_screen_draw_split_preview(struct ScrArea *sa, const int dir, const float fac);
 void    ED_screen_refresh(struct wmWindowManager *wm, struct wmWindow *win);
 void    ED_screen_do_listen(struct bContext *C, struct wmNotifier *note);
 bScreen *ED_screen_duplicate(struct wmWindow *win, struct bScreen *sc);
@@ -107,7 +110,7 @@ bool    ED_screen_set(struct bContext *C, struct bScreen *sc);
 bool    ED_screen_delete(struct bContext *C, struct bScreen *sc);
 void    ED_screen_set_scene(struct bContext *C, struct bScreen *screen, struct Scene *scene);
 bool    ED_screen_delete_scene(struct bContext *C, struct Scene *scene);
-void    ED_screen_set_subwinactive(struct bContext *C, struct wmEvent *event);
+void    ED_screen_set_subwinactive(struct bContext *C, const struct wmEvent *event);
 void    ED_screen_exit(struct bContext *C, struct wmWindow *window, struct bScreen *screen);
 void    ED_screen_animation_timer(struct bContext *C, int redraws, int refresh, int sync, int enable);
 void    ED_screen_animation_timer_update(struct bScreen *screen, int redraws, int refresh);

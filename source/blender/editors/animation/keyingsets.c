@@ -726,7 +726,7 @@ KeyingSet *ANIM_get_keyingset_for_autokeying(Scene *scene, const char *tranformK
 /* Menu of All Keying Sets ----------------------------- */
 
 /* Dynamically populate an enum of Keying Sets */
-EnumPropertyItem *ANIM_keying_sets_enum_itemf(bContext *C, PointerRNA *UNUSED(ptr), PropertyRNA *UNUSED(prop), bool *r_free)
+const EnumPropertyItem *ANIM_keying_sets_enum_itemf(bContext *C, PointerRNA *UNUSED(ptr), PropertyRNA *UNUSED(prop), bool *r_free)
 {
 	Scene *scene = CTX_data_scene(C);
 	KeyingSet *ks;
@@ -1052,6 +1052,8 @@ int ANIM_apply_keyingset(bContext *C, ListBase *dsources, bAction *act, KeyingSe
 				DAG_id_tag_update(&ob->id, OB_RECALC_OB | OB_RECALC_DATA | OB_RECALC_TIME);
 				break;
 			}
+			default:
+				break;
 		}
 		
 		/* send notifiers for updates (this doesn't require context to work!) */

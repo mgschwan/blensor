@@ -18,7 +18,6 @@
 #include "render/scene.h"
 #include "render/tables.h"
 
-#include "util/util_debug.h"
 #include "util/util_logging.h"
 
 CCL_NAMESPACE_BEGIN
@@ -35,25 +34,22 @@ LookupTables::~LookupTables()
 	assert(lookup_tables.size() == 0);
 }
 
-void LookupTables::device_update(Device *device, DeviceScene *dscene)
+void LookupTables::device_update(Device *, DeviceScene *dscene)
 {
 	if(!need_update)
 		return;
 
 	VLOG(1) << "Total " << lookup_tables.size() << " lookup tables.";
 
-	device->tex_free(dscene->lookup_table);
-
 	if(lookup_tables.size() > 0)
-		device->tex_alloc("__lookup_table", dscene->lookup_table);
+		dscene->lookup_table.copy_to_device();
 
 	need_update = false;
 }
 
-void LookupTables::device_free(Device *device, DeviceScene *dscene)
+void LookupTables::device_free(Device *, DeviceScene *dscene)
 {
-	device->tex_free(dscene->lookup_table);
-	dscene->lookup_table.clear();
+	dscene->lookup_table.free();
 }
 
 static size_t round_up_to_multiple(size_t size, size_t chunk)
@@ -90,7 +86,9 @@ size_t LookupTables::add_table(DeviceScene *dscene, vector<float>& data)
 	}
 
 	/* copy table data and return offset */
-	dscene->lookup_table.copy_at(&data[0], new_table.offset, data.size());
+	float *dtable = dscene->lookup_table.data();
+	memcpy(dtable + new_table.offset, &data[0], sizeof(float) * data.size());
+
 	return new_table.offset;
 }
 

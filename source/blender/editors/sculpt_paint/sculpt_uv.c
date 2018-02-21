@@ -759,7 +759,7 @@ static UvSculptData *uv_sculpt_stroke_init(bContext *C, wmOperator *op, const wm
 		MEM_freeN(uniqueUv);
 
 		/* Allocate connectivity data, we allocate edges once */
-		data->uvedges = MEM_mallocN(sizeof(*data->uvedges) * BLI_ghash_size(edgeHash), "uv_brush_edge_connectivity_data");
+		data->uvedges = MEM_mallocN(sizeof(*data->uvedges) * BLI_ghash_len(edgeHash), "uv_brush_edge_connectivity_data");
 		if (!data->uvedges) {
 			BLI_ghash_free(edgeHash, NULL, NULL);
 			MEM_freeN(edges);
@@ -772,7 +772,7 @@ static UvSculptData *uv_sculpt_stroke_init(bContext *C, wmOperator *op, const wm
 		GHASH_ITER (gh_iter, edgeHash) {
 			data->uvedges[i++] = *((UvEdge *)BLI_ghashIterator_getKey(&gh_iter));
 		}
-		data->totalUvEdges = BLI_ghash_size(edgeHash);
+		data->totalUvEdges = BLI_ghash_len(edgeHash);
 
 		/* cleanup temporary stuff */
 		BLI_ghash_free(edgeHash, NULL, NULL);
@@ -905,7 +905,7 @@ static int uv_sculpt_stroke_modal(bContext *C, wmOperator *op, const wmEvent *ev
 
 void SCULPT_OT_uv_sculpt_stroke(wmOperatorType *ot)
 {
-	static EnumPropertyItem stroke_mode_items[] = {
+	static const EnumPropertyItem stroke_mode_items[] = {
 		{BRUSH_STROKE_NORMAL, "NORMAL", 0, "Normal", "Apply brush normally"},
 		{BRUSH_STROKE_INVERT, "INVERT", 0, "Invert", "Invert action of brush for duration of stroke"},
 		{BRUSH_STROKE_SMOOTH, "RELAX", 0, "Relax", "Switch brush to relax mode for duration of stroke"},

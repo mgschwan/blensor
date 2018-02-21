@@ -30,9 +30,13 @@ ccl_device_inline void kernel_split_branched_path_indirect_loop_init(KernelGloba
 	BRANCHED_STORE(path_state);
 	BRANCHED_STORE(throughput);
 	BRANCHED_STORE(ray);
-	BRANCHED_STORE(sd);
 	BRANCHED_STORE(isect);
 	BRANCHED_STORE(ray_state);
+
+	*kernel_split_sd(branched_state_sd, ray_index) = *kernel_split_sd(sd, ray_index);
+	for(int i = 0; i < kernel_split_sd(branched_state_sd, ray_index)->num_closure; i++) {
+		kernel_split_sd(branched_state_sd, ray_index)->closure[i] = kernel_split_sd(sd, ray_index)->closure[i];
+	}
 
 #undef BRANCHED_STORE
 
@@ -53,9 +57,13 @@ ccl_device_inline void kernel_split_branched_path_indirect_loop_end(KernelGlobal
 	BRANCHED_RESTORE(path_state);
 	BRANCHED_RESTORE(throughput);
 	BRANCHED_RESTORE(ray);
-	BRANCHED_RESTORE(sd);
 	BRANCHED_RESTORE(isect);
 	BRANCHED_RESTORE(ray_state);
+
+	*kernel_split_sd(sd, ray_index) = *kernel_split_sd(branched_state_sd, ray_index);
+	for(int i = 0; i < kernel_split_sd(branched_state_sd, ray_index)->num_closure; i++) {
+		kernel_split_sd(sd, ray_index)->closure[i] = kernel_split_sd(branched_state_sd, ray_index)->closure[i];
+	}
 
 #undef BRANCHED_RESTORE
 
@@ -75,9 +83,16 @@ ccl_device_inline bool kernel_split_branched_indirect_start_shared(KernelGlobals
 	}
 
 #define SPLIT_DATA_ENTRY(type, name, num) \
-		kernel_split_state.name[inactive_ray] = kernel_split_state.name[ray_index];
+		if(num) { \
+			kernel_split_state.name[inactive_ray] = kernel_split_state.name[ray_index]; \
+		}
 	SPLIT_DATA_ENTRIES_BRANCHED_SHARED
 #undef SPLIT_DATA_ENTRY
+
+	*kernel_split_sd(sd, inactive_ray) = *kernel_split_sd(sd, ray_index);
+	for(int i = 0; i < kernel_split_sd(sd, ray_index)->num_closure; i++) {
+		kernel_split_sd(sd, inactive_ray)->closure[i] = kernel_split_sd(sd, ray_index)->closure[i];
+	}
 
 	kernel_split_state.branched_state[inactive_ray].shared_sample_count = 0;
 	kernel_split_state.branched_state[inactive_ray].original_ray = ray_index;
@@ -87,7 +102,6 @@ ccl_device_inline bool kernel_split_branched_indirect_start_shared(KernelGlobals
 	PathRadiance *inactive_L = &kernel_split_state.path_radiance[inactive_ray];
 
 	path_radiance_init(inactive_L, kernel_data.film.use_light_pass);
-	inactive_L->direct_throughput = L->direct_throughput;
 	path_radiance_copy_indirect(inactive_L, L);
 
 	ray_state[inactive_ray] = RAY_REGENERATED;
@@ -110,7 +124,6 @@ ccl_device_noinline bool kernel_split_branched_path_surface_indirect_light_iter(
 	SplitBranchedState *branched_state = &kernel_split_state.branched_state[ray_index];
 
 	ShaderData *sd = saved_sd;
-	RNG rng = kernel_split_state.rng[ray_index];
 	PathRadiance *L = &kernel_split_state.path_radiance[ray_index];
 	float3 throughput = branched_state->throughput;
 	ccl_global PathState *ps = &kernel_split_state.path_state[ray_index];
@@ -157,12 +170,13 @@ ccl_device_noinline bool kernel_split_branched_path_surface_indirect_light_iter(
 		num_samples = ceil_to_int(num_samples_adjust*num_samples);
 
 		float num_samples_inv = num_samples_adjust/num_samples;
-		RNG bsdf_rng = cmj_hash(rng, i);
 
 		for(int j = branched_state->next_sample; j < num_samples; j++) {
 			if(reset_path_state) {
 				*ps = branched_state->path_state;
 			}
+
+			ps->rng_hash = cmj_hash(branched_state->path_state.rng_hash, i);
 
 			ccl_global float3 *tp = &kernel_split_state.throughput[ray_index];
 			*tp = throughput;
@@ -170,24 +184,24 @@ ccl_device_noinline bool kernel_split_branched_path_surface_indirect_light_iter(
 			ccl_global Ray *bsdf_ray = &kernel_split_state.ray[ray_index];
 
 			if(!kernel_branched_path_surface_bounce(kg,
-			                                        &bsdf_rng,
 			                                        sd,
 			                                        sc,
 			                                        j,
 			                                        num_samples,
 			                                        tp,
 			                                        ps,
-			                                        L,
+			                                        &L->state,
 			                                        bsdf_ray,
 			                                        sum_sample_weight))
 			{
 				continue;
 			}
 
+			ps->rng_hash = branched_state->path_state.rng_hash;
+
 			/* update state for next iteration */
 			branched_state->next_closure = i;
 			branched_state->next_sample = j+1;
-			branched_state->num_samples = num_samples;
 
 			/* start the indirect path */
 			*tp *= num_samples_inv;

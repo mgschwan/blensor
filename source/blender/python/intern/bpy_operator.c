@@ -43,7 +43,7 @@
 #include "bpy_operator.h"
 #include "bpy_operator_wrap.h"
 #include "bpy_rna.h" /* for setting arg props only - pyrna_py_to_prop() */
-#include "bpy_util.h"
+#include "bpy_capi_utils.h"
 #include "../generic/bpy_internal_import.h"
 #include "../generic/py_capi_utils.h"
 #include "../generic/python_utildefines.h"
@@ -384,7 +384,7 @@ static PyObject *pyop_dir(PyObject *UNUSED(self))
 	int i;
 
 	WM_operatortype_iter(&iter);
-	list = PyList_New(BLI_ghash_size(iter.gh));
+	list = PyList_New(BLI_ghash_len(iter.gh));
 
 	for (i = 0; !BLI_ghashIterator_done(&iter); BLI_ghashIterator_step(&iter), i++) {
 		wmOperatorType *ot = BLI_ghashIterator_getValue(&iter);
@@ -450,7 +450,7 @@ static PyObject *pyop_getinstance(PyObject *UNUSED(self), PyObject *value)
 	op = PyMem_MALLOC(sizeof(wmOperator));
 	memset(op, 0, sizeof(wmOperator));
 #endif
-	BLI_strncpy(op->idname, op->idname, sizeof(op->idname)); /* in case its needed */
+	BLI_strncpy(op->idname, ot->idname, sizeof(op->idname)); /* in case its needed */
 	op->type = ot;
 
 	RNA_pointer_create(NULL, &RNA_Operator, op, &ptr);

@@ -89,6 +89,56 @@ def foreach_cycles_node(callback):
                                     traversed)
 
 
+def displacement_node_insert(material, nodetree, traversed):
+    if nodetree in traversed:
+        return
+    traversed.add(nodetree)
+
+    for node in nodetree.nodes:
+        if node.bl_idname == 'ShaderNodeGroup':
+            displacement_node_insert(material, node.node_tree, traversed)
+
+    # Gather links to replace
+    displacement_links = []
+    for link in nodetree.links:
+        if link.to_node.bl_idname == 'ShaderNodeOutputMaterial' and \
+           link.from_node.bl_idname != 'ShaderNodeDisplacement' and \
+           link.to_socket.identifier == 'Displacement':
+           displacement_links.append(link)
+
+    # Replace links with displacement node
+    for link in displacement_links:
+        from_node = link.from_node
+        from_socket = link.from_socket
+        to_node = link.to_node
+        to_socket = link.to_socket
+
+        nodetree.links.remove(link)
+
+        node = nodetree.nodes.new(type='ShaderNodeDisplacement')
+        node.location[0] = 0.5 * (from_node.location[0] + to_node.location[0]);
+        node.location[1] = 0.5 * (from_node.location[1] + to_node.location[1]);
+        node.inputs['Scale'].default_value = 0.1
+        node.inputs['Midlevel'].default_value = 0.0
+
+        nodetree.links.new(from_socket, node.inputs['Height'])
+        nodetree.links.new(node.outputs['Displacement'], to_socket)
+
+def displacement_nodes_insert():
+    traversed = set()
+    for material in bpy.data.materials:
+        if check_is_new_shading_material(material):
+            displacement_node_insert(material, material.node_tree, traversed)
+
+def displacement_principled_nodes(node):
+    if node.bl_idname == 'ShaderNodeDisplacement':
+        if node.space != 'WORLD':
+            node.space = 'OBJECT'
+    if node.bl_idname == 'ShaderNodeBsdfPrincipled':
+        if node.subsurface_method != 'RANDOM_WALK':
+            node.subsurface_method = 'BURLEY'
+
+
 def mapping_node_order_flip(node):
     """
     Flip euler order of mapping shader node
@@ -302,3 +352,27 @@ def do_versions(self):
             cscene = scene.cycles
             if not cscene.is_property_set("light_sampling_threshold"):
                 cscene.light_sampling_threshold = 0.0
+
+    if bpy.data.version <= (2, 79, 0):
+        for scene in bpy.data.scenes:
+            cscene = scene.cycles
+            # Default changes
+            if not cscene.is_property_set("aa_samples"):
+                cscene.aa_samples = 4
+            if not cscene.is_property_set("preview_aa_samples"):
+                cscene.preview_aa_samples = 4
+            if not cscene.is_property_set("blur_glossy"):
+                cscene.blur_glossy = 0.0
+            if not cscene.is_property_set("sample_clamp_indirect"):
+                cscene.sample_clamp_indirect = 0.0
+
+    if bpy.data.version <= (2, 79, 1):
+        displacement_nodes_insert()
+
+    if bpy.data.version <= (2, 79, 2):
+        for mat in bpy.data.materials:
+            cmat = mat.cycles
+            if not cmat.is_property_set("displacement_method"):
+                cmat.displacement_method = 'BUMP'
+
+        foreach_cycles_node(displacement_principled_nodes)

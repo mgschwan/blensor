@@ -24,6 +24,7 @@
  *  \ingroup RNA
  */
 
+#include <limits.h>
 #include <stdlib.h>
 
 #include "DNA_curve_types.h"
@@ -34,6 +35,7 @@
 #include "DNA_scene_types.h"
 
 #include "BLI_utildefines.h"
+#include "BLI_math_base.h"
 
 #include "BKE_appdir.h"
 #include "BKE_DerivedMesh.h"
@@ -53,7 +55,7 @@
 #include "GPU_buffers.h"
 
 #ifdef WITH_OPENSUBDIV
-static EnumPropertyItem opensubdiv_compute_type_items[] = {
+static const EnumPropertyItem opensubdiv_compute_type_items[] = {
 	{USER_OPENSUBDIV_COMPUTE_NONE, "NONE", 0, "None", ""},
 	{USER_OPENSUBDIV_COMPUTE_CPU, "CPU", 0, "CPU", ""},
 	{USER_OPENSUBDIV_COMPUTE_OPENMP, "OPENMP", 0, "OpenMP", ""},
@@ -65,7 +67,7 @@ static EnumPropertyItem opensubdiv_compute_type_items[] = {
 };
 #endif
 
-static EnumPropertyItem audio_device_items[] = {
+static const EnumPropertyItem audio_device_items[] = {
 	{0, "NONE", 0, "None", "Null device - there will be no audio output"},
 #ifdef WITH_SDL
 	{1, "SDL", 0, "SDL", "SDL device - simple direct media layer, recommended for sequencer usage"},
@@ -79,14 +81,14 @@ static EnumPropertyItem audio_device_items[] = {
 	{0, NULL, 0, NULL, NULL}
 };
 
-EnumPropertyItem rna_enum_navigation_mode_items[] = {
+const EnumPropertyItem rna_enum_navigation_mode_items[] = {
 	{VIEW_NAVIGATION_WALK, "WALK", 0, "Walk", "Interactively walk or free navigate around the scene"},
 	{VIEW_NAVIGATION_FLY, "FLY", 0, "Fly", "Use fly dynamics to navigate the scene"},
 	{0, NULL, 0, NULL, NULL}
 };
 
 #if defined(WITH_INTERNATIONAL) || !defined(RNA_RUNTIME)
-static EnumPropertyItem rna_enum_language_default_items[] = {
+static const EnumPropertyItem rna_enum_language_default_items[] = {
 	{0, "DEFAULT", 0, "Default (Default)", ""},
 	{0, NULL, 0, NULL, NULL}
 };
@@ -150,6 +152,12 @@ static void rna_userdef_dpi_update(Main *bmain, Scene *UNUSED(scene), PointerRNA
 	}
 
 	WM_main_add_notifier(NC_WINDOW, NULL);      /* full redraw */
+	WM_main_add_notifier(NC_SCREEN | NA_EDITED, NULL);    /* refresh region sizes */
+}
+
+static void rna_userdef_update_ui(Main *UNUSED(bmain), Scene *UNUSED(scene), PointerRNA *UNUSED(ptr))
+{
+	WM_main_add_notifier(NC_WINDOW, NULL);
 	WM_main_add_notifier(NC_SCREEN | NA_EDITED, NULL);    /* refresh region sizes */
 }
 
@@ -393,26 +401,23 @@ static void rna_userdef_autosave_update(Main *bmain, Scene *scene, PointerRNA *p
 
 static bAddon *rna_userdef_addon_new(void)
 {
-	bAddon *bext = MEM_callocN(sizeof(bAddon), "bAddon");
-	BLI_addtail(&U.addons, bext);
-	return bext;
+	ListBase *addons_list = &U.addons;
+	bAddon *addon = BKE_addon_new();
+	BLI_addtail(addons_list, addon);
+	return addon;
 }
 
-static void rna_userdef_addon_remove(ReportList *reports, PointerRNA *path_cmp_ptr)
+static void rna_userdef_addon_remove(ReportList *reports, PointerRNA *addon_ptr)
 {
-	bAddon *bext = path_cmp_ptr->data;
-	if (BLI_findindex(&U.addons, bext) == -1) {
+	ListBase *addons_list = &U.addons;
+	bAddon *addon = addon_ptr->data;
+	if (BLI_findindex(addons_list, addon) == -1) {
 		BKE_report(reports, RPT_ERROR, "Add-on is no longer valid");
 		return;
 	}
-
-	if (bext->prop) {
-		IDP_FreeProperty(bext->prop);
-		MEM_freeN(bext->prop);
-	}
-
-	BLI_freelinkN(&U.addons, bext);
-	RNA_POINTER_INVALIDATE(path_cmp_ptr);
+	BLI_remlink(addons_list, addon);
+	BKE_addon_free(addon);
+	RNA_POINTER_INVALIDATE(addon_ptr);
 }
 
 static bPathCompare *rna_userdef_pathcompare_new(void)
@@ -462,7 +467,7 @@ static PointerRNA rna_Theme_space_list_generic_get(PointerRNA *ptr)
 
 
 #ifdef WITH_OPENSUBDIV
-static EnumPropertyItem *rna_userdef_opensubdiv_compute_type_itemf(bContext *UNUSED(C), PointerRNA *UNUSED(ptr),
+static const EnumPropertyItem *rna_userdef_opensubdiv_compute_type_itemf(bContext *UNUSED(C), PointerRNA *UNUSED(ptr),
                                                                    PropertyRNA *UNUSED(prop), bool *r_free)
 {
 	EnumPropertyItem *item = NULL;
@@ -509,7 +514,7 @@ static void rna_userdef_opensubdiv_update(Main *bmain, Scene *UNUSED(scene), Poi
 
 #endif
 
-static EnumPropertyItem *rna_userdef_audio_device_itemf(bContext *UNUSED(C), PointerRNA *UNUSED(ptr),
+static const EnumPropertyItem *rna_userdef_audio_device_itemf(bContext *UNUSED(C), PointerRNA *UNUSED(ptr),
                                                         PropertyRNA *UNUSED(prop), bool *r_free)
 {
 	int index = 0;
@@ -561,10 +566,10 @@ static EnumPropertyItem *rna_userdef_audio_device_itemf(bContext *UNUSED(C), Poi
 }
 
 #ifdef WITH_INTERNATIONAL
-static EnumPropertyItem *rna_lang_enum_properties_itemf(bContext *UNUSED(C), PointerRNA *UNUSED(ptr),
+static const EnumPropertyItem *rna_lang_enum_properties_itemf(bContext *UNUSED(C), PointerRNA *UNUSED(ptr),
                                                         PropertyRNA *UNUSED(prop), bool *UNUSED(r_free))
 {
-	EnumPropertyItem *items = BLT_lang_RNA_enum_properties();
+	const EnumPropertyItem *items = BLT_lang_RNA_enum_properties();
 	if (items == NULL) {
 		items = rna_enum_language_default_items;
 	}
@@ -606,16 +611,17 @@ static void rna_AddonPref_unregister(Main *UNUSED(bmain), StructRNA *type)
 		return;
 
 	RNA_struct_free_extension(type, &apt->ext);
+	RNA_struct_free(&BLENDER_RNA, type);
 
 	BKE_addon_pref_type_remove(apt);
-	RNA_struct_free(&BLENDER_RNA, type);
 
 	/* update while blender is running */
 	WM_main_add_notifier(NC_WINDOW, NULL);
 }
 
-static StructRNA *rna_AddonPref_register(Main *bmain, ReportList *reports, void *data, const char *identifier,
-                                         StructValidateFunc validate, StructCallbackFunc call, StructFreeFunc free)
+static StructRNA *rna_AddonPref_register(
+        Main *bmain, ReportList *reports, void *data, const char *identifier,
+        StructValidateFunc validate, StructCallbackFunc call, StructFreeFunc free)
 {
 	bAddonPrefType *apt, dummyapt = {{'\0'}};
 	bAddon dummyaddon = {NULL};
@@ -638,10 +644,8 @@ static StructRNA *rna_AddonPref_register(Main *bmain, ReportList *reports, void 
 
 	/* check if we have registered this header type before, and remove it */
 	apt = BKE_addon_pref_type_find(dummyaddon.module, true);
-	if (apt) {
-		if (apt->ext.srna) {
-			rna_AddonPref_unregister(bmain, apt->ext.srna);
-		}
+	if (apt && apt->ext.srna) {
+		rna_AddonPref_unregister(bmain, apt->ext.srna);
 	}
 
 	/* create a new header type */
@@ -671,12 +675,33 @@ static StructRNA *rna_AddonPref_refine(PointerRNA *ptr)
 
 #else
 
+/* TODO(sergey): This technically belongs to blenlib, but we don't link
+ * makesrna against it.
+ */
+
+/* Get maximum addressable memory in megabytes, */
+static size_t max_memory_in_megabytes(void)
+{
+	/* Maximum addressable bytes on this platform. */
+	const size_t limit_bytes = (((size_t)1) << ((sizeof(size_t) * 8) - 1));
+	/* Convert it to megabytes and return. */
+	return (limit_bytes >> 20);
+}
+
+/* Same as above, but clipped to int capacity. */
+static int max_memory_in_megabytes_int(void)
+{
+	const size_t limit_megabytes = max_memory_in_megabytes();
+	/* NOTE: The result will fit into integer. */
+	return (int)min_zz(limit_megabytes, (size_t)INT_MAX);
+}
+
 static void rna_def_userdef_theme_ui_font_style(BlenderRNA *brna)
 {
 	StructRNA *srna;
 	PropertyRNA *prop;
 	
-	static EnumPropertyItem font_kerning_style[] = {
+	static const EnumPropertyItem font_kerning_style[] = {
 		{0, "UNFITTED", 0, "Unfitted", "Use scaled but un-grid-fitted kerning distances"},
 		{1, "FITTED", 0, "Fitted", "Use scaled and grid-fitted kerning distances"},
 		{0, NULL, 0, NULL, NULL}
@@ -2949,7 +2974,7 @@ static void rna_def_userdef_themes(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 	
-	static EnumPropertyItem active_theme_area[] = {
+	static const EnumPropertyItem active_theme_area[] = {
 		{0, "USER_INTERFACE", ICON_UI, "User Interface", ""},
 		{19, "STYLE", ICON_FONTPREVIEW, "Text Style", ""},
 		{18, "BONE_COLOR_SETS", ICON_COLOR, "Bone Color Sets", ""},
@@ -3281,7 +3306,7 @@ static void rna_def_userdef_walk_navigation(BlenderRNA *brna)
 
 static void rna_def_userdef_view(BlenderRNA *brna)
 {
-	static EnumPropertyItem timecode_styles[] = {
+	static const EnumPropertyItem timecode_styles[] = {
 		{USER_TIMECODE_MINIMAL, "MINIMAL", 0, "Minimal Info",
 		                        "Most compact representation, uses '+' as separator for sub-second frame numbers, "
 		                        "with left and right truncation of the timecode as necessary"},
@@ -3297,14 +3322,14 @@ static void rna_def_userdef_view(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem zoom_frame_modes[] = {
+	static const EnumPropertyItem zoom_frame_modes[] = {
 		{ZOOM_FRAME_MODE_KEEP_RANGE, "KEEP_RANGE", 0, "Keep Range", ""},
 		{ZOOM_FRAME_MODE_SECONDS, "SECONDS", 0, "Seconds", ""},
 		{ZOOM_FRAME_MODE_KEYFRAMES, "KEYFRAMES", 0, "Keyframes", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem line_width[] = {
+	static const EnumPropertyItem line_width[] = {
 		{-1, "THIN", 0, "Thin", "Thinner lines than the default"},
 		{ 0, "AUTO", 0, "Auto", "Automatic line width based on UI scale"},
 		{ 1, "THICK", 0, "Thick", "Thicker lines than the default"},
@@ -3367,12 +3392,24 @@ static void rna_def_userdef_view(BlenderRNA *brna)
 	RNA_def_property_boolean_negative_sdna(prop, NULL, "uiflag", USER_SPLASH_DISABLE);
 	RNA_def_property_ui_text(prop, "Show Splash", "Display splash screen on startup");
 
+
 	prop = RNA_def_property(srna, "show_playback_fps", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "uiflag", USER_SHOW_FPS);
 	RNA_def_property_ui_text(prop, "Show Playback FPS",
 	                         "Show the frames per second screen refresh rate, while animation is played back");
 	RNA_def_property_update(prop, 0, "rna_userdef_update");
-	
+
+	/* app flags (use for app-templates) */
+	prop = RNA_def_property(srna, "show_layout_ui", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "app_flag", USER_APP_LOCK_UI_LAYOUT);
+	RNA_def_property_ui_text(prop, "Show Layout Widgets", "Show screen layout editing UI");
+	RNA_def_property_update(prop, 0, "rna_userdef_update_ui");
+
+	prop = RNA_def_property(srna, "show_view3d_cursor", PROP_BOOLEAN, PROP_NONE);
+	RNA_def_property_boolean_negative_sdna(prop, NULL, "app_flag", USER_APP_VIEW3D_HIDE_CURSOR);
+	RNA_def_property_ui_text(prop, "Show 3D View Cursor", "");
+	RNA_def_property_update(prop, 0, "rna_userdef_update");
+
 	/* menus */
 	prop = RNA_def_property(srna, "use_mouse_over_open", PROP_BOOLEAN, PROP_NONE);
 	RNA_def_property_boolean_sdna(prop, NULL, "uiflag", USER_MENUOPENAUTO);
@@ -3449,12 +3486,12 @@ static void rna_def_userdef_view(BlenderRNA *brna)
 	RNA_def_property_ui_text(prop, "Global Pivot", "Lock the same rotation/scaling pivot in all 3D Views");
 
 	prop = RNA_def_property(srna, "use_mouse_depth_navigate", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "uiflag", USER_ZBUF_ORBIT);
+	RNA_def_property_boolean_sdna(prop, NULL, "uiflag", USER_DEPTH_NAVIGATE);
 	RNA_def_property_ui_text(prop, "Auto Depth",
 	                         "Use the depth under the mouse to improve view pan/rotate/zoom functionality");
 
 	prop = RNA_def_property(srna, "use_mouse_depth_cursor", PROP_BOOLEAN, PROP_NONE);
-	RNA_def_property_boolean_sdna(prop, NULL, "uiflag", USER_ZBUF_CURSOR);
+	RNA_def_property_boolean_sdna(prop, NULL, "uiflag", USER_DEPTH_CURSOR);
 	RNA_def_property_ui_text(prop, "Cursor Depth",
 	                         "Use the depth under the mouse when placing the cursor");
 
@@ -3587,7 +3624,7 @@ static void rna_def_userdef_edit(BlenderRNA *brna)
 	PropertyRNA *prop;
 	StructRNA *srna;
 
-	static EnumPropertyItem auto_key_modes[] = {
+	static const EnumPropertyItem auto_key_modes[] = {
 		{AUTOKEY_MODE_NORMAL, "ADD_REPLACE_KEYS", 0, "Add/Replace", ""},
 		{AUTOKEY_MODE_EDITKEYS, "REPLACE_KEYS", 0, "Replace", ""},
 		{0, NULL, 0, NULL, NULL}
@@ -3645,7 +3682,7 @@ static void rna_def_userdef_edit(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "undo_memory_limit", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "undomemory");
-	RNA_def_property_range(prop, 0, 32767);
+	RNA_def_property_range(prop, 0, max_memory_in_megabytes_int());
 	RNA_def_property_ui_text(prop, "Undo Memory Size", "Maximum memory usage in megabytes (0 means unlimited)");
 
 	prop = RNA_def_property(srna, "use_global_undo", PROP_BOOLEAN, PROP_NONE);
@@ -3817,7 +3854,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 	PropertyRNA *prop;
 	StructRNA *srna;
 
-	static EnumPropertyItem gl_texture_clamp_items[] = {
+	static const EnumPropertyItem gl_texture_clamp_items[] = {
 		{0, "CLAMP_OFF", 0, "Off", ""},
 		{8192, "CLAMP_8192", 0, "8192", ""},
 		{4096, "CLAMP_4096", 0, "4096", ""},
@@ -3829,7 +3866,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem anisotropic_items[] = {
+	static const EnumPropertyItem anisotropic_items[] = {
 		{1, "FILTER_0", 0, "Off", ""},
 		{2, "FILTER_2", 0, "2x", ""},
 		{4, "FILTER_4", 0, "4x", ""},
@@ -3838,7 +3875,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem audio_mixing_samples_items[] = {
+	static const EnumPropertyItem audio_mixing_samples_items[] = {
 		{256, "SAMPLES_256", 0, "256", "Set audio mixing buffer size to 256 samples"},
 		{512, "SAMPLES_512", 0, "512", "Set audio mixing buffer size to 512 samples"},
 		{1024, "SAMPLES_1024", 0, "1024", "Set audio mixing buffer size to 1024 samples"},
@@ -3850,7 +3887,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem audio_rate_items[] = {
+	static const EnumPropertyItem audio_rate_items[] = {
 /*		{8000, "RATE_8000", 0, "8 kHz", "Set audio sampling rate to 8000 samples per second"}, */
 /*		{11025, "RATE_11025", 0, "11.025 kHz", "Set audio sampling rate to 11025 samples per second"}, */
 /*		{16000, "RATE_16000", 0, "16 kHz", "Set audio sampling rate to 16000 samples per second"}, */
@@ -3864,7 +3901,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem audio_format_items[] = {
+	static const EnumPropertyItem audio_format_items[] = {
 		{0x01, "U8", 0, "8-bit Unsigned", "Set audio sample format to 8 bit unsigned integer"},
 		{0x12, "S16", 0, "16-bit Signed", "Set audio sample format to 16 bit signed integer"},
 		{0x13, "S24", 0, "24-bit Signed", "Set audio sample format to 24 bit signed integer"},
@@ -3874,7 +3911,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem audio_channel_items[] = {
+	static const EnumPropertyItem audio_channel_items[] = {
 		{1, "MONO", 0, "Mono", "Set audio channels to mono"},
 		{2, "STEREO", 0, "Stereo", "Set audio channels to stereo"},
 		{4, "SURROUND4", 0, "4 Channels", "Set audio channels to 4 channels"},
@@ -3883,7 +3920,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem draw_method_items[] = {
+	static const EnumPropertyItem draw_method_items[] = {
 		{USER_DRAW_AUTOMATIC, "AUTOMATIC", 0, "Automatic", "Automatically set based on graphics card and driver"},
 		{USER_DRAW_TRIPLE, "TRIPLE_BUFFER", 0, "Triple Buffer",
 		                   "Use a third buffer for minimal redraws at the cost of more memory"},
@@ -3897,7 +3934,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 	
-	static EnumPropertyItem color_picker_types[] = {
+	static const EnumPropertyItem color_picker_types[] = {
 		{USER_CP_CIRCLE_HSV, "CIRCLE_HSV", 0, "Circle (HSV)", "A circular Hue/Saturation color wheel, with Value slider"},
 		{USER_CP_CIRCLE_HSL, "CIRCLE_HSL", 0, "Circle (HSL)", "A circular Hue/Saturation color wheel, with Lightness slider"},
 		{USER_CP_SQUARE_SV, "SQUARE_SV", 0, "Square (SV + H)", "A square showing Saturation/Value, with Hue slider"},
@@ -3906,7 +3943,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 	
-	static EnumPropertyItem multi_sample_levels[] = {
+	static const EnumPropertyItem multi_sample_levels[] = {
 		{USER_MULTISAMPLE_NONE, "NONE", 0, "No MultiSample", "Do not use OpenGL MultiSample"},
 		{USER_MULTISAMPLE_2, "2", 0, "MultiSample: 2", "Use 2x OpenGL MultiSample (requires restart)"},
 		{USER_MULTISAMPLE_4, "4", 0, "MultiSample: 4", "Use 4x OpenGL MultiSample (requires restart)"},
@@ -3915,14 +3952,14 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem image_draw_methods[] = {
+	static const EnumPropertyItem image_draw_methods[] = {
 		{IMAGE_DRAW_METHOD_2DTEXTURE, "2DTEXTURE", 0, "2D Texture", "Use CPU for display transform and draw image with 2D texture"},
 		{IMAGE_DRAW_METHOD_GLSL, "GLSL", 0, "GLSL", "Use GLSL shaders for display transform and draw image with 2D texture"},
 		{IMAGE_DRAW_METHOD_DRAWPIXELS, "DRAWPIXELS", 0, "DrawPixels", "Use CPU for display transform and draw image using DrawPixels"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem gpu_select_method_items[] = {
+	static const EnumPropertyItem gpu_select_method_items[] = {
 	    {USER_SELECT_AUTO, "AUTO", 0, "Automatic", ""},
 	    {USER_SELECT_USE_SELECT_RENDERMODE, "GL_SELECT", 0, "OpenGL Select", ""},
 	    {USER_SELECT_USE_OCCLUSION_QUERY, "GL_QUERY", 0, "OpenGL Occlusion Queries", ""},
@@ -4055,7 +4092,7 @@ static void rna_def_userdef_system(BlenderRNA *brna)
 
 	prop = RNA_def_property(srna, "memory_cache_limit", PROP_INT, PROP_NONE);
 	RNA_def_property_int_sdna(prop, NULL, "memcachelimit");
-	RNA_def_property_range(prop, 0, (sizeof(void *) == 8) ? 1024 * 32 : 1024); /* 32 bit 2 GB, 64 bit 32 GB */
+	RNA_def_property_range(prop, 0, max_memory_in_megabytes_int());
 	RNA_def_property_ui_text(prop, "Memory Cache Limit", "Memory cache limit (in megabytes)");
 	RNA_def_property_update(prop, 0, "rna_Userdef_memcache_update");
 
@@ -4221,33 +4258,33 @@ static void rna_def_userdef_input(BlenderRNA *brna)
 	PropertyRNA *prop;
 	StructRNA *srna;
 
-	static EnumPropertyItem select_mouse_items[] = {
+	static const EnumPropertyItem select_mouse_items[] = {
 		{USER_LMOUSESELECT, "LEFT", 0, "Left", "Use left Mouse Button for selection"},
 		{0, "RIGHT", 0, "Right", "Use Right Mouse Button for selection"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem view_rotation_items[] = {
+	static const EnumPropertyItem view_rotation_items[] = {
 		{0, "TURNTABLE", 0, "Turntable", "Use turntable style rotation in the viewport"},
 		{USER_TRACKBALL, "TRACKBALL", 0, "Trackball", "Use trackball style rotation in the viewport"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
 #ifdef WITH_INPUT_NDOF
-	static EnumPropertyItem ndof_view_navigation_items[] = {
+	static const EnumPropertyItem ndof_view_navigation_items[] = {
 		{0, "FREE", 0, "Free", "Use full 6 degrees of freedom by default"},
 		{NDOF_MODE_ORBIT, "ORBIT", 0, "Orbit", "Orbit about the view center by default"},
 		{0, NULL, 0, NULL, NULL}
 	};
 
-	static EnumPropertyItem ndof_view_rotation_items[] = {
+	static const EnumPropertyItem ndof_view_rotation_items[] = {
 		{NDOF_TURNTABLE, "TURNTABLE", 0, "Turntable", "Use turntable style rotation in the viewport"},
 		{0, "TRACKBALL", 0, "Trackball", "Use trackball style rotation in the viewport"},
 		{0, NULL, 0, NULL, NULL}
 	};
 #endif /* WITH_INPUT_NDOF */
 
-	static EnumPropertyItem view_zoom_styles[] = {
+	static const EnumPropertyItem view_zoom_styles[] = {
 		{USER_ZOOM_CONT, "CONTINUE", 0, "Continue", "Old style zoom, continues while moving mouse up or down"},
 		{USER_ZOOM_DOLLY, "DOLLY", 0, "Dolly", "Zoom in and out based on vertical mouse movement"},
 		{USER_ZOOM_SCALE, "SCALE", 0, "Scale",
@@ -4255,7 +4292,7 @@ static void rna_def_userdef_input(BlenderRNA *brna)
 		{0, NULL, 0, NULL, NULL}
 	};
 	
-	static EnumPropertyItem view_zoom_axes[] = {
+	static const EnumPropertyItem view_zoom_axes[] = {
 		{0, "VERTICAL", 0, "Vertical", "Zoom in and out based on vertical mouse movement"},
 		{USER_ZOOM_HORIZ, "HORIZONTAL", 0, "Horizontal", "Zoom in and out based on horizontal mouse movement"},
 		{0, NULL, 0, NULL, NULL}
@@ -4456,7 +4493,7 @@ static void rna_def_userdef_filepaths(BlenderRNA *brna)
 	PropertyRNA *prop;
 	StructRNA *srna;
 	
-	static EnumPropertyItem anim_player_presets[] = {
+	static const EnumPropertyItem anim_player_presets[] = {
 		{0, "INTERNAL", 0, "Internal", "Built-in animation player"},
 		{2, "DJV", 0, "Djv", "Open source frame player: http://djv.sourceforge.net"},
 		{3, "FRAMECYCLER", 0, "FrameCycler", "Frame player from IRIDAS"},
@@ -4651,7 +4688,7 @@ void RNA_def_userdef(BlenderRNA *brna)
 	StructRNA *srna;
 	PropertyRNA *prop;
 
-	static EnumPropertyItem user_pref_sections[] = {
+	static const EnumPropertyItem user_pref_sections[] = {
 		{USER_SECTION_INTERFACE, "INTERFACE", 0, "Interface", ""},
 		{USER_SECTION_EDIT, "EDITING", 0, "Editing", ""},
 		{USER_SECTION_INPUT, "INPUT", 0, "Input", ""},

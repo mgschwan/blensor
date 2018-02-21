@@ -75,14 +75,10 @@ static void copyData(ModifierData *md, ModifierData *target)
 {
 #if 0
 	DisplaceModifierData *dmd = (DisplaceModifierData *) md;
-#endif
 	DisplaceModifierData *tdmd = (DisplaceModifierData *) target;
+#endif
 
 	modifier_copyData_generic(md, target);
-
-	if (tdmd->texture) {
-		id_us_plus(&tdmd->texture->id);
-	}
 }
 
 static void freeData(ModifierData *md)
@@ -217,7 +213,10 @@ typedef struct DisplaceUserdata {
 	float (*vert_clnors)[3];
 } DisplaceUserdata;
 
-static void displaceModifier_do_task(void *userdata, const int iter)
+static void displaceModifier_do_task(
+        void *__restrict userdata,
+        const int iter,
+        const ParallelRangeTLS *__restrict UNUSED(tls))
 {
 	DisplaceUserdata *data = (DisplaceUserdata *)userdata;
 	DisplaceModifierData *dmd = data->dmd;
@@ -335,7 +334,7 @@ static void displaceModifier_do(
 	modifier_get_vgroup(ob, dm, dmd->defgrp_name, &dvert, &defgrp_index);
 
 	if (dmd->texture) {
-		tex_co = MEM_callocN(sizeof(*tex_co) * numVerts,
+		tex_co = MEM_calloc_arrayN((size_t)numVerts, sizeof(*tex_co),
 		                     "displaceModifier_do tex_co");
 		get_texture_coords((MappingInfoModifierData *)dmd, ob, dm, vertexCos, tex_co, numVerts);
 
@@ -356,7 +355,7 @@ static void displaceModifier_do(
 			}
 
 			clnors = CustomData_get_layer(ldata, CD_NORMAL);
-			vert_clnors = MEM_mallocN(sizeof(*vert_clnors) * (size_t)numVerts, __func__);
+			vert_clnors = MEM_malloc_arrayN(numVerts, sizeof(*vert_clnors), __func__);
 			BKE_mesh_normals_loop_to_vertex(numVerts, dm->getLoopArray(dm), dm->getNumLoops(dm),
 			                                (const float (*)[3])clnors, vert_clnors);
 		}
@@ -386,7 +385,13 @@ static void displaceModifier_do(
 		data.pool = BKE_image_pool_new();
 		BKE_texture_fetch_images_for_pool(dmd->texture, data.pool);
 	}
-	BLI_task_parallel_range(0, numVerts, &data, displaceModifier_do_task, numVerts > 512);
+	ParallelRangeSettings settings;
+	BLI_parallel_range_settings_defaults(&settings);
+	settings.use_threading = (numVerts > 512);
+	BLI_task_parallel_range(0, numVerts,
+	                        &data,
+	                        displaceModifier_do_task,
+	                        &settings);
 
 	if (data.pool != NULL) {
 		BKE_image_pool_free(data.pool);

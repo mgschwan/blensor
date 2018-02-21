@@ -28,7 +28,6 @@
 CCL_NAMESPACE_BEGIN
 
 class Device;
-class DeviceScene;
 class Progress;
 class Scene;
 
@@ -62,21 +61,17 @@ public:
 	                                 bool& is_linear,
 	                                 bool& builtin_free_cache);
 
-	void device_prepare_update(DeviceScene *dscene);
 	void device_update(Device *device,
-	                   DeviceScene *dscene,
 	                   Scene *scene,
 	                   Progress& progress);
 	void device_update_slot(Device *device,
-	                        DeviceScene *dscene,
 	                        Scene *scene,
 	                        int flat_slot,
 	                        Progress *progress);
-	void device_free(Device *device, DeviceScene *dscene);
-	void device_free_builtin(Device *device, DeviceScene *dscene);
+	void device_free(Device *device);
+	void device_free_builtin(Device *device);
 
 	void set_osl_texture_system(void *texture_system);
-	void set_pack_images(bool pack_images_);
 	bool set_animation_frame_update(int frame);
 
 	bool need_update;
@@ -116,6 +111,9 @@ public:
 		InterpolationType interpolation;
 		ExtensionType extension;
 
+		string mem_name;
+		device_memory *mem;
+
 		int users;
 	};
 
@@ -130,7 +128,6 @@ private:
 
 	vector<Image*> images[IMAGE_DATA_NUM_TYPES];
 	void *osl_texture_system;
-	bool pack_images;
 
 	bool file_load_image_generic(Image *img,
 	                             ImageInput **in,
@@ -152,29 +149,14 @@ private:
 	int flattened_slot_to_type_index(int flat_slot, ImageDataType *type);
 	string name_from_type(int type);
 
-	uint8_t pack_image_options(ImageDataType type, size_t slot);
-
 	void device_load_image(Device *device,
-	                       DeviceScene *dscene,
 	                       Scene *scene,
 	                       ImageDataType type,
 	                       int slot,
 	                       Progress *progess);
 	void device_free_image(Device *device,
-	                       DeviceScene *dscene,
 	                       ImageDataType type,
 	                       int slot);
-
-	template<typename T>
-	void device_pack_images_type(
-	        ImageDataType type,
-	        const vector<device_vector<T>*>& cpu_textures,
-	        device_vector<T> *device_image,
-	        uint4 *info);
-
-	void device_pack_images(Device *device,
-	                        DeviceScene *dscene,
-	                        Progress& progess);
 };
 
 CCL_NAMESPACE_END

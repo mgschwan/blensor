@@ -48,7 +48,7 @@
 #include "DNA_mesh_types.h"
 #include "DNA_meshdata_types.h"
 #include "DNA_modifier_types.h"
-#include "DNA_object_force.h"
+#include "DNA_object_force_types.h"
 #include "DNA_object_types.h"
 #include "DNA_curve_types.h"
 #include "DNA_scene_types.h"
@@ -96,7 +96,7 @@
 
 /* fluid sim particle import */
 #ifdef WITH_MOD_FLUID
-#include "DNA_object_fluidsim.h"
+#include "DNA_object_fluidsim_types.h"
 #include "LBM_fluidsim.h"
 #include <zlib.h>
 #include <string.h>
@@ -497,6 +497,8 @@ void psys_thread_context_free(ParticleThreadContext *ctx)
 		MEM_freeN(ctx->vg_rough2);
 	if (ctx->vg_roughe)
 		MEM_freeN(ctx->vg_roughe);
+	if (ctx->vg_twist)
+		MEM_freeN(ctx->vg_twist);
 
 	if (ctx->sim.psys->lattice_deform_data) {
 		end_latt_deform(ctx->sim.psys->lattice_deform_data);
@@ -518,6 +520,9 @@ void psys_thread_context_free(ParticleThreadContext *ctx)
 	}
 	if (ctx->roughcurve != NULL) {
 		curvemapping_free(ctx->roughcurve);
+	}
+	if (ctx->twistcurve != NULL) {
+		curvemapping_free(ctx->twistcurve);
 	}
 }
 
@@ -2319,21 +2324,21 @@ static void collision_point_on_surface(float p[3], ParticleCollisionElement *pce
 		}
 		case 3:
 		{
-				float p0[3], e1[3], e2[3], nor[3];
+			float p0[3], e1[3], e2[3], nor[3];
 
-				sub_v3_v3v3(e1, pce->x1, pce->x0);
-				sub_v3_v3v3(e2, pce->x2, pce->x0);
-				sub_v3_v3v3(p0, p, pce->x0);
+			sub_v3_v3v3(e1, pce->x1, pce->x0);
+			sub_v3_v3v3(e2, pce->x2, pce->x0);
+			sub_v3_v3v3(p0, p, pce->x0);
 
-				cross_v3_v3v3(nor, e1, e2);
-				normalize_v3(nor);
+			cross_v3_v3v3(nor, e1, e2);
+			normalize_v3(nor);
 
-				if (pce->inv_nor == 1)
-					negate_v3(nor);
+			if (pce->inv_nor == 1)
+				negate_v3(nor);
 
-				madd_v3_v3v3fl(co, pce->x0, nor, col->radius);
-				madd_v3_v3fl(co, e1, pce->uv[0]);
-				madd_v3_v3fl(co, e2, pce->uv[1]);
+			madd_v3_v3v3fl(co, pce->x0, nor, col->radius);
+			madd_v3_v3fl(co, e1, pce->uv[0]);
+			madd_v3_v3fl(co, e2, pce->uv[1]);
 			break;
 		}
 	}
@@ -3371,14 +3376,16 @@ typedef struct DynamicStepSolverTaskData {
 } DynamicStepSolverTaskData;
 
 static void dynamics_step_sph_ddr_task_cb_ex(
-        void *userdata, void *userdata_chunk, const int p, const int UNUSED(thread_id))
+        void *__restrict userdata,
+        const int p,
+        const ParallelRangeTLS *__restrict tls)
 {
 	DynamicStepSolverTaskData *data = userdata;
 	ParticleSimulationData *sim = data->sim;
 	ParticleSystem *psys = sim->psys;
 	ParticleSettings *part = psys->part;
 
-	SPHData *sphdata = userdata_chunk;
+	SPHData *sphdata = tls->userdata_chunk;
 
 	ParticleData *pa;
 
@@ -3405,7 +3412,9 @@ static void dynamics_step_sph_ddr_task_cb_ex(
 }
 
 static void dynamics_step_sph_classical_basic_integrate_task_cb_ex(
-        void *userdata,  void *UNUSED(userdata_chunk), const int p, const int UNUSED(thread_id))
+        void *__restrict userdata, 
+        const int p,
+        const ParallelRangeTLS *__restrict UNUSED(tls))
 {
 	DynamicStepSolverTaskData *data = userdata;
 	ParticleSimulationData *sim = data->sim;
@@ -3421,13 +3430,15 @@ static void dynamics_step_sph_classical_basic_integrate_task_cb_ex(
 }
 
 static void dynamics_step_sph_classical_calc_density_task_cb_ex(
-        void *userdata, void *userdata_chunk, const int p, const int UNUSED(thread_id))
+        void *__restrict userdata,
+        const int p,
+        const ParallelRangeTLS *__restrict tls)
 {
 	DynamicStepSolverTaskData *data = userdata;
 	ParticleSimulationData *sim = data->sim;
 	ParticleSystem *psys = sim->psys;
 
-	SPHData *sphdata = userdata_chunk;
+	SPHData *sphdata = tls->userdata_chunk;
 
 	ParticleData *pa;
 
@@ -3439,14 +3450,16 @@ static void dynamics_step_sph_classical_calc_density_task_cb_ex(
 }
 
 static void dynamics_step_sph_classical_integrate_task_cb_ex(
-        void *userdata, void *userdata_chunk, const int p, const int UNUSED(thread_id))
+        void *__restrict userdata,
+        const int p,
+        const ParallelRangeTLS *__restrict tls)
 {
 	DynamicStepSolverTaskData *data = userdata;
 	ParticleSimulationData *sim = data->sim;
 	ParticleSystem *psys = sim->psys;
 	ParticleSettings *part = psys->part;
 
-	SPHData *sphdata = userdata_chunk;
+	SPHData *sphdata = tls->userdata_chunk;
 
 	ParticleData *pa;
 
@@ -3637,9 +3650,16 @@ static void dynamics_step(ParticleSimulationData *sim, float cfra)
 				/* Apply SPH forces using double-density relaxation algorithm
 				 * (Clavat et. al.) */
 
-				BLI_task_parallel_range_ex(
-				            0, psys->totpart, &task_data, &sphdata, sizeof(sphdata),
-				            dynamics_step_sph_ddr_task_cb_ex, psys->totpart > 100, true);
+				ParallelRangeSettings settings;
+				BLI_parallel_range_settings_defaults(&settings);
+				settings.use_threading = (psys->totpart > 100);
+				settings.userdata_chunk = &sphdata;
+				settings.userdata_chunk_size = sizeof(sphdata);
+				BLI_task_parallel_range(
+				        0, psys->totpart,
+				        &task_data,
+				        dynamics_step_sph_ddr_task_cb_ex,
+				        &settings);
 
 				sph_springs_modify(psys, timestep);
 			}
@@ -3649,21 +3669,46 @@ static void dynamics_step(ParticleSimulationData *sim, float cfra)
 				 * and Monaghan). Note that, unlike double-density relaxation,
 				 * this algorithm is separated into distinct loops. */
 
-				BLI_task_parallel_range_ex(
-				            0, psys->totpart, &task_data, NULL, 0,
-				            dynamics_step_sph_classical_basic_integrate_task_cb_ex, psys->totpart > 100, true);
+				{
+					ParallelRangeSettings settings;
+					BLI_parallel_range_settings_defaults(&settings);
+					settings.use_threading = (psys->totpart > 100);
+					BLI_task_parallel_range(
+					        0, psys->totpart,
+					        &task_data,
+					        dynamics_step_sph_classical_basic_integrate_task_cb_ex,
+					        &settings);
+				}
 
 				/* calculate summation density */
 				/* Note that we could avoid copying sphdata for each thread here (it's only read here),
 				 * but doubt this would gain us anything except confusion... */
-				BLI_task_parallel_range_ex(
-				            0, psys->totpart, &task_data, &sphdata, sizeof(sphdata),
-				            dynamics_step_sph_classical_calc_density_task_cb_ex, psys->totpart > 100, true);
+				{
+				ParallelRangeSettings settings;
+				BLI_parallel_range_settings_defaults(&settings);
+				settings.use_threading = (psys->totpart > 100);
+				settings.userdata_chunk = &sphdata;
+				settings.userdata_chunk_size = sizeof(sphdata);
+					BLI_task_parallel_range(
+					        0, psys->totpart,
+					        &task_data,
+					        dynamics_step_sph_classical_calc_density_task_cb_ex,
+					        &settings);
+				}
 
 				/* do global forces & effectors */
-				BLI_task_parallel_range_ex(
-				            0, psys->totpart, &task_data, &sphdata, sizeof(sphdata),
-				            dynamics_step_sph_classical_integrate_task_cb_ex, psys->totpart > 100, true);
+				{
+				ParallelRangeSettings settings;
+				BLI_parallel_range_settings_defaults(&settings);
+				settings.use_threading = (psys->totpart > 100);
+				settings.userdata_chunk = &sphdata;
+				settings.userdata_chunk_size = sizeof(sphdata);
+					BLI_task_parallel_range(
+					        0, psys->totpart,
+					        &task_data,
+					        dynamics_step_sph_classical_integrate_task_cb_ex,
+					        &settings);
+				}
 			}
 
 			BLI_spin_end(&task_data.spin);

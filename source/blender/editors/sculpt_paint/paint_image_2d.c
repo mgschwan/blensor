@@ -44,13 +44,13 @@
 #include "BLI_bitmap.h"
 #include "BLI_task.h"
 
+#include "BKE_colorband.h"
 #include "BKE_context.h"
 #include "BKE_depsgraph.h"
 #include "BKE_brush.h"
 #include "BKE_image.h"
 #include "BKE_paint.h"
 #include "BKE_report.h"
-#include "BKE_texture.h"
 
 #include "ED_paint.h"
 #include "ED_screen.h"
@@ -1070,7 +1070,10 @@ typedef struct Paint2DForeachData {
 	int tilew;
 } Paint2DForeachData;
 
-static void paint_2d_op_foreach_do(void *data_v, const int iter)
+static void paint_2d_op_foreach_do(
+        void *__restrict data_v,
+        const int iter,
+        const ParallelRangeTLS *__restrict UNUSED(tls))
 {
 	Paint2DForeachData *data = (Paint2DForeachData *)data_v;
 	paint_2d_do_making_brush(data->s, data->region, data->curveb,
@@ -1156,9 +1159,12 @@ static int paint_2d_op(void *state, ImBuf *ibufb, unsigned short *curveb, unsign
 				data.blend = blend;
 				data.tilex = tilex;
 				data.tilew = tilew;
+
+				ParallelRangeSettings settings;
+				BLI_parallel_range_settings_defaults(&settings);
 				BLI_task_parallel_range(tiley, tileh + 1, &data,
 				                        paint_2d_op_foreach_do,
-				                        true);
+				                        &settings);
 
 			}
 		}
@@ -1666,7 +1672,7 @@ void paint_2d_gradient_fill(
 						break;
 					}
 				}
-				do_colorband(br->gradient, f, color_f);
+				BKE_colorband_evaluate(br->gradient, f, color_f);
 				/* convert to premultiplied */
 				mul_v3_fl(color_f, color_f[3]);
 				color_f[3] *= br->alpha;
@@ -1696,7 +1702,7 @@ void paint_2d_gradient_fill(
 					}
 				}
 
-				do_colorband(br->gradient, f, color_f);
+				BKE_colorband_evaluate(br->gradient, f, color_f);
 				linearrgb_to_srgb_v3_v3(color_f, color_f);
 				rgba_float_to_uchar((unsigned char *)&color_b, color_f);
 				((unsigned char *)&color_b)[3] *= br->alpha;

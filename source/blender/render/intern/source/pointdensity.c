@@ -48,6 +48,7 @@
 #include "DNA_particle_types.h"
 #include "DNA_texture_types.h"
 
+#include "BKE_colorband.h"
 #include "BKE_deform.h"
 #include "BKE_DerivedMesh.h"
 #include "BKE_lattice.h"
@@ -55,7 +56,6 @@
 #include "BKE_object.h"
 #include "BKE_particle.h"
 #include "BKE_scene.h"
-#include "BKE_texture.h"
 #include "BKE_colortools.h"
 
 #include "render_types.h"
@@ -781,7 +781,7 @@ static int pointdensity_color(PointDensity *pd, TexResult *texres, float age, co
 		switch (pd->color_source) {
 			case TEX_PD_COLOR_PARTAGE:
 				if (pd->coba) {
-					if (do_colorband(pd->coba, age, rgba)) {
+					if (BKE_colorband_evaluate(pd->coba, age, rgba)) {
 						texres->talpha = true;
 						copy_v3_v3(&texres->tr, rgba);
 						texres->tin *= rgba[3];
@@ -794,7 +794,7 @@ static int pointdensity_color(PointDensity *pd, TexResult *texres, float age, co
 				float speed = len_v3(vec) * pd->speed_scale;
 				
 				if (pd->coba) {
-					if (do_colorband(pd->coba, speed, rgba)) {
+					if (BKE_colorband_evaluate(pd->coba, speed, rgba)) {
 						texres->talpha = true;
 						copy_v3_v3(&texres->tr, rgba);
 						texres->tin *= rgba[3];
@@ -826,7 +826,7 @@ static int pointdensity_color(PointDensity *pd, TexResult *texres, float age, co
 				break;
 			case TEX_PD_COLOR_VERTWEIGHT:
 				texres->talpha = true;
-				if (pd->coba && do_colorband(pd->coba, col[0], rgba)) {
+				if (pd->coba && BKE_colorband_evaluate(pd->coba, col[0], rgba)) {
 					copy_v3_v3(&texres->tr, rgba);
 					texres->tin *= rgba[3];
 				}
@@ -1007,7 +1007,10 @@ typedef struct SampleCallbackData {
 	float *values;
 } SampleCallbackData;
 
-static void point_density_sample_func(void *data_v, const int iter)
+static void point_density_sample_func(
+        void *__restrict data_v,
+        const int iter,
+        const ParallelRangeTLS *__restrict UNUSED(tls))
 {
 	SampleCallbackData *data = (SampleCallbackData *)data_v;
 
@@ -1080,11 +1083,14 @@ void RE_point_density_sample(
 	data.min = min;
 	data.dim = dim;
 	data.values = values;
+	ParallelRangeSettings settings;
+	BLI_parallel_range_settings_defaults(&settings);
+	settings.use_threading = (resolution > 32);
 	BLI_task_parallel_range(0,
 	                        resolution,
 	                        &data,
 	                        point_density_sample_func,
-	                        resolution > 32);
+	                        &settings);
 
 	free_pointdensity(pd);
 }

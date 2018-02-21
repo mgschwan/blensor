@@ -36,12 +36,14 @@
 #define ccl_device_forceinline ccl_device
 #define ccl_device_noinline ccl_device ccl_noinline
 #define ccl_may_alias
+#define ccl_static_constant static __constant
 #define ccl_constant __constant
 #define ccl_global __global
 #define ccl_local __local
 #define ccl_local_param __local
 #define ccl_private __private
 #define ccl_restrict restrict
+#define ccl_ref
 #define ccl_align(n) __attribute__((aligned(n)))
 
 #ifdef __SPLIT_KERNEL__
@@ -129,6 +131,7 @@
 #  define expf(x) native_exp(((float)(x)))
 #  define sqrtf(x) native_sqrt(((float)(x)))
 #  define logf(x) native_log(((float)(x)))
+#  define rcp(x)  native_recip(x)
 #else
 #  define sinf(x) sin(((float)(x)))
 #  define cosf(x) cos(((float)(x)))
@@ -136,11 +139,12 @@
 #  define expf(x) exp(((float)(x)))
 #  define sqrtf(x) sqrt(((float)(x)))
 #  define logf(x) log(((float)(x)))
+#  define rcp(x)  recip(x))
 #endif
 
 /* data lookup defines */
 #define kernel_data (*kg->data)
-#define kernel_tex_fetch(t, index) kg->t[index]
+#define kernel_tex_fetch(tex, index) ((const ccl_global tex##_t*)(kg->buffers[kg->tex.cl_buffer] + kg->tex.data))[(index)]
 
 /* define NULL */
 #define NULL 0

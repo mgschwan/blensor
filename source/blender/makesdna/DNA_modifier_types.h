@@ -249,6 +249,7 @@ typedef struct ArrayModifierData {
 	int flags;
 	/* the number of duplicates to generate for MOD_ARR_FIXEDCOUNT */
 	int count;
+	float uv_offset[2];
 } ArrayModifierData;
 
 /* ArrayModifierData->fit_type */
@@ -278,6 +279,7 @@ typedef struct MirrorModifierData {
 	short flag;
 	float tolerance;
 	float uv_offset[2];
+	float uv_offset_copy[2];
 	struct Object *mirror_ob;
 } MirrorModifierData;
 
@@ -601,7 +603,7 @@ typedef struct ClothModifierData {
 	struct Cloth *clothObject;            /* The internal data structure for cloth. */
 	struct ClothSimSettings *sim_parms;   /* definition is in DNA_cloth_types.h */
 	struct ClothCollSettings *coll_parms; /* definition is in DNA_cloth_types.h */
-	struct PointCache *point_cache;       /* definition is in DNA_object_force.h */
+	struct PointCache *point_cache;       /* definition is in DNA_object_force_types.h */
 	struct ListBase ptcaches;
 	/* XXX nasty hack, remove once hair can be separated from cloth modifier data */
 	struct ClothHairData *hairdata;
@@ -653,8 +655,8 @@ typedef struct BooleanModifierData {
 
 	struct Object *object;
 	char operation;
-	char solver;
 	char pad[2];
+	char bm_flag;
 	float double_threshold;
 } BooleanModifierData;
 
@@ -664,10 +666,12 @@ typedef enum {
 	eBooleanModifierOp_Difference = 2,
 } BooleanModifierOp;
 
-typedef enum {
-	eBooleanModifierSolver_Carve    = 0,
-	eBooleanModifierSolver_BMesh = 1,
-} BooleanSolver;
+/* bm_flag (only used when G_DEBUG) */
+enum {
+	eBooleanModifierBMeshFlag_BMesh_Separate            = (1 << 0),
+	eBooleanModifierBMeshFlag_BMesh_NoDissolve          = (1 << 1),
+	eBooleanModifierBMeshFlag_BMesh_NoConnectRegions    = (1 << 2),
+};
 
 typedef struct MDefInfluence {
 	int vertex;
@@ -790,8 +794,8 @@ typedef enum {
 typedef struct FluidsimModifierData {
 	ModifierData modifier;
 
-	struct FluidsimSettings *fss;   /* definition is in DNA_object_fluidsim.h */
-	struct PointCache *point_cache; /* definition is in DNA_object_force.h */
+	struct FluidsimSettings *fss;   /* definition is in DNA_object_fluidsim_types.h */
+	struct PointCache *point_cache; /* definition is in DNA_object_force_types.h */
 } FluidsimModifierData;
 
 typedef struct ShrinkwrapModifierData {
@@ -858,8 +862,8 @@ typedef struct SimpleDeformModifierData {
 
 	char mode;              /* deform function */
 	char axis;              /* lock axis (for taper and strech) */
+	char deform_axis;       /* axis to perform the deform on (default is X, but can be overridden by origin */
 	char flag;
-	char pad;
 
 } SimpleDeformModifierData;
 
@@ -879,6 +883,7 @@ enum {
 enum {
 	MOD_SIMPLEDEFORM_LOCK_AXIS_X = (1 << 0),
 	MOD_SIMPLEDEFORM_LOCK_AXIS_Y = (1 << 1),
+	MOD_SIMPLEDEFORM_LOCK_AXIS_Z = (1 << 2),
 };
 
 typedef struct ShapeKeyModifierData {
@@ -1217,19 +1222,19 @@ enum {
 };
 
 /* Remesh modifier */
-typedef enum RemeshModifierFlags {
+typedef enum eRemeshModifierFlags {
 	MOD_REMESH_FLOOD_FILL     = 1,
 	MOD_REMESH_SMOOTH_SHADING = 2,
 } RemeshModifierFlags;
 
-typedef enum RemeshModifierMode {
+typedef enum eRemeshModifierMode {
 	/* blocky */
 	MOD_REMESH_CENTROID       = 0,
 	/* smooth */
 	MOD_REMESH_MASS_POINT     = 1,
 	/* keeps sharp edges */
 	MOD_REMESH_SHARP_FEATURES = 2,
-} RemeshModifierMode;
+} eRemeshModifierMode;
 
 typedef struct RemeshModifierData {
 	ModifierData modifier;

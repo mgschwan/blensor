@@ -1641,9 +1641,9 @@ static PyObject *Matrix_rotate(MatrixObject *self, PyObject *value)
 PyDoc_STRVAR(Matrix_decompose_doc,
 ".. method:: decompose()\n"
 "\n"
-"   Return the translation, rotation and scale components of this matrix.\n"
+"   Return the translation, rotation, and scale components of this matrix.\n"
 "\n"
-"   :return: trans, rot, scale triple.\n"
+"   :return: tuple of translation, rotation, and scale\n"
 "   :rtype: (:class:`Vector`, :class:`Quaternion`, :class:`Vector`)"
 );
 static PyObject *Matrix_decompose(MatrixObject *self)
@@ -1680,7 +1680,8 @@ static PyObject *Matrix_decompose(MatrixObject *self)
 PyDoc_STRVAR(Matrix_lerp_doc,
 ".. function:: lerp(other, factor)\n"
 "\n"
-"   Returns the interpolation of two matrices.\n"
+"   Returns the interpolation of two matrices. Uses polar decomposition, see"
+"   \"Matrix Animation and Polar Decomposition\", Shoemake and Duff, 1992.\n"
 "\n"
 "   :arg other: value to interpolate with.\n"
 "   :type other: :class:`Matrix`\n"
@@ -2914,6 +2915,73 @@ PyObject *Matrix_CreatePyObject_cb(PyObject *cb_user,
 	return (PyObject *) self;
 }
 
+/**
+ * Use with PyArg_ParseTuple's "O&" formatting.
+ */
+static bool Matrix_ParseCheck(MatrixObject *pymat)
+{
+	if (!MatrixObject_Check(pymat)) {
+		PyErr_Format(PyExc_TypeError,
+		             "expected a mathutils.Matrix, not a %.200s",
+		             Py_TYPE(pymat)->tp_name);
+		return 0;
+	}
+	/* sets error */
+	if (BaseMath_ReadCallback(pymat) == -1) {
+		return 0;
+	}
+	return 1;
+}
+
+int Matrix_ParseAny(PyObject *o, void *p)
+{
+	MatrixObject **pymat_p = p;
+	MatrixObject  *pymat = (MatrixObject *)o;
+
+	if (!Matrix_ParseCheck(pymat)) {
+		return 0;
+	}
+	*pymat_p = pymat;
+	return 1;
+}
+
+int Matrix_Parse3x3(PyObject *o, void *p)
+{
+	MatrixObject **pymat_p = p;
+	MatrixObject  *pymat = (MatrixObject *)o;
+
+	if (!Matrix_ParseCheck(pymat)) {
+		return 0;
+	}
+	if ((pymat->num_col != 3) ||
+	    (pymat->num_row != 3))
+	{
+		PyErr_SetString(PyExc_ValueError, "matrix must be 3x3");
+		return 0;
+	}
+
+	*pymat_p = pymat;
+	return 1;
+}
+
+int Matrix_Parse4x4(PyObject *o, void *p)
+{
+	MatrixObject **pymat_p = p;
+	MatrixObject  *pymat = (MatrixObject *)o;
+
+	if (!Matrix_ParseCheck(pymat)) {
+		return 0;
+	}
+	if ((pymat->num_col != 4) ||
+	    (pymat->num_row != 4))
+	{
+		PyErr_SetString(PyExc_ValueError, "matrix must be 4x4");
+		return 0;
+	}
+
+	*pymat_p = pymat;
+	return 1;
+}
 
 /* ----------------------------------------------------------------------------
  * special type for alternate access */

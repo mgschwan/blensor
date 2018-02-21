@@ -331,7 +331,7 @@ static Scene *preview_prepare_scene(Main *bmain, Scene *scene, ID *id, int id_ty
 			
 			if (origmat) {
 				/* work on a copy */
-				mat = localize_material(origmat);
+				mat = BKE_material_localize(origmat);
 				sp->matcopy = mat;
 				BLI_addtail(&pr_main->mat, mat);
 				
@@ -382,9 +382,18 @@ static Scene *preview_prepare_scene(Main *bmain, Scene *scene, ID *id, int id_ty
 					}
 				}
 				else {
-					/* use current scene world to light sphere */
-					if (mat->pr_type == MA_SPHERE_A)
+					if (mat->pr_type == MA_SPHERE_A && sp->pr_method == PR_BUTS_RENDER) {
+						/* Use current scene world to light sphere. */
 						sce->world = scene->world;
+					}
+					else if (sce->world) {
+						/* Use a default world color. Using the current
+						 * scene world can be slow if it has big textures. */
+						sce->world->use_nodes = false;
+						sce->world->horr = 0.5f;
+						sce->world->horg = 0.5f;
+						sce->world->horb = 0.5f;
+					}
 				}
 				
 				if (sp->pr_method == PR_ICON_RENDER) {
@@ -393,10 +402,6 @@ static Scene *preview_prepare_scene(Main *bmain, Scene *scene, ID *id, int id_ty
 					}
 					else {
 						sce->lay = 1 << MA_SPHERE_A;
-
-						/* same as above, use current scene world to light sphere */
-						if (BKE_scene_use_new_shading_nodes(scene))
-							sce->world = scene->world;
 					}
 				}
 				else {
@@ -476,7 +481,7 @@ static Scene *preview_prepare_scene(Main *bmain, Scene *scene, ID *id, int id_ty
 
 			/* work on a copy */
 			if (origla) {
-				la = localize_lamp(origla);
+				la = BKE_lamp_localize(origla);
 				sp->lampcopy = la;
 				BLI_addtail(&pr_main->lamp, la);
 			}
@@ -492,6 +497,15 @@ static Scene *preview_prepare_scene(Main *bmain, Scene *scene, ID *id, int id_ty
 				else {
 					sce->world = NULL;
 					sce->camera = (Object *)BLI_findstring(&pr_main->object, "Camera", offsetof(ID, name) + 2);
+				}
+			}
+			else {
+				if (sce->world) {
+					/* Only use lighting from the lamp. */
+					sce->world->use_nodes = false;
+					sce->world->horr = 0.0f;
+					sce->world->horg = 0.0f;
+					sce->world->horb = 0.0f;
 				}
 			}
 				
@@ -512,7 +526,7 @@ static Scene *preview_prepare_scene(Main *bmain, Scene *scene, ID *id, int id_ty
 			World *wrld = NULL, *origwrld = (World *)id;
 
 			if (origwrld) {
-				wrld = localize_world(origwrld);
+				wrld = BKE_world_localize(origwrld);
 				sp->worldcopy = wrld;
 				BLI_addtail(&pr_main->world, wrld);
 			}
@@ -637,7 +651,7 @@ void ED_preview_draw(const bContext *C, void *idp, void *parentp, void *slotp, r
 		if (ok)
 			*rect = newrect;
 
-		/* start a new preview render job if signalled through sbuts->preview,
+		/* start a new preview render job if signaled through sbuts->preview,
 		 * if no render result was found and no preview render job is running,
 		 * or if the job is running and the size of preview changed */
 		if ((sbuts != NULL && sbuts->preview) ||

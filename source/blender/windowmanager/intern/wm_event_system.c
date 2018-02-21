@@ -83,6 +83,9 @@
 
 #include "RNA_enum_types.h"
 
+/* Motion in pixels allowed before we don't consider single/double click. */
+#define WM_EVENT_CLICK_WIGGLE_ROOM 2
+
 static void wm_notifier_clear(wmNotifier *note);
 static void update_tablet_data(wmWindow *win, wmEvent *event);
 
@@ -91,13 +94,20 @@ static int wm_operator_call_internal(bContext *C, wmOperatorType *ot, PointerRNA
 
 /* ************ event management ************** */
 
-void wm_event_add_ex(wmWindow *win, const wmEvent *event_to_add, const wmEvent *event_to_add_after)
+wmEvent *wm_event_add_ex(wmWindow *win, const wmEvent *event_to_add, const wmEvent *event_to_add_after)
 {
 	wmEvent *event = MEM_mallocN(sizeof(wmEvent), "wmEvent");
 	
 	*event = *event_to_add;
 
 	update_tablet_data(win, event);
+
+	if (ELEM(event->type, MOUSEMOVE, INBETWEEN_MOUSEMOVE)) {
+		/* We could have a preference to support relative tablet motion (we can't detect that). */
+		event->is_motion_absolute = (
+		        (event->tablet_data != NULL) &&
+		        (event->tablet_data->Active != GHOST_kTabletModeNone));
+	}
 
 	if (event_to_add_after == NULL) {
 		BLI_addtail(&win->queue, event);
@@ -106,11 +116,12 @@ void wm_event_add_ex(wmWindow *win, const wmEvent *event_to_add, const wmEvent *
 		/* note, strictly speaking this breaks const-correctness, however we're only changing 'next' member */
 		BLI_insertlinkafter(&win->queue, (void *)event_to_add_after, event);
 	}
+	return event;
 }
 
-void wm_event_add(wmWindow *win, const wmEvent *event_to_add)
+wmEvent *wm_event_add(wmWindow *win, const wmEvent *event_to_add)
 {
-	wm_event_add_ex(win, event_to_add, NULL);
+	return wm_event_add_ex(win, event_to_add, NULL);
 }
 
 void wm_event_free(wmEvent *event)
@@ -263,13 +274,56 @@ static void wm_notifier_clear(wmNotifier *note)
 	memset(((char *)note) + sizeof(Link), 0, sizeof(*note) - sizeof(Link));
 }
 
+/**
+ * Was part of #wm_event_do_notifiers, split out so it can be called once before entering the #WM_main loop.
+ * This ensures operators don't run before the UI and depsgraph are initialized.
+ */
+void wm_event_do_refresh_wm_and_depsgraph(bContext *C)
+{
+	wmWindowManager *wm = CTX_wm_manager(C);
+	uint64_t win_combine_v3d_datamask = 0;
+
+	/* combine datamasks so 1 win doesn't disable UV's in another [#26448] */
+	for (wmWindow *win = wm->windows.first; win; win = win->next) {
+		win_combine_v3d_datamask |= ED_view3d_screen_datamask(win->screen);
+	}
+
+	/* cached: editor refresh callbacks now, they get context */
+	for (wmWindow *win = wm->windows.first; win; win = win->next) {
+		ScrArea *sa;
+
+		CTX_wm_window_set(C, win);
+		for (sa = win->screen->areabase.first; sa; sa = sa->next) {
+			if (sa->do_refresh) {
+				CTX_wm_area_set(C, sa);
+				ED_area_do_refresh(C, sa);
+			}
+		}
+
+		/* XXX make lock in future, or separated derivedmesh users in scene */
+		if (G.is_rendering == false) {
+			/* depsgraph & animation: update tagged datablocks */
+			Main *bmain = CTX_data_main(C);
+
+			/* copied to set's in scene_update_tagged_recursive() */
+			win->screen->scene->customdata_mask = win_combine_v3d_datamask;
+
+			/* XXX, hack so operators can enforce datamasks [#26482], gl render */
+			win->screen->scene->customdata_mask |= win->screen->scene->customdata_mask_modal;
+
+			BKE_scene_update_tagged(bmain->eval_ctx, bmain, win->screen->scene);
+		}
+	}
+
+	CTX_wm_window_set(C, NULL);
+}
+
 /* called in mainloop */
 void wm_event_do_notifiers(bContext *C)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
 	wmNotifier *note, *next;
 	wmWindow *win;
-	uint64_t win_combine_v3d_datamask = 0;
 	
 	if (wm == NULL)
 		return;
@@ -373,39 +427,7 @@ void wm_event_do_notifiers(bContext *C)
 		MEM_freeN(note);
 	}
 	
-	/* combine datamasks so 1 win doesn't disable UV's in another [#26448] */
-	for (win = wm->windows.first; win; win = win->next) {
-		win_combine_v3d_datamask |= ED_view3d_screen_datamask(win->screen);
-	}
-
-	/* cached: editor refresh callbacks now, they get context */
-	for (win = wm->windows.first; win; win = win->next) {
-		ScrArea *sa;
-		
-		CTX_wm_window_set(C, win);
-		for (sa = win->screen->areabase.first; sa; sa = sa->next) {
-			if (sa->do_refresh) {
-				CTX_wm_area_set(C, sa);
-				ED_area_do_refresh(C, sa);
-			}
-		}
-		
-		/* XXX make lock in future, or separated derivedmesh users in scene */
-		if (G.is_rendering == false) {
-			/* depsgraph & animation: update tagged datablocks */
-			Main *bmain = CTX_data_main(C);
-
-			/* copied to set's in scene_update_tagged_recursive() */
-			win->screen->scene->customdata_mask = win_combine_v3d_datamask;
-
-			/* XXX, hack so operators can enforce datamasks [#26482], gl render */
-			win->screen->scene->customdata_mask |= win->screen->scene->customdata_mask_modal;
-
-			BKE_scene_update_tagged(bmain->eval_ctx, bmain, win->screen->scene);
-		}
-	}
-
-	CTX_wm_window_set(C, NULL);
+	wm_event_do_refresh_wm_and_depsgraph(C);
 }
 
 static int wm_event_always_pass(const wmEvent *event)
@@ -610,11 +632,6 @@ void WM_report_banner_show(void)
 	wm_reports->reporttimer->customdata = rti;
 }
 
-bool WM_event_is_absolute(const wmEvent *event)
-{
-	return (event->tablet_data != NULL);
-}
-
 bool WM_event_is_last_mousemove(const wmEvent *event)
 {
 	while ((event = event->next)) {
@@ -730,11 +747,15 @@ static bool wm_operator_register_check(wmWindowManager *wm, wmOperatorType *ot)
 	return wm && (wm->op_undo_depth == 0) && (ot->flag & (OPTYPE_REGISTER | OPTYPE_UNDO));
 }
 
-static void wm_operator_finished(bContext *C, wmOperator *op, const bool repeat)
+static void wm_operator_finished(bContext *C, wmOperator *op, const bool repeat, const bool store)
 {
 	wmWindowManager *wm = CTX_wm_manager(C);
 
 	op->customdata = NULL;
+
+	if (store) {
+		WM_operator_last_properties_store(op);
+	}
 
 	/* we don't want to do undo pushes for operators that are being
 	 * called from operators that already do an undo push. usually
@@ -781,14 +802,22 @@ static int wm_operator_exec(bContext *C, wmOperator *op, const bool repeat, cons
 		return retval;
 	
 	if (op->type->exec) {
-		if (op->type->flag & OPTYPE_UNDO)
+		if (op->type->flag & OPTYPE_UNDO) {
 			wm->op_undo_depth++;
+		}
 
+		if (repeat) {
+			op->flag |= OP_IS_REPEAT;
+		}
 		retval = op->type->exec(C, op);
 		OPERATOR_RETVAL_CHECK(retval);
+		if (repeat) {
+			op->flag &= ~OP_IS_REPEAT;
+		}
 
-		if (op->type->flag & OPTYPE_UNDO && CTX_wm_manager(C) == wm)
+		if (op->type->flag & OPTYPE_UNDO && CTX_wm_manager(C) == wm) {
 			wm->op_undo_depth--;
+		}
 	}
 	
 	/* XXX Disabled the repeat check to address part 2 of #31840.
@@ -798,12 +827,7 @@ static int wm_operator_exec(bContext *C, wmOperator *op, const bool repeat, cons
 		wm_operator_reports(C, op, retval, false);
 	
 	if (retval & OPERATOR_FINISHED) {
-		if (store) {
-			if (wm->op_undo_depth == 0) { /* not called by py script */
-				WM_operator_last_properties_store(op);
-			}
-		}
-		wm_operator_finished(C, op, repeat);
+		wm_operator_finished(C, op, repeat, store && wm->op_undo_depth == 0);
 	}
 	else if (repeat == 0) {
 		/* warning: modal from exec is bad practice, but avoid crashing. */
@@ -1159,10 +1183,8 @@ static int wm_operator_invoke(
 			/* do nothing, wm_operator_exec() has been called somewhere */
 		}
 		else if (retval & OPERATOR_FINISHED) {
-			if (!is_nested_call) { /* not called by py script */
-				WM_operator_last_properties_store(op);
-			}
-			wm_operator_finished(C, op, 0);
+			const bool store = !is_nested_call;
+			wm_operator_finished(C, op, false, store);
 		}
 		else if (retval & OPERATOR_RUNNING_MODAL) {
 			/* take ownership of reports (in case python provided own) */
@@ -1380,6 +1402,19 @@ int WM_operator_name_call(bContext *C, const char *opstring, short context, Poin
 	}
 
 	return 0;
+}
+
+/**
+ * Call an existent menu. The menu can be created in C or Python.
+ */
+void WM_menu_name_call(bContext *C, const char *menu_name, short context)
+{
+	wmOperatorType *ot = WM_operatortype_find("WM_OT_call_menu", false);
+	PointerRNA ptr;
+	WM_operator_properties_create_ptr(&ptr, ot);
+	RNA_string_set(&ptr, "name", menu_name);
+	WM_operator_name_call_ptr(C, ot, context, &ptr);
+	WM_operator_properties_free(&ptr);
 }
 
 /**
@@ -1738,7 +1773,7 @@ static int wm_handler_operator_call(bContext *C, ListBase *handlers, wmEventHand
 
 				/* important to run 'wm_operator_finished' before NULLing the context members */
 				if (retval & OPERATOR_FINISHED) {
-					wm_operator_finished(C, op, 0);
+					wm_operator_finished(C, op, false, true);
 					handler->op = NULL;
 				}
 				else if (retval & (OPERATOR_CANCELLED | OPERATOR_FINISHED)) {
@@ -2195,15 +2230,22 @@ static int wm_handlers_do(bContext *C, wmEvent *event, ListBase *handlers)
 				    (win->eventstate->prevval == KM_PRESS) &&
 				    (win->eventstate->check_click == true))
 				{
-					event->val = KM_CLICK;
-					
-					if (G.debug & (G_DEBUG_HANDLERS)) {
-						printf("%s: handling CLICK\n", __func__);
+					if ((abs(event->x - win->eventstate->prevclickx)) <= WM_EVENT_CLICK_WIGGLE_ROOM &&
+					    (abs(event->y - win->eventstate->prevclicky)) <= WM_EVENT_CLICK_WIGGLE_ROOM)
+					{
+						event->val = KM_CLICK;
+
+						if (G.debug & (G_DEBUG_HANDLERS)) {
+							printf("%s: handling CLICK\n", __func__);
+						}
+
+						action |= wm_handlers_do_intern(C, event, handlers);
+
+						event->val = KM_RELEASE;
 					}
-
-					action |= wm_handlers_do_intern(C, event, handlers);
-
-					event->val = KM_RELEASE;
+					else {
+						win->eventstate->check_click = 0;
+					}
 				}
 				else if (event->val == KM_DBL_CLICK) {
 					event->val = KM_PRESS;
@@ -2432,6 +2474,13 @@ void wm_event_do_handlers(bContext *C)
 
 			CTX_wm_window_set(C, win);
 
+			/* Clear tool-tip on mouse move. */
+			if (win->screen->tool_tip && win->screen->tool_tip->exit_on_event) {
+				if (ISMOUSE(event->type)) {
+					WM_tooltip_clear(C, win);
+				}
+			}
+
 			/* we let modal handlers get active area/region, also wm_paintcursor_test needs it */
 			CTX_wm_area_set(C, area_event_inside(C, &event->x));
 			CTX_wm_region_set(C, region_event_inside(C, &event->x));
@@ -2448,7 +2497,17 @@ void wm_event_do_handlers(bContext *C)
 			/* fileread case */
 			if (CTX_wm_window(C) == NULL)
 				return;
-			
+
+			/* check for a tooltip */
+			{
+				bScreen *screen = CTX_wm_window(C)->screen;
+				if (screen->tool_tip && screen->tool_tip->timer) {
+					if ((event->type == TIMER) && (event->customdata == screen->tool_tip->timer)) {
+						WM_tooltip_init(C, win);
+					}
+				}
+			}
+
 			/* check dragging, creates new event or frees, adds draw tag */
 			wm_event_drag_test(wm, win, event);
 			
@@ -3152,8 +3211,9 @@ static bool wm_event_is_double_click(wmEvent *event, const wmEvent *event_state)
 	    (event_state->prevval == KM_RELEASE) &&
 	    (event->val == KM_PRESS))
 	{
-		if ((ISMOUSE(event->type) == false) || ((ABS(event->x - event_state->prevclickx)) <= 2 &&
-		                                        (ABS(event->y - event_state->prevclicky)) <= 2))
+		if ((ISMOUSE(event->type) == false) ||
+		    ((abs(event->x - event_state->prevclickx)) <= WM_EVENT_CLICK_WIGGLE_ROOM &&
+		     (abs(event->y - event_state->prevclicky)) <= WM_EVENT_CLICK_WIGGLE_ROOM))
 		{
 			if ((PIL_check_seconds_timer() - event_state->prevclicktime) * 1000 < U.dbl_click_time) {
 				return true;
@@ -3164,7 +3224,7 @@ static bool wm_event_is_double_click(wmEvent *event, const wmEvent *event_state)
 	return false;
 }
 
-static void wm_event_add_mousemove(wmWindow *win, const wmEvent *event)
+static wmEvent *wm_event_add_mousemove(wmWindow *win, const wmEvent *event)
 {
 	wmEvent *event_last = win->queue.last;
 
@@ -3174,16 +3234,13 @@ static void wm_event_add_mousemove(wmWindow *win, const wmEvent *event)
 	if (event_last && event_last->type == MOUSEMOVE)
 		event_last->type = INBETWEEN_MOUSEMOVE;
 
-	wm_event_add(win, event);
-
-	{
-		wmEvent *event_new = win->queue.last;
-		if (event_last == NULL) {
-			event_last = win->eventstate;
-		}
-
-		copy_v2_v2_int(&event_new->prevx, &event_last->x);
+	wmEvent *event_new = wm_event_add(win, event);
+	if (event_last == NULL) {
+		event_last = win->eventstate;
 	}
+
+	copy_v2_v2_int(&event_new->prevx, &event_last->x);
+	return event_new;
 }
 
 /* windows store own event queues, no bContext here */
@@ -3213,8 +3270,11 @@ void wm_event_add_ghostevent(wmWindowManager *wm, wmWindow *win, int type, int U
 			wm_stereo3d_mouse_offset_apply(win, &event.x);
 
 			event.type = MOUSEMOVE;
-			wm_event_add_mousemove(win, &event);
-			copy_v2_v2_int(&evt->x, &event.x);
+			{
+				wmEvent *event_new = wm_event_add_mousemove(win, &event);
+				copy_v2_v2_int(&evt->x, &event_new->x);
+				evt->is_motion_absolute = event_new->is_motion_absolute;
+			}
 			
 			/* also add to other window if event is there, this makes overdraws disappear nicely */
 			/* it remaps mousecoord to other window in event */
@@ -3226,8 +3286,11 @@ void wm_event_add_ghostevent(wmWindowManager *wm, wmWindow *win, int type, int U
 
 				copy_v2_v2_int(&oevent.x, &event.x);
 				oevent.type = MOUSEMOVE;
-				wm_event_add_mousemove(owin, &oevent);
-				copy_v2_v2_int(&oevt->x, &oevent.x);
+				{
+					wmEvent *event_new = wm_event_add_mousemove(owin, &oevent);
+					copy_v2_v2_int(&oevt->x, &event_new->x);
+					oevt->is_motion_absolute = event_new->is_motion_absolute;
+				}
 			}
 				
 			break;

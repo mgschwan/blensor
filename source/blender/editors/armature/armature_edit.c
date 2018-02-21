@@ -66,7 +66,7 @@
 /* ************************** Object Tools Exports ******************************* */
 /* NOTE: these functions are exported to the Object module to be called from the tools there */
 
-void ED_armature_apply_transform(Object *ob, float mat[4][4])
+void ED_armature_apply_transform(Object *ob, float mat[4][4], const bool do_props)
 {
 	bArmature *arm = ob->data;
 
@@ -74,14 +74,14 @@ void ED_armature_apply_transform(Object *ob, float mat[4][4])
 	ED_armature_to_edit(arm);
 
 	/* Transform the bones */
-	ED_armature_transform_bones(arm, mat);
+	ED_armature_transform_bones(arm, mat, do_props);
 
 	/* Turn the list into an armature */
 	ED_armature_from_edit(arm);
 	ED_armature_edit_free(arm);
 }
 
-void ED_armature_transform_bones(struct bArmature *arm, float mat[4][4])
+void ED_armature_transform_bones(struct bArmature *arm, float mat[4][4], const bool do_props)
 {
 	EditBone *ebone;
 	float scale = mat4_to_scale(mat);   /* store the scale of the matrix here to use on envelopes */
@@ -106,27 +106,29 @@ void ED_armature_transform_bones(struct bArmature *arm, float mat[4][4])
 		/* apply the transformed roll back */
 		mat3_to_vec_roll(tmat, NULL, &ebone->roll);
 		
-		ebone->rad_head *= scale;
-		ebone->rad_tail *= scale;
-		ebone->dist     *= scale;
-		
-		/* we could be smarter and scale by the matrix along the x & z axis */
-		ebone->xwidth   *= scale;
-		ebone->zwidth   *= scale;
+		if (do_props) {
+			ebone->rad_head *= scale;
+			ebone->rad_tail *= scale;
+			ebone->dist     *= scale;
+
+			/* we could be smarter and scale by the matrix along the x & z axis */
+			ebone->xwidth   *= scale;
+			ebone->zwidth   *= scale;
+		}
 	}
 }
 
-void ED_armature_transform(struct bArmature *arm, float mat[4][4])
+void ED_armature_transform(struct bArmature *arm, float mat[4][4], const bool do_props)
 {
 	if (arm->edbo) {
-		ED_armature_transform_bones(arm, mat);
+		ED_armature_transform_bones(arm, mat, do_props);
 	}
 	else {
 		/* Put the armature into editmode */
 		ED_armature_to_edit(arm);
 
 		/* Transform the bones */
-		ED_armature_transform_bones(arm, mat);
+		ED_armature_transform_bones(arm, mat, do_props);
 
 		/* Go back to object mode*/
 		ED_armature_from_edit(arm);
@@ -220,7 +222,7 @@ float ED_rollBoneToVector(EditBone *bone, const float align_axis[3], const bool 
 	vec_roll_to_mat3_normalized(nor, 0.0f, mat);
 
 	/* project the new_up_axis along the normal */
-	project_v3_v3v3(vec, align_axis, nor);
+	project_v3_v3v3_normalized(vec, align_axis, nor);
 	sub_v3_v3v3(align_axis_proj, align_axis, vec);
 
 	if (axis_only) {
@@ -263,7 +265,7 @@ typedef enum eCalcRollTypes {
 	CALC_ROLL_CURSOR,
 } eCalcRollTypes;
 
-static EnumPropertyItem prop_calc_roll_types[] = {
+static const EnumPropertyItem prop_calc_roll_types[] = {
 	{0, "", 0, N_("Positive"), ""},
 	{CALC_ROLL_TAN_POS_X, "POS_X", 0, "Local +X Tangent", ""},
 	{CALC_ROLL_TAN_POS_Z, "POS_Z", 0, "Local +Z Tangent", ""},
@@ -965,7 +967,7 @@ static int armature_merge_exec(bContext *C, wmOperator *op)
 
 void ARMATURE_OT_merge(wmOperatorType *ot)
 {
-	static EnumPropertyItem merge_types[] = {
+	static const EnumPropertyItem merge_types[] = {
 		{1, "WITHIN_CHAIN", 0, "Within Chains", ""},
 		{0, NULL, 0, NULL, NULL}
 	};
@@ -1562,17 +1564,18 @@ void ARMATURE_OT_hide(wmOperatorType *ot)
 	RNA_def_boolean(ot->srna, "unselected", 0, "Unselected", "Hide unselected rather than selected");
 }
 
-static int armature_reveal_exec(bContext *C, wmOperator *UNUSED(op))
+static int armature_reveal_exec(bContext *C, wmOperator *op)
 {
 	Object *obedit = CTX_data_edit_object(C);
 	bArmature *arm = obedit->data;
 	EditBone *ebone;
+	const bool select = RNA_boolean_get(op->ptr, "select");
 	
 	for (ebone = arm->edbo->first; ebone; ebone = ebone->next) {
 		if (arm->layer & ebone->layer) {
 			if (ebone->flag & BONE_HIDDEN_A) {
 				if (!(ebone->flag & BONE_UNSELECTABLE)) {
-					ebone->flag |= (BONE_TIPSEL | BONE_SELECTED | BONE_ROOTSEL);
+					SET_FLAG_FROM_TEST(ebone->flag, select, (BONE_TIPSEL | BONE_SELECTED | BONE_ROOTSEL));
 				}
 				ebone->flag &= ~BONE_HIDDEN_A;
 			}
@@ -1591,7 +1594,7 @@ void ARMATURE_OT_reveal(wmOperatorType *ot)
 	/* identifiers */
 	ot->name = "Reveal Bones";
 	ot->idname = "ARMATURE_OT_reveal";
-	ot->description = "Unhide all bones that have been tagged to be hidden in Edit Mode";
+	ot->description = "Reveal all bones hidden in Edit Mode";
 	
 	/* api callbacks */
 	ot->exec = armature_reveal_exec;
@@ -1600,4 +1603,5 @@ void ARMATURE_OT_reveal(wmOperatorType *ot)
 	/* flags */
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO;
 
+	RNA_def_boolean(ot->srna, "select", true, "Select", "");
 }

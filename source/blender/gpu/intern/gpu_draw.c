@@ -41,11 +41,11 @@
 #include "GPU_glew.h"
 
 #include "BLI_blenlib.h"
+#include "BLI_hash.h"
 #include "BLI_linklist.h"
 #include "BLI_math.h"
 #include "BLI_threads.h"
 #include "BLI_utildefines.h"
-#include "BLI_hash.h"
 
 #include "DNA_lamp_types.h"
 #include "DNA_material_types.h"
@@ -682,10 +682,10 @@ int GPU_verify_image(
 				if (do_color_management) {
 					srgb_frect = MEM_mallocN(ibuf->x * ibuf->y * sizeof(float) * 4, "floar_buf_col_cor");
 					gpu_verify_high_bit_srgb_buffer(srgb_frect, ibuf);
-					frect = srgb_frect + texwinsy * ibuf->x + texwinsx;
+					frect = srgb_frect + (4 * (texwinsy * ibuf->x + texwinsx));
 				}
 				else {
-					frect = ibuf->rect_float + texwinsy * ibuf->x + texwinsx;
+					frect = ibuf->rect_float + (ibuf->channels * (texwinsy * ibuf->x + texwinsx));
 				}
 			}
 			else {
@@ -1475,9 +1475,9 @@ static LinkNode *image_free_queue = NULL;
 
 static void gpu_queue_image_for_free(Image *ima)
 {
-	BLI_lock_thread(LOCK_OPENGL);
+	BLI_thread_lock(LOCK_OPENGL);
 	BLI_linklist_prepend(&image_free_queue, ima);
-	BLI_unlock_thread(LOCK_OPENGL);
+	BLI_thread_unlock(LOCK_OPENGL);
 }
 
 void GPU_free_unused_buffers(void)
@@ -1485,7 +1485,7 @@ void GPU_free_unused_buffers(void)
 	if (!BLI_thread_is_main())
 		return;
 
-	BLI_lock_thread(LOCK_OPENGL);
+	BLI_thread_lock(LOCK_OPENGL);
 
 	/* images */
 	for (LinkNode *node = image_free_queue; node; node = node->next) {
@@ -1502,7 +1502,7 @@ void GPU_free_unused_buffers(void)
 	/* vbo buffers */
 	GPU_global_buffer_pool_free_unused();
 
-	BLI_unlock_thread(LOCK_OPENGL);
+	BLI_thread_unlock(LOCK_OPENGL);
 }
 
 void GPU_free_image(Image *ima)
@@ -1890,6 +1890,8 @@ static int gpu_get_particle_info(GPUParticleInfo *pi)
 			pi->scalprops[3] = p->size;
 
 			copy_v3_v3(pi->location, p->state.co);
+			pi->location[3] = BLI_hash_int_01(ind);
+
 			copy_v3_v3(pi->velocity, p->state.vel);
 			copy_v3_v3(pi->angular_velocity, p->state.ave);
 			return 1;
@@ -2199,7 +2201,7 @@ int GPU_scene_object_lights(Scene *scene, Object *ob, int lay, float viewmat[4][
 		GPU_basic_shader_light_set(count, NULL);
 	
 	/* view direction for specular is not computed correct by default in
-	 * opengl, so we set the settings ourselfs */
+	 * opengl, so we set the settings ourselves */
 	GPU_basic_shader_light_set_viewer(!ortho);
 
 	int count = 0;

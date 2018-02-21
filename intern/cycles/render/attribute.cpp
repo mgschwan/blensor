@@ -18,7 +18,6 @@
 #include "render/mesh.h"
 #include "render/attribute.h"
 
-#include "util/util_debug.h"
 #include "util/util_foreach.h"
 #include "util/util_transform.h"
 
@@ -268,6 +267,8 @@ const char *Attribute::standard_name(AttributeStandard std)
 			return "particle";
 		case ATTR_STD_CURVE_INTERCEPT:
 			return "curve_intercept";
+		case ATTR_STD_CURVE_RANDOM:
+			return "curve_random";
 		case ATTR_STD_PTEX_FACE_ID:
 			return "ptex_face_id";
 		case ATTR_STD_PTEX_UV:
@@ -452,6 +453,9 @@ Attribute *AttributeSet::add(AttributeStandard std, ustring name)
 			case ATTR_STD_CURVE_INTERCEPT:
 				attr = add(name, TypeDesc::TypeFloat, ATTR_ELEMENT_CURVE_KEY);
 				break;
+			case ATTR_STD_CURVE_RANDOM:
+				attr = add(name, TypeDesc::TypeFloat, ATTR_ELEMENT_CURVE);
+				break;
 			case ATTR_STD_GENERATED_TRANSFORM:
 				attr = add(name, TypeDesc::TypeMatrix, ATTR_ELEMENT_MESH);
 				break;
@@ -500,6 +504,16 @@ Attribute *AttributeSet::find(AttributeRequest& req)
 		return find(req.name);
 	else
 		return find(req.std);
+}
+
+void AttributeSet::remove(Attribute *attribute)
+{
+	if(attribute->std == ATTR_STD_NONE) {
+		remove(attribute->name);
+	}
+	else {
+		remove(attribute->std);
+	}
 }
 
 void AttributeSet::resize(bool reserve_only)

@@ -59,6 +59,8 @@
 
 #include "BKE_appdir.h"
 #include "BKE_key.h"
+#include "BKE_library.h"
+#include "BKE_library_query.h"
 #include "BKE_multires.h"
 #include "BKE_DerivedMesh.h"
 
@@ -269,14 +271,37 @@ void modifier_copyData_generic(const ModifierData *md_src, ModifierData *md_dst)
 	memcpy(md_dst_data, md_src_data, (size_t)mti->structSize - data_size);
 }
 
-void modifier_copyData(ModifierData *md, ModifierData *target)
+static void modifier_copy_data_id_us_cb(void *UNUSED(userData), Object *UNUSED(ob), ID **idpoin, int cb_flag)
+{
+	ID *id = *idpoin;
+	if (id != NULL && (cb_flag & IDWALK_CB_USER) != 0) {
+		id_us_plus(id);
+	}
+}
+
+void modifier_copyData_ex(ModifierData *md, ModifierData *target, const int flag)
 {
 	const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
 
 	target->mode = md->mode;
 
-	if (mti->copyData)
+	if (mti->copyData) {
 		mti->copyData(md, target);
+	}
+
+	if ((flag & LIB_ID_CREATE_NO_USER_REFCOUNT) == 0) {
+		if (mti->foreachIDLink) {
+			mti->foreachIDLink(target, NULL, modifier_copy_data_id_us_cb, NULL);
+		}
+		else if (mti->foreachObjectLink) {
+			mti->foreachObjectLink(target, NULL, (ObjectWalkFunc)modifier_copy_data_id_us_cb, NULL);
+		}
+	}
+}
+
+void modifier_copyData(ModifierData *md, ModifierData *target)
+{
+	modifier_copyData_ex(md, target, 0);
 }
 
 
@@ -409,6 +434,11 @@ bool modifiers_isParticleEnabled(Object *ob)
 	return (md && md->mode & (eModifierMode_Realtime | eModifierMode_Render));
 }
 
+/**
+ * Check whether is enabled.
+ *
+ * \param scene Current scene, may be NULL, in which case isDisabled callback of the modifier is never called.
+ */
 bool modifier_isEnabled(struct Scene *scene, ModifierData *md, int required_mode)
 {
 	const ModifierTypeInfo *mti = modifierType_getInfo(md->type);
@@ -416,7 +446,7 @@ bool modifier_isEnabled(struct Scene *scene, ModifierData *md, int required_mode
 	md->scene = scene;
 
 	if ((md->mode & required_mode) != required_mode) return false;
-	if (mti->isDisabled && mti->isDisabled(md, required_mode == eModifierMode_Render)) return false;
+	if (scene != NULL && mti->isDisabled && mti->isDisabled(md, required_mode == eModifierMode_Render)) return false;
 	if (md->mode & eModifierMode_DisableTemporary) return false;
 	if ((required_mode & eModifierMode_Editmode) && !(mti->flags & eModifierTypeFlag_SupportsEditmode)) return false;
 	
@@ -708,7 +738,7 @@ void test_object_modifiers(Object *ob)
  */
 const char *modifier_path_relbase(Object *ob)
 {
-	if (G.relbase_valid || ID_IS_LINKED_DATABLOCK(ob)) {
+	if (G.relbase_valid || ID_IS_LINKED(ob)) {
 		return ID_BLEND_PATH(G.main, &ob->id);
 	}
 	else {

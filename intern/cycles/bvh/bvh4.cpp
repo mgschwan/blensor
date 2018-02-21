@@ -55,7 +55,7 @@ static bool node_qbvh_is_unaligned(const BVHNode *node)
 BVH4::BVH4(const BVHParams& params_, const vector<Object*>& objects_)
 : BVH(params_, objects_)
 {
-	params.use_qbvh = true;
+	params.bvh_layout = BVH_LAYOUT_BVH4;
 }
 
 void BVH4::pack_leaf(const BVHStackEntry& e, const LeafNode *leaf)
@@ -242,23 +242,21 @@ void BVH4::pack_unaligned_node(int idx,
 		 * so kernel might safely assume there are always 4 child nodes.
 		 */
 
-		const float inf = FLT_MAX / 1000.0f;
+		data[1][i] = NAN;
+		data[2][i] = NAN;
+		data[3][i] = NAN;
 
-		data[1][i] = inf;
-		data[2][i] = 0.0f;
-		data[3][i] = 0.0f;
+		data[4][i] = NAN;
+		data[5][i] = NAN;
+		data[6][i] = NAN;
 
-		data[4][i] = 0.0f;
-		data[5][i] = inf;
-		data[6][i] = 0.0f;
+		data[7][i] = NAN;
+		data[8][i] = NAN;
+		data[9][i] = NAN;
 
-		data[7][i] = 0.0f;
-		data[8][i] = 0.0f;
-		data[9][i] = inf;
-
-		data[10][i] = -inf;
-		data[11][i] = -inf;
-		data[12][i] = -inf;
+		data[10][i] = NAN;
+		data[11][i] = NAN;
+		data[12][i] = NAN;
 
 		data[13][i] = __int_as_float(0);
 	}
@@ -377,72 +375,11 @@ void BVH4::refit_nodes()
 void BVH4::refit_node(int idx, bool leaf, BoundBox& bbox, uint& visibility)
 {
 	if(leaf) {
+		/* Refit leaf node. */
 		int4 *data = &pack.leaf_nodes[idx];
 		int4 c = data[0];
-		/* Refit leaf node. */
-		for(int prim = c.x; prim < c.y; prim++) {
-			int pidx = pack.prim_index[prim];
-			int tob = pack.prim_object[prim];
-			Object *ob = objects[tob];
 
-			if(pidx == -1) {
-				/* Object instance. */
-				bbox.grow(ob->bounds);
-			}
-			else {
-				/* Primitives. */
-				const Mesh *mesh = ob->mesh;
-
-				if(pack.prim_type[prim] & PRIMITIVE_ALL_CURVE) {
-					/* Curves. */
-					int str_offset = (params.top_level)? mesh->curve_offset: 0;
-					Mesh::Curve curve = mesh->get_curve(pidx - str_offset);
-					int k = PRIMITIVE_UNPACK_SEGMENT(pack.prim_type[prim]);
-
-					curve.bounds_grow(k, &mesh->curve_keys[0], &mesh->curve_radius[0], bbox);
-
-					visibility |= PATH_RAY_CURVE;
-
-					/* Motion curves. */
-					if(mesh->use_motion_blur) {
-						Attribute *attr = mesh->curve_attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
-
-						if(attr) {
-							size_t mesh_size = mesh->curve_keys.size();
-							size_t steps = mesh->motion_steps - 1;
-							float3 *key_steps = attr->data_float3();
-
-							for(size_t i = 0; i < steps; i++)
-								curve.bounds_grow(k, key_steps + i*mesh_size, &mesh->curve_radius[0], bbox);
-						}
-					}
-				}
-				else {
-					/* Triangles. */
-					int tri_offset = (params.top_level)? mesh->tri_offset: 0;
-					Mesh::Triangle triangle = mesh->get_triangle(pidx - tri_offset);
-					const float3 *vpos = &mesh->verts[0];
-
-					triangle.bounds_grow(vpos, bbox);
-
-					/* Motion triangles. */
-					if(mesh->use_motion_blur) {
-						Attribute *attr = mesh->attributes.find(ATTR_STD_MOTION_VERTEX_POSITION);
-
-						if(attr) {
-							size_t mesh_size = mesh->verts.size();
-							size_t steps = mesh->motion_steps - 1;
-							float3 *vert_steps = attr->data_float3();
-
-							for(size_t i = 0; i < steps; i++)
-								triangle.bounds_grow(vert_steps + i*mesh_size, bbox);
-						}
-					}
-				}
-			}
-
-			visibility |= ob->visibility;
-		}
+		BVH::refit_primitives(c.x, c.y, bbox, visibility);
 
 		/* TODO(sergey): This is actually a copy of pack_leaf(),
 		 * but this chunk of code only knows actual data and has

@@ -72,12 +72,15 @@ typedef struct EditBone {
 	
 	float dist, weight;
 	float xwidth, length, zwidth;  /* put them in order! transform uses this as scale */
-	float ease1, ease2;
 	float rad_head, rad_tail;
+
+	/* Bendy-Bone parameters */
 	float roll1, roll2;
 	float curveOutX, curveOutY;
 	float curveInX, curveInY;
+	float ease1, ease2;
 	float scaleIn, scaleOut;
+
 	float oldlength;        /* for envelope scaling */
 	
 	short segments;
@@ -158,9 +161,9 @@ void ED_armature_ebone_from_mat4(EditBone *ebone, float mat[4][4]);
 void transform_armature_mirror_update(struct Object *obedit);
 void ED_armature_origin_set(struct Scene *scene, struct Object *ob, float cursor[3], int centermode, int around);
 
-void ED_armature_transform_bones(struct bArmature *arm, float mat[4][4]);
-void ED_armature_apply_transform(struct Object *ob, float mat[4][4]);
-void ED_armature_transform(struct bArmature *arm, float mat[4][4]);
+void ED_armature_transform_bones(struct bArmature *arm, float mat[4][4], const bool do_props);
+void ED_armature_apply_transform(struct Object *ob, float mat[4][4], const bool do_props);
+void ED_armature_transform(struct bArmature *arm, float mat[4][4], const bool do_props);
 
 #define ARM_GROUPS_NAME     1
 #define ARM_GROUPS_ENVELOPE 2

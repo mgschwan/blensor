@@ -763,7 +763,7 @@ static void bchunk_list_fill_from_array(
 
 BLI_INLINE uint hash_data_single(const uchar p)
 {
-	return (HASH_INIT << 5) + HASH_INIT + (unsigned int)p;
+	return ((HASH_INIT << 5) + HASH_INIT) + (unsigned int)(*((signed char *)&p));
 }
 
 /* hash bytes, from BLI_ghashutil_strhash_n */
@@ -773,7 +773,7 @@ static uint hash_data(const uchar *key, size_t n)
 	unsigned int h = HASH_INIT;
 
 	for (p = (const signed char *)key; n--; p++) {
-		h = (h << 5) + h + (unsigned int)*p;
+		h = ((h << 5) + h) + (unsigned int)*p;
 	}
 
 	return h;
@@ -1759,7 +1759,7 @@ bool BLI_array_store_is_valid(
 				goto user_finally;
 			}
 		}
-		if (!(BLI_mempool_count(bs->memory.chunk_list) == (int)BLI_ghash_size(chunk_list_map))) {
+		if (!(BLI_mempool_len(bs->memory.chunk_list) == (int)BLI_ghash_len(chunk_list_map))) {
 			ok = false;
 			goto user_finally;
 		}
@@ -1772,11 +1772,11 @@ bool BLI_array_store_is_valid(
 				totrefs += 1;
 			}
 		}
-		if (!(BLI_mempool_count(bs->memory.chunk) == (int)BLI_ghash_size(chunk_map))) {
+		if (!(BLI_mempool_len(bs->memory.chunk) == (int)BLI_ghash_len(chunk_map))) {
 			ok = false;
 			goto user_finally;
 		}
-		if (!(BLI_mempool_count(bs->memory.chunk_ref) == totrefs)) {
+		if (!(BLI_mempool_len(bs->memory.chunk_ref) == totrefs)) {
 			ok = false;
 			goto user_finally;
 		}

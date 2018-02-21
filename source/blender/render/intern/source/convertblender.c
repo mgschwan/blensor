@@ -56,7 +56,7 @@
 #include "DNA_modifier_types.h"
 #include "DNA_node_types.h"
 #include "DNA_object_types.h"
-#include "DNA_object_fluidsim.h"
+#include "DNA_object_fluidsim_types.h"
 #include "DNA_particle_types.h"
 #include "DNA_scene_types.h"
 #include "DNA_texture_types.h"
@@ -271,7 +271,7 @@ static void calc_tangent_vector(ObjectRen *obr, VlakRen *vlr, int do_tangent)
 	}
 	else return;
 
-	tangent_from_uv(uv1, uv2, uv3, v1->co, v2->co, v3->co, vlr->n, tang);
+	tangent_from_uv_v3(uv1, uv2, uv3, v1->co, v2->co, v3->co, vlr->n, tang);
 	
 	if (do_tangent) {
 		tav= RE_vertren_get_tangent(obr, v1, 1);
@@ -283,7 +283,7 @@ static void calc_tangent_vector(ObjectRen *obr, VlakRen *vlr, int do_tangent)
 	}
 	
 	if (v4) {
-		tangent_from_uv(uv1, uv3, uv4, v1->co, v3->co, v4->co, vlr->n, tang);
+		tangent_from_uv_v3(uv1, uv3, uv4, v1->co, v3->co, v4->co, vlr->n, tang);
 		
 		if (do_tangent) {
 			tav= RE_vertren_get_tangent(obr, v1, 1);
@@ -398,7 +398,7 @@ static void calc_vertexnormals(Render *UNUSED(re), ObjectRen *obr, bool do_verte
 			float *n4= (vlr->v4)? vlr->v4->n: NULL;
 			const float *c4= (vlr->v4)? vlr->v4->co: NULL;
 
-			accumulate_vertex_normals(vlr->v1->n, vlr->v2->n, vlr->v3->n, n4,
+			accumulate_vertex_normals_v3(vlr->v1->n, vlr->v2->n, vlr->v3->n, n4,
 				vlr->n, vlr->v1->co, vlr->v2->co, vlr->v3->co, c4);
 		}
 		if (do_tangent) {
@@ -3794,12 +3794,13 @@ static GroupObject *add_render_lamp(Render *re, Object *ob)
 			copy_v3_v3(vec, ob->obmat[2]);
 			normalize_v3(vec);
 
-			InitSunSky(lar->sunsky, la->atm_turbidity, vec, la->horizon_brightness, 
-					la->spread, la->sun_brightness, la->sun_size, la->backscattered_light,
-					   la->skyblendfac, la->skyblendtype, la->sky_exposure, la->sky_colorspace);
-			
-			InitAtmosphere(lar->sunsky, la->sun_intensity, 1.0, 1.0, la->atm_inscattering_factor, la->atm_extinction_factor,
-					la->atm_distance_factor);
+			InitSunSky(
+			        lar->sunsky, la->atm_turbidity, vec, la->horizon_brightness,
+			        la->spread, la->sun_brightness, la->sun_size, la->backscattered_light,
+			        la->skyblendfac, la->skyblendtype, la->sky_exposure, la->sky_colorspace);
+			InitAtmosphere(
+			        lar->sunsky, la->sun_intensity, 1.0, 1.0, la->atm_inscattering_factor, la->atm_extinction_factor,
+			        la->atm_distance_factor);
 		}
 	}
 	else lar->ray_totsamp= 0;

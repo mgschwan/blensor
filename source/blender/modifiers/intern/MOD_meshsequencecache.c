@@ -102,14 +102,13 @@ static DerivedMesh *applyModifier(ModifierData *md, Object *ob,
 #ifdef WITH_ALEMBIC
 	MeshSeqCacheModifierData *mcmd = (MeshSeqCacheModifierData *) md;
 
-	/* Only used to check wehther we are operating on org data or not... */
+	/* Only used to check whether we are operating on org data or not... */
 	Mesh *me = (ob->type == OB_MESH) ? ob->data : NULL;
 	DerivedMesh *org_dm = dm;
 
 	Scene *scene = md->scene;
 	const float frame = BKE_scene_frame_get(scene);
 	const float time = BKE_cachefile_time_offset(mcmd->cache_file, frame, FPS);
-
 	const char *err_str = NULL;
 
 	CacheFile *cache_file = mcmd->cache_file;

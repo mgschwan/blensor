@@ -21,7 +21,7 @@ CCL_NAMESPACE_BEGIN
 ccl_device_inline void compute_light_pass(KernelGlobals *kg,
                                           ShaderData *sd,
                                           PathRadiance *L,
-                                          RNG rng,
+                                          uint rng_hash,
                                           int pass_filter,
                                           int sample)
 {
@@ -48,11 +48,10 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 	path_radiance_init(&L_sample, kernel_data.film.use_light_pass);
 
 	/* init path state */
-	path_state_init(kg, &emission_sd, &state, &rng, sample, NULL);
+	path_state_init(kg, &emission_sd, &state, rng_hash, sample, NULL);
 
 	/* evaluate surface shader */
-	float rbsdf = path_state_rng_1D(kg, &rng, &state, PRNG_BSDF);
-	shader_eval_surface(kg, sd, &rng, &state, rbsdf, state.flag, SHADER_CONTEXT_MAIN);
+	shader_eval_surface(kg, sd, &state, state.flag, kernel_data.integrator.max_closures);
 
 	/* TODO, disable more closures we don't need besides transparent */
 	shader_bsdf_disable_transparency(kg, sd);
@@ -64,13 +63,13 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 
 		/* sample ambient occlusion */
 		if(pass_filter & BAKE_FILTER_AO) {
-			kernel_path_ao(kg, sd, &emission_sd, &L_sample, &state, &rng, throughput, shader_bsdf_alpha(kg, sd));
+			kernel_path_ao(kg, sd, &emission_sd, &L_sample, &state, throughput, shader_bsdf_alpha(kg, sd));
 		}
 
 		/* sample emission */
 		if((pass_filter & BAKE_FILTER_EMISSION) && (sd->flag & SD_EMISSION)) {
 			float3 emission = indirect_primitive_emission(kg, sd, 0.0f, state.flag, state.ray_pdf);
-			path_radiance_accum_emission(&L_sample, throughput, emission, state.bounce);
+			path_radiance_accum_emission(&L_sample, &state, throughput, emission);
 		}
 
 		bool is_sss_sample = false;
@@ -86,7 +85,6 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 			                                  &emission_sd,
 			                                  &L_sample,
 			                                  &state,
-			                                  &rng,
 			                                  &ray,
 			                                  &throughput,
 			                                  &ss_indirect))
@@ -101,13 +99,10 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 					kernel_path_indirect(kg,
 					                     &indirect_sd,
 					                     &emission_sd,
-					                     &rng,
 					                     &ray,
 					                     throughput,
-					                     state.num_samples,
 					                     &state,
 					                     &L_sample);
-					kernel_path_subsurface_accum_indirect(&ss_indirect, &L_sample);
 				}
 				is_sss_sample = true;
 			}
@@ -116,14 +111,14 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 
 		/* sample light and BSDF */
 		if(!is_sss_sample && (pass_filter & (BAKE_FILTER_DIRECT | BAKE_FILTER_INDIRECT))) {
-			kernel_path_surface_connect_light(kg, &rng, sd, &emission_sd, throughput, &state, &L_sample);
+			kernel_path_surface_connect_light(kg, sd, &emission_sd, throughput, &state, &L_sample);
 
-			if(kernel_path_surface_bounce(kg, &rng, sd, &throughput, &state, &L_sample, &ray)) {
+			if(kernel_path_surface_bounce(kg, sd, &throughput, &state, &L_sample.state, &ray)) {
 #ifdef __LAMP_MIS__
 				state.ray_t = 0.0f;
 #endif
 				/* compute indirect light */
-				kernel_path_indirect(kg, &indirect_sd, &emission_sd, &rng, &ray, throughput, 1, &state, &L_sample);
+				kernel_path_indirect(kg, &indirect_sd, &emission_sd, &ray, throughput, &state, &L_sample);
 
 				/* sum and reset indirect light pass variables for the next samples */
 				path_radiance_sum_indirect(&L_sample);
@@ -137,13 +132,13 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 
 		/* sample ambient occlusion */
 		if(pass_filter & BAKE_FILTER_AO) {
-			kernel_branched_path_ao(kg, sd, &emission_sd, &L_sample, &state, &rng, throughput);
+			kernel_branched_path_ao(kg, sd, &emission_sd, &L_sample, &state, throughput);
 		}
 
 		/* sample emission */
 		if((pass_filter & BAKE_FILTER_EMISSION) && (sd->flag & SD_EMISSION)) {
 			float3 emission = indirect_primitive_emission(kg, sd, 0.0f, state.flag, state.ray_pdf);
-			path_radiance_accum_emission(&L_sample, throughput, emission, state.bounce);
+			path_radiance_accum_emission(&L_sample, &state, throughput, emission);
 		}
 
 #ifdef __SUBSURFACE__
@@ -151,7 +146,7 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 		if((pass_filter & BAKE_FILTER_SUBSURFACE) && (sd->flag & SD_BSSRDF)) {
 			/* when mixing BSSRDF and BSDF closures we should skip BSDF lighting if scattering was successful */
 			kernel_branched_path_subsurface_scatter(kg, sd, &indirect_sd,
-				&emission_sd, &L_sample, &state, &rng, &ray, throughput);
+				&emission_sd, &L_sample, &state, &ray, throughput);
 		}
 #endif
 
@@ -161,31 +156,20 @@ ccl_device_inline void compute_light_pass(KernelGlobals *kg,
 			/* direct light */
 			if(kernel_data.integrator.use_direct_light) {
 				int all = kernel_data.integrator.sample_all_lights_direct;
-				kernel_branched_path_surface_connect_light(kg, &rng,
+				kernel_branched_path_surface_connect_light(kg,
 					sd, &emission_sd, &state, throughput, 1.0f, &L_sample, all);
 			}
 #endif
 
 			/* indirect light */
-			kernel_branched_path_surface_indirect_light(kg, &rng,
+			kernel_branched_path_surface_indirect_light(kg,
 				sd, &indirect_sd, &emission_sd, throughput, 1.0f, &state, &L_sample);
 		}
 	}
 #endif
 
 	/* accumulate into master L */
-	path_radiance_accum_sample(L, &L_sample, 1);
-}
-
-ccl_device bool is_aa_pass(ShaderEvalType type)
-{
-	switch(type) {
-		case SHADER_EVAL_UV:
-		case SHADER_EVAL_NORMAL:
-			return false;
-		default:
-			return true;
-	}
+	path_radiance_accum_sample(L, &L_sample);
 }
 
 /* this helps with AA but it's not the real solution as it does not AA the geometry
@@ -225,7 +209,6 @@ ccl_device_inline float3 kernel_bake_shader_bsdf(KernelGlobals *kg,
 
 ccl_device float3 kernel_bake_evaluate_direct_indirect(KernelGlobals *kg,
                                                        ShaderData *sd,
-                                                       RNG *rng,
                                                        PathState *state,
                                                        float3 direct,
                                                        float3 indirect,
@@ -245,12 +228,12 @@ ccl_device float3 kernel_bake_evaluate_direct_indirect(KernelGlobals *kg,
 		}
 		else {
 			/* surface color of the pass only */
-			shader_eval_surface(kg, sd, rng, state, 0.0f, 0, SHADER_CONTEXT_MAIN);
+			shader_eval_surface(kg, sd, state, 0, kernel_data.integrator.max_closures);
 			return kernel_bake_shader_bsdf(kg, sd, type);
 		}
 	}
 	else {
-		shader_eval_surface(kg, sd, rng, state, 0.0f, 0, SHADER_CONTEXT_MAIN);
+		shader_eval_surface(kg, sd, state, 0, kernel_data.integrator.max_closures);
 		color = kernel_bake_shader_bsdf(kg, sd, type);
 	}
 
@@ -292,14 +275,14 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 	int num_samples = kernel_data.integrator.aa_samples;
 
 	/* random number generator */
-	RNG rng = cmj_hash(offset + i, kernel_data.integrator.seed);
+	uint rng_hash = cmj_hash(offset + i, kernel_data.integrator.seed);
 
 	float filter_x, filter_y;
 	if(sample == 0) {
 		filter_x = filter_y = 0.5f;
 	}
 	else {
-		path_rng_2D(kg, &rng, sample, num_samples, PRNG_FILTER_U, &filter_x, &filter_y);
+		path_rng_2D(kg, rng_hash, sample, num_samples, PRNG_FILTER_U, &filter_x, &filter_y);
 	}
 
 	/* subpixel u/v offset */
@@ -333,20 +316,29 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 	sd.dv.dx = dvdx;
 	sd.dv.dy = dvdy;
 
+	/* set RNG state for shaders that use sampling */
+	state.rng_hash = rng_hash;
+	state.rng_offset = 0;
+	state.sample = sample;
+	state.num_samples = num_samples;
+	state.min_ray_pdf = FLT_MAX;
+
 	/* light passes if we need more than color */
 	if(pass_filter & ~BAKE_FILTER_COLOR)
-		compute_light_pass(kg, &sd, &L, rng, pass_filter, sample);
+		compute_light_pass(kg, &sd, &L, rng_hash, pass_filter, sample);
 
 	switch(type) {
 		/* data passes */
 		case SHADER_EVAL_NORMAL:
 		{
+			float3 N = sd.N;
 			if((sd.flag & SD_HAS_BUMP)) {
-				shader_eval_surface(kg, &sd, &rng, &state, 0.f, 0, SHADER_CONTEXT_MAIN);
+				shader_eval_surface(kg, &sd, &state, 0, kernel_data.integrator.max_closures);
+				N = shader_bsdf_average_normal(kg, &sd);
 			}
 
-			/* compression: normal = (2 * color) - 1 */
-			out = sd.N * 0.5f + make_float3(0.5f, 0.5f, 0.5f);
+			/* encoding: normal = (2 * color) - 1 */
+			out = N * 0.5f + make_float3(0.5f, 0.5f, 0.5f);
 			break;
 		}
 		case SHADER_EVAL_UV:
@@ -356,7 +348,7 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		}
 		case SHADER_EVAL_EMISSION:
 		{
-			shader_eval_surface(kg, &sd, &rng, &state, 0.f, 0, SHADER_CONTEXT_EMISSION);
+			shader_eval_surface(kg, &sd, &state, 0, 0);
 			out = shader_emissive_eval(kg, &sd);
 			break;
 		}
@@ -371,7 +363,8 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		case SHADER_EVAL_COMBINED:
 		{
 			if((pass_filter & BAKE_FILTER_COMBINED) == BAKE_FILTER_COMBINED) {
-				out = path_radiance_clamp_and_sum(kg, &L);
+				float alpha;
+				out = path_radiance_clamp_and_sum(kg, &L, &alpha);
 				break;
 			}
 
@@ -409,7 +402,6 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		{
 			out = kernel_bake_evaluate_direct_indirect(kg,
 			                                           &sd,
-			                                           &rng,
 			                                           &state,
 			                                           L.direct_diffuse,
 			                                           L.indirect_diffuse,
@@ -421,7 +413,6 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		{
 			out = kernel_bake_evaluate_direct_indirect(kg,
 			                                           &sd,
-			                                           &rng,
 			                                           &state,
 			                                           L.direct_glossy,
 			                                           L.indirect_glossy,
@@ -433,7 +424,6 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 		{
 			out = kernel_bake_evaluate_direct_indirect(kg,
 			                                           &sd,
-			                                           &rng,
 			                                           &state,
 			                                           L.direct_transmission,
 			                                           L.indirect_transmission,
@@ -446,7 +436,6 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 #ifdef __SUBSURFACE__
 			out = kernel_bake_evaluate_direct_indirect(kg,
 			                                           &sd,
-			                                           &rng,
 			                                           &state,
 			                                           L.direct_subsurface,
 			                                           L.indirect_subsurface,
@@ -480,7 +469,7 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 
 			/* evaluate */
 			int flag = 0; /* we can't know which type of BSDF this is for */
-			out = shader_eval_background(kg, &sd, &state, flag, SHADER_CONTEXT_MAIN);
+			out = shader_eval_background(kg, &sd, &state, flag);
 			break;
 		}
 		default:
@@ -492,86 +481,77 @@ ccl_device void kernel_bake_evaluate(KernelGlobals *kg, ccl_global uint4 *input,
 	}
 
 	/* write output */
-	const float output_fac = is_aa_pass(type)? 1.0f/num_samples: 1.0f;
+	const float output_fac = 1.0f/num_samples;
 	const float4 scaled_result = make_float4(out.x, out.y, out.z, 1.0f) * output_fac;
 
-	output[i] = (sample == 0)?  scaled_result: output[i] + scaled_result;
+	output[i] = (sample == 0)? scaled_result: output[i] + scaled_result;
 }
 
 #endif  /* __BAKING__ */
 
-ccl_device void kernel_shader_evaluate(KernelGlobals *kg,
-                                       ccl_global uint4 *input,
-                                       ccl_global float4 *output,
-                                       ccl_global float *output_luma,
-                                       ShaderEvalType type,
-                                       int i,
-                                       int sample)
+ccl_device void kernel_displace_evaluate(KernelGlobals *kg,
+                                         ccl_global uint4 *input,
+                                         ccl_global float4 *output,
+                                         int i)
 {
 	ShaderData sd;
 	PathState state = {0};
 	uint4 in = input[i];
-	float3 out;
 
-	if(type == SHADER_EVAL_DISPLACE) {
-		/* setup shader data */
-		int object = in.x;
-		int prim = in.y;
-		float u = __uint_as_float(in.z);
-		float v = __uint_as_float(in.w);
+	/* setup shader data */
+	int object = in.x;
+	int prim = in.y;
+	float u = __uint_as_float(in.z);
+	float v = __uint_as_float(in.w);
 
-		shader_setup_from_displace(kg, &sd, object, prim, u, v);
+	shader_setup_from_displace(kg, &sd, object, prim, u, v);
 
-		/* evaluate */
-		float3 P = sd.P;
-		shader_eval_displacement(kg, &sd, &state, SHADER_CONTEXT_MAIN);
-		out = sd.P - P;
+	/* evaluate */
+	float3 P = sd.P;
+	shader_eval_displacement(kg, &sd, &state);
+	float3 D = sd.P - P;
 
-		object_inverse_dir_transform(kg, &sd, &out);
-	}
-	else { // SHADER_EVAL_BACKGROUND
-		/* setup ray */
-		Ray ray;
-		float u = __uint_as_float(in.x);
-		float v = __uint_as_float(in.y);
+	object_inverse_dir_transform(kg, &sd, &D);
 
-		ray.P = make_float3(0.0f, 0.0f, 0.0f);
-		ray.D = equirectangular_to_direction(u, v);
-		ray.t = 0.0f;
+	/* write output */
+	output[i] += make_float4(D.x, D.y, D.z, 0.0f);
+}
+
+ccl_device void kernel_background_evaluate(KernelGlobals *kg,
+                                           ccl_global uint4 *input,
+                                           ccl_global float4 *output,
+                                           int i)
+{
+	ShaderData sd;
+	PathState state = {0};
+	uint4 in = input[i];
+
+	/* setup ray */
+	Ray ray;
+	float u = __uint_as_float(in.x);
+	float v = __uint_as_float(in.y);
+
+	ray.P = make_float3(0.0f, 0.0f, 0.0f);
+	ray.D = equirectangular_to_direction(u, v);
+	ray.t = 0.0f;
 #ifdef __CAMERA_MOTION__
-		ray.time = 0.5f;
+	ray.time = 0.5f;
 #endif
 
 #ifdef __RAY_DIFFERENTIALS__
-		ray.dD = differential3_zero();
-		ray.dP = differential3_zero();
+	ray.dD = differential3_zero();
+	ray.dP = differential3_zero();
 #endif
 
-		/* setup shader data */
-		shader_setup_from_background(kg, &sd, &ray);
+	/* setup shader data */
+	shader_setup_from_background(kg, &sd, &ray);
 
-		/* evaluate */
-		int flag = 0; /* we can't know which type of BSDF this is for */
-		out = shader_eval_background(kg, &sd, &state, flag, SHADER_CONTEXT_MAIN);
-	}
-	
+	/* evaluate */
+	int flag = 0; /* we can't know which type of BSDF this is for */
+	float3 color = shader_eval_background(kg, &sd, &state, flag);
+
 	/* write output */
-	if(sample == 0) {
-		if(output != NULL) {
-			output[i] = make_float4(out.x, out.y, out.z, 0.0f);
-		}
-		if(output_luma != NULL) {
-			output_luma[i] = average(out);
-		}
-	}
-	else {
-		if(output != NULL) {
-			output[i] += make_float4(out.x, out.y, out.z, 0.0f);
-		}
-		if(output_luma != NULL) {
-			output_luma[i] += average(out);
-		}
-	}
+	output[i] += make_float4(color.x, color.y, color.z, 0.0f);
 }
 
 CCL_NAMESPACE_END

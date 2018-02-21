@@ -27,10 +27,6 @@
 
 setup_libdirs()
 
-if(WITH_CODEC_QUICKTIME)
-	add_definitions(-DWITH_QUICKTIME)
-endif()
-
 if(WIN32 AND NOT UNIX)
 	string(SUBSTRING ${BLENDER_VERSION} 0 1 bver1)
 	string(SUBSTRING ${BLENDER_VERSION} 2 1 bver2)
@@ -193,16 +189,8 @@ endif()
 		list(APPEND BLENDER_SORTED_LIBS extern_ceres)
 	endif()
 
-	if(WITH_MOD_BOOLEAN)
-		list(APPEND BLENDER_SORTED_LIBS extern_carve)
-	endif()
-
 	if(WITH_GHOST_XDND)
 		list(APPEND BLENDER_SORTED_LIBS extern_xdnd)
-	endif()
-
-	if(WITH_CODEC_QUICKTIME)
-		list(APPEND BLENDER_SORTED_LIBS bf_quicktime)
 	endif()
 
 	if(WITH_CXX_GUARDEDALLOC)

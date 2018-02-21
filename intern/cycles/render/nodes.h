@@ -154,7 +154,7 @@ public:
 
 	void *surface;
 	void *volume;
-	float displacement;
+	float3 displacement;
 	float3 normal;
 
 	/* Don't allow output node de-duplication. */
@@ -326,6 +326,16 @@ class BsdfBaseNode : public ShaderNode {
 public:
 	BsdfBaseNode(const NodeType *node_type);
 
+	bool has_spatial_varying() { return true; }
+	virtual ClosureType get_closure_type() { return closure; }
+	virtual bool has_bump();
+
+	virtual bool equals(const ShaderNode& /*other*/)
+	{
+		/* TODO(sergey): With some care BSDF nodes can be de-duplicated. */
+		return false;
+	}
+
 	ClosureType closure;
 };
 
@@ -334,19 +344,11 @@ public:
 	explicit BsdfNode(const NodeType *node_type);
 	SHADER_NODE_BASE_CLASS(BsdfNode)
 
-	bool has_spatial_varying() { return true; }
 	void compile(SVMCompiler& compiler, ShaderInput *param1, ShaderInput *param2, ShaderInput *param3 = NULL, ShaderInput *param4 = NULL);
-	virtual ClosureType get_closure_type() { return closure; }
 
 	float3 color;
 	float3 normal;
 	float surface_mix_weight;
-
-	virtual bool equals(const ShaderNode& /*other*/)
-	{
-		/* TODO(sergey): With some care BSDF nodes can be de-duplicated. */
-		return false;
-	}
 };
 
 class AnisotropicBsdfNode : public BsdfNode {
@@ -373,7 +375,6 @@ class PrincipledBsdfNode : public BsdfBaseNode {
 public:
 	SHADER_NODE_CLASS(PrincipledBsdfNode)
 
-	bool has_spatial_varying() { return true; }
 	bool has_surface_bssrdf();
 	bool has_bssrdf_bump();
 	void compile(SVMCompiler& compiler, ShaderInput *metallic, ShaderInput *subsurface, ShaderInput *subsurface_radius,
@@ -389,14 +390,8 @@ public:
 	float3 normal, clearcoat_normal, tangent;
 	float surface_mix_weight;
 	ClosureType distribution, distribution_orig;
+	ClosureType subsurface_method;
 
-	virtual bool equals(const ShaderNode * /*other*/)
-	{
-		/* TODO(sergey): With some care BSDF nodes can be de-duplicated. */
-		return false;
-	}
-
-	ClosureType get_closure_type() { return closure; }
 	bool has_integrator_dependency();
 	void attributes(Shader *shader, AttributeRequestSet *attributes);
 };
@@ -482,7 +477,6 @@ class EmissionNode : public ShaderNode {
 public:
 	SHADER_NODE_CLASS(EmissionNode)
 	void constant_fold(const ConstantFolder& folder);
-	virtual ClosureType get_closure_type() { return CLOSURE_EMISSION_ID; }
 
 	bool has_surface_emission() { return true; }
 	bool has_volume_support() { return true; }
@@ -496,7 +490,6 @@ class BackgroundNode : public ShaderNode {
 public:
 	SHADER_NODE_CLASS(BackgroundNode)
 	void constant_fold(const ConstantFolder& folder);
-	virtual ClosureType get_closure_type() { return CLOSURE_BACKGROUND_ID; }
 
 	float3 color;
 	float strength;
@@ -988,6 +981,8 @@ public:
 
 	/* ideally we could beter detect this, but we can't query this now */
 	bool has_spatial_varying() { return true; }
+	bool has_volume_support() { return true; }
+
 	virtual bool equals(const ShaderNode& /*other*/) { return false; }
 
 	string filepath;
@@ -1019,6 +1014,47 @@ public:
 	NodeTangentAxis axis;
 	ustring attribute;
 	float3 normal_osl;
+};
+
+class BevelNode : public ShaderNode {
+public:
+	SHADER_NODE_CLASS(BevelNode)
+	bool has_spatial_varying() { return true; }
+	virtual int get_group() { return NODE_GROUP_LEVEL_3; }
+	virtual bool has_raytrace() { return true; }
+
+	float radius;
+	float3 normal;
+	int samples;
+};
+
+class DisplacementNode : public ShaderNode {
+public:
+	SHADER_NODE_CLASS(DisplacementNode)
+	virtual int get_feature() {
+		return NODE_FEATURE_BUMP;
+	}
+
+	NodeNormalMapSpace space;
+	float height;
+	float midlevel;
+	float scale;
+	float3 normal;
+};
+
+class VectorDisplacementNode : public ShaderNode {
+public:
+	SHADER_NODE_CLASS(VectorDisplacementNode)
+	void attributes(Shader *shader, AttributeRequestSet *attributes);
+	virtual int get_feature() {
+		return NODE_FEATURE_BUMP;
+	}
+
+	NodeNormalMapSpace space;
+	ustring attribute;
+	float3 vector;
+	float midlevel;
+	float scale;
 };
 
 CCL_NAMESPACE_END

@@ -49,6 +49,7 @@
 
 #include "BKE_brush.h"
 #include "BKE_colortools.h"
+#include "BKE_deform.h"
 #include "BKE_main.h"
 #include "BKE_context.h"
 #include "BKE_crazyspace.h"
@@ -71,7 +72,7 @@ const char PAINT_CURSOR_VERTEX_PAINT[3] = {255, 255, 255};
 const char PAINT_CURSOR_WEIGHT_PAINT[3] = {200, 200, 255};
 const char PAINT_CURSOR_TEXTURE_PAINT[3] = {255, 255, 255};
 
-static OverlayControlFlags overlay_flags = 0;
+static eOverlayControlFlags overlay_flags = 0;
 
 void BKE_paint_invalidate_overlay_tex(Scene *scene, const Tex *tex)
 {
@@ -103,12 +104,12 @@ void BKE_paint_invalidate_overlay_all(void)
 	                  PAINT_INVALID_OVERLAY_CURVE);
 }
 
-OverlayControlFlags BKE_paint_get_overlay_flags(void)
+eOverlayControlFlags BKE_paint_get_overlay_flags(void)
 {
 	return overlay_flags;
 }
 
-void BKE_paint_set_overlay_override(OverlayFlags flags)
+void BKE_paint_set_overlay_override(eOverlayFlags flags)
 {
 	if (flags & BRUSH_OVERLAY_OVERRIDE_MASK) {
 		if (flags & BRUSH_OVERLAY_CURSOR_OVERRIDE_ON_STROKE)
@@ -123,12 +124,12 @@ void BKE_paint_set_overlay_override(OverlayFlags flags)
 	}
 }
 
-void BKE_paint_reset_overlay_invalid(OverlayControlFlags flag)
+void BKE_paint_reset_overlay_invalid(eOverlayControlFlags flag)
 {
 	overlay_flags &= ~(flag);
 }
 
-Paint *BKE_paint_get_active_from_paintmode(Scene *sce, PaintMode mode)
+Paint *BKE_paint_get_active_from_paintmode(Scene *sce, ePaintMode mode)
 {
 	if (sce) {
 		ToolSettings *ts = sce->toolsettings;
@@ -234,7 +235,7 @@ Paint *BKE_paint_get_active_from_context(const bContext *C)
 	return NULL;
 }
 
-PaintMode BKE_paintmode_get_active_from_context(const bContext *C)
+ePaintMode BKE_paintmode_get_active_from_context(const bContext *C)
 {
 	Scene *sce = CTX_data_scene(C);
 	SpaceImage *sima;
@@ -309,24 +310,31 @@ PaintCurve *BKE_paint_curve_add(Main *bmain, const char *name)
 {
 	PaintCurve *pc;
 
-	pc = BKE_libblock_alloc(bmain, ID_PC, name);
+	pc = BKE_libblock_alloc(bmain, ID_PC, name, 0);
 
 	return pc;
 }
 
+/**
+ * Only copy internal data of PaintCurve ID from source to already allocated/initialized destination.
+ * You probably nerver want to use that directly, use id_copy or BKE_id_copy_ex for typical needs.
+ *
+ * WARNING! This function will not handle ID user count!
+ *
+ * \param flag  Copying options (see BKE_library.h's LIB_ID_COPY_... flags for more).
+ */
+void BKE_paint_curve_copy_data(Main *UNUSED(bmain), PaintCurve *pc_dst, const PaintCurve *pc_src, const int UNUSED(flag))
+{
+	if (pc_src->tot_points != 0) {
+		pc_dst->points = MEM_dupallocN(pc_src->points);
+	}
+}
+
 PaintCurve *BKE_paint_curve_copy(Main *bmain, const PaintCurve *pc)
 {
-	PaintCurve *pc_new;
-
-	pc_new = BKE_libblock_copy(bmain, &pc->id);
-
-	if (pc->tot_points != 0) {
-		pc_new->points = MEM_dupallocN(pc->points);
-	}
-
-	BKE_id_copy_ensure_local(bmain, &pc->id, &pc_new->id);
-
-	return pc_new;
+	PaintCurve *pc_copy;
+	BKE_id_copy_ex(bmain, &pc->id, (ID **)&pc_copy, 0, false);
+	return pc_copy;
 }
 
 void BKE_paint_curve_make_local(Main *bmain, PaintCurve *pc, const bool lib_local)
@@ -388,7 +396,7 @@ Palette *BKE_palette_add(Main *bmain, const char *name)
 {
 	Palette *palette;
 
-	palette = BKE_libblock_alloc(bmain, ID_PAL, name);
+	palette = BKE_libblock_alloc(bmain, ID_PAL, name, 0);
 
 	/* enable fake user by default */
 	id_fake_user_set(&palette->id);
@@ -396,17 +404,24 @@ Palette *BKE_palette_add(Main *bmain, const char *name)
 	return palette;
 }
 
+/**
+ * Only copy internal data of Palette ID from source to already allocated/initialized destination.
+ * You probably nerver want to use that directly, use id_copy or BKE_id_copy_ex for typical needs.
+ *
+ * WARNING! This function will not handle ID user count!
+ *
+ * \param flag  Copying options (see BKE_library.h's LIB_ID_COPY_... flags for more).
+ */
+void BKE_palette_copy_data(Main *UNUSED(bmain), Palette *palette_dst, const Palette *palette_src, const int UNUSED(flag))
+{
+	BLI_duplicatelist(&palette_dst->colors, &palette_src->colors);
+}
+
 Palette *BKE_palette_copy(Main *bmain, const Palette *palette)
 {
-	Palette *palette_new;
-
-	palette_new = BKE_libblock_copy(bmain, &palette->id);
-
-	BLI_duplicatelist(&palette_new->colors, &palette->colors);
-
-	BKE_id_copy_ensure_local(bmain, &palette->id, &palette_new->id);
-
-	return palette_new;
+	Palette *palette_copy;
+	BKE_id_copy_ex(bmain, &palette->id, (ID **)&palette_copy, 0, false);
+	return palette_copy;
 }
 
 void BKE_palette_make_local(Main *bmain, Palette *palette, const bool lib_local)
@@ -452,7 +467,7 @@ bool BKE_paint_select_vert_test(Object *ob)
 	         (ob->type == OB_MESH) &&
 	         (ob->data != NULL) &&
 	         (((Mesh *)ob->data)->editflag & ME_EDIT_PAINT_VERT_SEL) &&
-	         (ob->mode & OB_MODE_WEIGHT_PAINT)
+	         (ob->mode & OB_MODE_WEIGHT_PAINT || ob->mode & OB_MODE_VERTEX_PAINT)
 	         );
 }
 
@@ -481,7 +496,7 @@ void BKE_paint_cavity_curve_preset(Paint *p, int preset)
 	curvemapping_changed(p->cavity_curve, false);
 }
 
-short BKE_paint_object_mode_from_paint_mode(PaintMode mode)
+eObjectMode BKE_paint_object_mode_from_paint_mode(ePaintMode mode)
 {
 	switch (mode) {
 		case ePaintSculpt:
@@ -502,7 +517,7 @@ short BKE_paint_object_mode_from_paint_mode(PaintMode mode)
 	}
 }
 
-void BKE_paint_init(Scene *sce, PaintMode mode, const char col[3])
+void BKE_paint_init(Scene *sce, ePaintMode mode, const char col[3])
 {
 	UnifiedPaintSettings *ups = &sce->toolsettings->unified_paint_settings;
 	Brush *brush;
@@ -511,11 +526,13 @@ void BKE_paint_init(Scene *sce, PaintMode mode, const char col[3])
 	/* If there's no brush, create one */
 	brush = BKE_paint_brush(paint);
 	if (brush == NULL) {
-		short ob_mode = BKE_paint_object_mode_from_paint_mode(mode);
+		eObjectMode ob_mode = BKE_paint_object_mode_from_paint_mode(mode);
 		brush = BKE_brush_first_search(G.main, ob_mode);
 
-		if (!brush)
+		if (!brush) {
 			brush = BKE_brush_add(G.main, "Brush", ob_mode);
+			id_us_min(&brush->id);  /* fake user only */
+		}
 		BKE_paint_brush_set(paint, brush);
 	}
 
@@ -537,12 +554,15 @@ void BKE_paint_free(Paint *paint)
  * still do a id_us_plus(), rather then if we were copying between 2 existing
  * scenes where a matching value should decrease the existing user count as
  * with paint_brush_set() */
-void BKE_paint_copy(Paint *src, Paint *tar)
+void BKE_paint_copy(Paint *src, Paint *tar, const int flag)
 {
 	tar->brush = src->brush;
-	id_us_plus((ID *)tar->brush);
-	id_us_plus((ID *)tar->palette);
 	tar->cavity_curve = curvemapping_copy(src->cavity_curve);
+
+	if ((flag & LIB_ID_CREATE_NO_USER_REFCOUNT) == 0) {
+		id_us_plus((ID *)tar->brush);
+		id_us_plus((ID *)tar->palette);
+	}
 }
 
 void BKE_paint_stroke_get_average(Scene *scene, Object *ob, float stroke[3])
@@ -620,8 +640,9 @@ void paint_update_brush_rake_rotation(UnifiedPaintSettings *ups, Brush *brush, f
 		ups->brush_rotation_sec = 0.0f;
 }
 
-void paint_calculate_rake_rotation(UnifiedPaintSettings *ups, Brush *brush, const float mouse_pos[2])
+bool paint_calculate_rake_rotation(UnifiedPaintSettings *ups, Brush *brush, const float mouse_pos[2])
 {
+	bool ok = false;
 	if ((brush->mtex.brush_angle_mode & MTEX_ANGLE_RAKE) || (brush->mask_mtex.brush_angle_mode & MTEX_ANGLE_RAKE)) {
 		const float r = RAKE_THRESHHOLD;
 		float rotation;
@@ -637,16 +658,20 @@ void paint_calculate_rake_rotation(UnifiedPaintSettings *ups, Brush *brush, cons
 			ups->last_rake_angle = rotation;
 
 			paint_update_brush_rake_rotation(ups, brush, rotation);
+			ok = true;
 		}
 		/* make sure we reset here to the last rotation to avoid accumulating
 		 * values in case a random rotation is also added */
 		else {
 			paint_update_brush_rake_rotation(ups, brush, ups->last_rake_angle);
+			ok = false;
 		}
 	}
 	else {
 		ups->brush_rotation = ups->brush_rotation_sec = 0.0f;
+		ok = true;
 	}
+	return ok;
 }
 
 void BKE_sculptsession_free_deformMats(SculptSession *ss)
@@ -654,6 +679,33 @@ void BKE_sculptsession_free_deformMats(SculptSession *ss)
 	MEM_SAFE_FREE(ss->orig_cos);
 	MEM_SAFE_FREE(ss->deform_cos);
 	MEM_SAFE_FREE(ss->deform_imats);
+}
+
+void BKE_sculptsession_free_vwpaint_data(struct SculptSession *ss)
+{
+	struct SculptVertexPaintGeomMap *gmap = NULL;
+	if (ss->mode_type == OB_MODE_VERTEX_PAINT) {
+		gmap = &ss->mode.vpaint.gmap;
+
+		MEM_SAFE_FREE(ss->mode.vpaint.previous_color);
+	}
+	else if (ss->mode_type == OB_MODE_WEIGHT_PAINT) {
+		gmap = &ss->mode.wpaint.gmap;
+
+		MEM_SAFE_FREE(ss->mode.wpaint.alpha_weight);
+		if (ss->mode.wpaint.dvert_prev) {
+			BKE_defvert_array_free_elems(ss->mode.wpaint.dvert_prev, ss->totvert);
+			MEM_freeN(ss->mode.wpaint.dvert_prev);
+			ss->mode.wpaint.dvert_prev = NULL;
+		}
+	}
+	else {
+		return;
+	}
+	MEM_SAFE_FREE(gmap->vert_to_loop);
+	MEM_SAFE_FREE(gmap->vert_map_mem);
+	MEM_SAFE_FREE(gmap->vert_to_poly);
+	MEM_SAFE_FREE(gmap->poly_map_mem);
 }
 
 /* Write out the sculpt dynamic-topology BMesh to the Mesh */
@@ -747,6 +799,8 @@ void BKE_sculptsession_free(Object *ob)
 		if (ss->deform_imats)
 			MEM_freeN(ss->deform_imats);
 
+		BKE_sculptsession_free_vwpaint_data(ob->sculpt);
+
 		MEM_freeN(ss);
 
 		ob->sculpt = NULL;
@@ -830,6 +884,9 @@ void BKE_sculpt_update_mesh_elements(Scene *scene, Sculpt *sd, Object *ob,
 
 	ss->modifiers_active = sculpt_modifiers_active(scene, sd, ob);
 	ss->show_diffuse_color = (sd->flags & SCULPT_SHOW_DIFFUSE) != 0;
+	ss->show_mask = (sd->flags & SCULPT_HIDE_MASK) == 0;
+
+	ss->building_vp_handle = false;
 
 	if (need_mask) {
 		if (mmd == NULL) {
@@ -859,7 +916,8 @@ void BKE_sculpt_update_mesh_elements(Scene *scene, Sculpt *sd, Object *ob,
 
 	dm = mesh_get_derived_final(scene, ob, CD_MASK_BAREMESH);
 
-	if (mmd) {
+	/* VWPaint require mesh info for loop lookup, so require sculpt mode here */
+	if (mmd && ob->mode & OB_MODE_SCULPT) {
 		ss->multires = mmd;
 		ss->totvert = dm->getNumVerts(dm);
 		ss->totpoly = dm->getNumPolys(dm);
@@ -881,6 +939,7 @@ void BKE_sculpt_update_mesh_elements(Scene *scene, Sculpt *sd, Object *ob,
 	ss->pmap = (need_pmap && dm->getPolyMap) ? dm->getPolyMap(ob, dm) : NULL;
 
 	pbvh_show_diffuse_color_set(ss->pbvh, ss->show_diffuse_color);
+	pbvh_show_mask_set(ss->pbvh, ss->show_mask);
 
 	if (ss->modifiers_active) {
 		if (!ss->orig_cos) {
@@ -997,4 +1056,40 @@ int BKE_sculpt_mask_layers_ensure(Object *ob, MultiresModifierData *mmd)
 	}
 
 	return ret;
+}
+
+void BKE_sculpt_toolsettings_data_ensure(struct Scene *scene)
+{
+	Sculpt *sd = scene->toolsettings->sculpt;
+	if (sd == NULL) {
+		sd = scene->toolsettings->sculpt = MEM_callocN(sizeof(Sculpt), __func__);
+
+		/* Turn on X plane mirror symmetry by default */
+		sd->paint.symmetry_flags |= PAINT_SYMM_X;
+		sd->paint.flags |= PAINT_SHOW_BRUSH;
+
+		/* Make sure at least dyntopo subdivision is enabled */
+		sd->flags |= SCULPT_DYNTOPO_SUBDIVIDE | SCULPT_DYNTOPO_COLLAPSE;
+	}
+
+	if (!sd->detail_size) {
+		sd->detail_size = 12;
+	}
+	if (!sd->detail_percent) {
+		sd->detail_percent = 25;
+	}
+	if (sd->constant_detail == 0.0f) {
+		sd->constant_detail = 3.0f;
+	}
+
+	/* Set sane default tiling offsets */
+	if (!sd->paint.tile_offset[0]) {
+		sd->paint.tile_offset[0] = 1.0f;
+	}
+	if (!sd->paint.tile_offset[1]) {
+		sd->paint.tile_offset[1] = 1.0f;
+	}
+	if (!sd->paint.tile_offset[2]) {
+		sd->paint.tile_offset[2] = 1.0f;
+	}
 }

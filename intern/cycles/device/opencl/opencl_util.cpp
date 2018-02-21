@@ -18,6 +18,7 @@
 
 #include "device/opencl/opencl.h"
 
+#include "util/util_debug.h"
 #include "util/util_logging.h"
 #include "util/util_md5.h"
 #include "util/util_path.h"
@@ -635,7 +636,7 @@ bool OpenCLInfo::device_supported(const string& platform_name,
 			"Tahiti", "Pitcairn", "Capeverde", "Oland",
 			NULL
 		};
-		for (int i = 0; blacklist[i] != NULL; i++) {
+		for(int i = 0; blacklist[i] != NULL; i++) {
 			if(device_name == blacklist[i]) {
 				VLOG(1) << "AMD device " << device_name << " not supported";
 				return false;
@@ -1080,6 +1081,7 @@ cl_device_type OpenCLInfo::get_device_type(cl_device_id device_id)
 
 string OpenCLInfo::get_readable_device_name(cl_device_id device_id)
 {
+	string name = "";
 	char board_name[1024];
 	size_t length = 0;
 	if(clGetDeviceInfo(device_id,
@@ -1089,11 +1091,21 @@ string OpenCLInfo::get_readable_device_name(cl_device_id device_id)
 	                   &length) == CL_SUCCESS)
 	{
 		if(length != 0 && board_name[0] != '\0') {
-			return board_name;
+			name = board_name;
 		}
 	}
+
 	/* Fallback to standard device name API. */
-	return get_device_name(device_id);
+	if(name.empty()) {
+		name = get_device_name(device_id);
+	}
+
+	/* Distinguish from our native CPU device. */
+	if(get_device_type(device_id) & CL_DEVICE_TYPE_CPU) {
+		name += " (OpenCL)";
+	}
+
+	return name;
 }
 
 bool OpenCLInfo::get_driver_version(cl_device_id device_id,
@@ -1124,7 +1136,7 @@ bool OpenCLInfo::get_driver_version(cl_device_id device_id,
 	return true;
 }
 
-int OpenCLInfo::mem_address_alignment(cl_device_id device_id)
+int OpenCLInfo::mem_sub_ptr_alignment(cl_device_id device_id)
 {
 	int base_align_bits;
 	if(clGetDeviceInfo(device_id,

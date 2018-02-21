@@ -56,7 +56,7 @@ ccl_device void svm_node_glass_setup(ShaderData *sd, MicrofacetBsdf *bsdf, int t
 	}
 }
 
-ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *stack, uint4 node, int path_flag, int *offset)
+ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *stack, uint4 node, ShaderType shader_type, int path_flag, int *offset)
 {
 	uint type, param1_offset, param2_offset;
 
@@ -67,8 +67,18 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 	/* note we read this extra node before weight check, so offset is added */
 	uint4 data_node = read_node(kg, offset);
 
-	if(mix_weight == 0.0f)
+	/* Only compute BSDF for surfaces, transparent variable is shared with volume extinction. */
+	if(mix_weight == 0.0f || shader_type != SHADER_TYPE_SURFACE) {
+		if(type == CLOSURE_BSDF_PRINCIPLED_ID) {
+			/* Read all principled BSDF extra data to get the right offset. */
+			read_node(kg, offset);
+			read_node(kg, offset);
+			read_node(kg, offset);
+			read_node(kg, offset);
+		}
+
 		return;
+	}
 
 	float3 N = stack_valid(data_node.x)? stack_load_float3(stack, data_node.x): sd->N;
 
@@ -104,7 +114,8 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 			float transmission_roughness = stack_load_float(stack, transmission_roughness_offset);
 			float eta = fmaxf(stack_load_float(stack, eta_offset), 1e-5f);
 
-			ClosureType distribution = stack_valid(data_node2.y) ? (ClosureType) data_node2.y : CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID;
+			ClosureType distribution = (ClosureType) data_node2.y;
+			ClosureType subsurface_method = (ClosureType) data_node2.z;
 
 			/* rotate tangent */
 			if(anisotropic_rotation != 0.0f)
@@ -143,7 +154,6 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 #ifdef __SUBSURFACE__
 			float3 mixed_ss_base_color = subsurface_color * subsurface + base_color * (1.0f - subsurface);
 			float3 subsurf_weight = weight * mixed_ss_base_color * diffuse_weight;
-			float subsurf_sample_weight = fabsf(average(subsurf_weight));
 
 			/* disable in case of diffuse ancestor, can't see it well then and
 			 * adds considerably noise due to probabilities of continuing path
@@ -172,55 +182,19 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 						sd->flag |= bsdf_principled_diffuse_setup(bsdf);
 					}
 				}
-				else if(subsurface > CLOSURE_WEIGHT_CUTOFF && subsurf_sample_weight > CLOSURE_WEIGHT_CUTOFF) {
-					/* radius * scale */
-					float3 radius = subsurface_radius * subsurface;
-					/* sharpness */
-					float sharpness = 0.0f;
-					/* texture color blur */
-					float texture_blur = 0.0f;
+				else if(subsurface > CLOSURE_WEIGHT_CUTOFF) {
+					Bssrdf *bssrdf = bssrdf_alloc(sd, subsurf_weight);
 
-					/* create one closure per color channel */
-					Bssrdf *bssrdf = bssrdf_alloc(sd, make_float3(subsurf_weight.x, 0.0f, 0.0f));
 					if(bssrdf) {
-						bssrdf->sample_weight = subsurf_sample_weight;
-						bssrdf->radius = radius.x;
-						bssrdf->texture_blur = texture_blur;
-						bssrdf->albedo = subsurface_color.x;
-						bssrdf->sharpness = sharpness;
+						bssrdf->radius = subsurface_radius * subsurface;
+						bssrdf->albedo = (subsurface_method == CLOSURE_BSSRDF_PRINCIPLED_ID)? subsurface_color:  mixed_ss_base_color;
+						bssrdf->texture_blur = 0.0f;
+						bssrdf->sharpness = 0.0f;
 						bssrdf->N = N;
 						bssrdf->roughness = roughness;
 
 						/* setup bsdf */
-						sd->flag |= bssrdf_setup(bssrdf, (ClosureType)CLOSURE_BSSRDF_PRINCIPLED_ID);
-					}
-
-					bssrdf = bssrdf_alloc(sd, make_float3(0.0f, subsurf_weight.y, 0.0f));
-					if(bssrdf) {
-						bssrdf->sample_weight = subsurf_sample_weight;
-						bssrdf->radius = radius.y;
-						bssrdf->texture_blur = texture_blur;
-						bssrdf->albedo = subsurface_color.y;
-						bssrdf->sharpness = sharpness;
-						bssrdf->N = N;
-						bssrdf->roughness = roughness;
-
-						/* setup bsdf */
-						sd->flag |= bssrdf_setup(bssrdf, (ClosureType)CLOSURE_BSSRDF_PRINCIPLED_ID);
-					}
-
-					bssrdf = bssrdf_alloc(sd, make_float3(0.0f, 0.0f, subsurf_weight.z));
-					if(bssrdf) {
-						bssrdf->sample_weight = subsurf_sample_weight;
-						bssrdf->radius = radius.z;
-						bssrdf->texture_blur = texture_blur;
-						bssrdf->albedo = subsurface_color.z;
-						bssrdf->sharpness = sharpness;
-						bssrdf->N = N;
-						bssrdf->roughness = roughness;
-
-						/* setup bsdf */
-						sd->flag |= bssrdf_setup(bssrdf, (ClosureType)CLOSURE_BSSRDF_PRINCIPLED_ID);
+						sd->flag |= bssrdf_setup(sd, bssrdf, subsurface_method);
 					}
 				}
 			}
@@ -269,33 +243,39 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 					float3 spec_weight = weight * specular_weight;
 
 					MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc(sd, sizeof(MicrofacetBsdf), spec_weight);
-					MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
-
-					if(bsdf && extra) {
-						bsdf->N = N;
-						bsdf->ior = (2.0f / (1.0f - safe_sqrtf(0.08f * specular))) - 1.0f;
-						bsdf->T = T;
-						bsdf->extra = extra;
-
-						float aspect = safe_sqrtf(1.0f - anisotropic * 0.9f);
-						float r2 = roughness * roughness;
-
-						bsdf->alpha_x = r2 / aspect;
-						bsdf->alpha_y = r2 * aspect;
-
-						float m_cdlum = 0.3f * base_color.x + 0.6f * base_color.y + 0.1f * base_color.z; // luminance approx.
-						float3 m_ctint = m_cdlum > 0.0f ? base_color / m_cdlum : make_float3(0.0f, 0.0f, 0.0f); // normalize lum. to isolate hue+sat
-						float3 tmp_col = make_float3(1.0f, 1.0f, 1.0f) * (1.0f - specular_tint) + m_ctint * specular_tint;
-
-						bsdf->extra->cspec0 = (specular * 0.08f * tmp_col) * (1.0f - metallic) + base_color * metallic;
-						bsdf->extra->color = base_color;
-
-						/* setup bsdf */
-						if(distribution == CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID || roughness <= 0.075f) /* use single-scatter GGX */
-							sd->flag |= bsdf_microfacet_ggx_aniso_fresnel_setup(bsdf, sd);
-						else /* use multi-scatter GGX */
-							sd->flag |= bsdf_microfacet_multi_ggx_aniso_fresnel_setup(bsdf, sd);
+					if(!bsdf){
+						break;
 					}
+
+					MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
+					if(!extra) {
+						break;
+					}
+
+					bsdf->N = N;
+					bsdf->ior = (2.0f / (1.0f - safe_sqrtf(0.08f * specular))) - 1.0f;
+					bsdf->T = T;
+					bsdf->extra = extra;
+
+					float aspect = safe_sqrtf(1.0f - anisotropic * 0.9f);
+					float r2 = roughness * roughness;
+
+					bsdf->alpha_x = r2 / aspect;
+					bsdf->alpha_y = r2 * aspect;
+
+					float m_cdlum = 0.3f * base_color.x + 0.6f * base_color.y + 0.1f * base_color.z; // luminance approx.
+					float3 m_ctint = m_cdlum > 0.0f ? base_color / m_cdlum : make_float3(0.0f, 0.0f, 0.0f); // normalize lum. to isolate hue+sat
+					float3 tmp_col = make_float3(1.0f, 1.0f, 1.0f) * (1.0f - specular_tint) + m_ctint * specular_tint;
+
+					bsdf->extra->cspec0 = (specular * 0.08f * tmp_col) * (1.0f - metallic) + base_color * metallic;
+					bsdf->extra->color = base_color;
+					bsdf->extra->clearcoat = 0.0f;
+
+					/* setup bsdf */
+					if(distribution == CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID || roughness <= 0.075f) /* use single-scatter GGX */
+						sd->flag |= bsdf_microfacet_ggx_aniso_fresnel_setup(bsdf, sd);
+					else /* use multi-scatter GGX */
+						sd->flag |= bsdf_microfacet_multi_ggx_aniso_fresnel_setup(bsdf, sd);
 				}
 #ifdef __CAUSTICS_TRICKS__
 			}
@@ -318,22 +298,29 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 #endif
 						{
 							MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc(sd, sizeof(MicrofacetBsdf), glass_weight*fresnel);
-							MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
-
-							if(bsdf && extra) {
-								bsdf->N = N;
-								bsdf->extra = extra;
-
-								bsdf->alpha_x = refl_roughness * refl_roughness;
-								bsdf->alpha_y = refl_roughness * refl_roughness;
-								bsdf->ior = ior;
-
-								bsdf->extra->color = base_color;
-								bsdf->extra->cspec0 = cspec0;
-
-								/* setup bsdf */
-								sd->flag |= bsdf_microfacet_ggx_fresnel_setup(bsdf, sd);
+							if(!bsdf) {
+								break;
 							}
+
+							MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
+							if(!extra) {
+								break;
+							}
+
+							bsdf->N = N;
+							bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+							bsdf->extra = extra;
+
+							bsdf->alpha_x = refl_roughness * refl_roughness;
+							bsdf->alpha_y = refl_roughness * refl_roughness;
+							bsdf->ior = ior;
+
+							bsdf->extra->color = base_color;
+							bsdf->extra->cspec0 = cspec0;
+							bsdf->extra->clearcoat = 0.0f;
+
+							/* setup bsdf */
+							sd->flag |= bsdf_microfacet_ggx_fresnel_setup(bsdf, sd);
 						}
 
 						/* refraction */
@@ -342,43 +329,52 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 #endif
 						{
 							MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc(sd, sizeof(MicrofacetBsdf), base_color*glass_weight*(1.0f - fresnel));
-
-							if(bsdf) {
-								bsdf->N = N;
-
-								if(distribution == CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)
-									transmission_roughness = 1.0f - (1.0f - refl_roughness) * (1.0f - transmission_roughness);
-								else
-									transmission_roughness = refl_roughness;
-
-								bsdf->alpha_x = transmission_roughness * transmission_roughness;
-								bsdf->alpha_y = transmission_roughness * transmission_roughness;
-								bsdf->ior = ior;
-
-								/* setup bsdf */
-								sd->flag |= bsdf_microfacet_ggx_refraction_setup(bsdf);
+							if(!bsdf) {
+								break;
 							}
+
+							bsdf->N = N;
+							bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+							bsdf->extra = NULL;
+
+							if(distribution == CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)
+								transmission_roughness = 1.0f - (1.0f - refl_roughness) * (1.0f - transmission_roughness);
+							else
+								transmission_roughness = refl_roughness;
+
+							bsdf->alpha_x = transmission_roughness * transmission_roughness;
+							bsdf->alpha_y = transmission_roughness * transmission_roughness;
+							bsdf->ior = ior;
+
+							/* setup bsdf */
+							sd->flag |= bsdf_microfacet_ggx_refraction_setup(bsdf);
 						}
 					}
 					else { /* use multi-scatter GGX */
 						MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc(sd, sizeof(MicrofacetBsdf), glass_weight);
-						MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
-
-						if(bsdf && extra) {
-							bsdf->N = N;
-							bsdf->extra = extra;
-							bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
-
-							bsdf->alpha_x = roughness * roughness;
-							bsdf->alpha_y = roughness * roughness;
-							bsdf->ior = ior;
-
-							bsdf->extra->color = base_color;
-							bsdf->extra->cspec0 = cspec0;
-
-							/* setup bsdf */
-							sd->flag |= bsdf_microfacet_multi_ggx_glass_fresnel_setup(bsdf, sd);
+						if(!bsdf) {
+							break;
 						}
+
+						MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
+						if(!extra) {
+							break;
+						}
+
+						bsdf->N = N;
+						bsdf->extra = extra;
+						bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+
+						bsdf->alpha_x = roughness * roughness;
+						bsdf->alpha_y = roughness * roughness;
+						bsdf->ior = ior;
+
+						bsdf->extra->color = base_color;
+						bsdf->extra->cspec0 = cspec0;
+						bsdf->extra->clearcoat = 0.0f;
+
+						/* setup bsdf */
+						sd->flag |= bsdf_microfacet_multi_ggx_glass_fresnel_setup(bsdf, sd);
 					}
 				}
 #ifdef __CAUSTICS_TRICKS__
@@ -391,22 +387,29 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 #endif
 				if(clearcoat > CLOSURE_WEIGHT_CUTOFF) {
 					MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc(sd, sizeof(MicrofacetBsdf), weight);
-					MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
-
-					if(bsdf && extra) {
-						bsdf->N = clearcoat_normal;
-						bsdf->ior = 1.5f;
-						bsdf->extra = extra;
-
-						bsdf->alpha_x = clearcoat_roughness * clearcoat_roughness;
-						bsdf->alpha_y = clearcoat_roughness * clearcoat_roughness;
-
-						bsdf->extra->cspec0 = make_float3(0.04f, 0.04f, 0.04f);
-						bsdf->extra->clearcoat = clearcoat;
-
-						/* setup bsdf */
-						sd->flag |= bsdf_microfacet_ggx_clearcoat_setup(bsdf, sd);
+					if(!bsdf) {
+						break;
 					}
+
+					MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
+					if(!extra) {
+						break;
+					}
+
+					bsdf->N = clearcoat_normal;
+					bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+					bsdf->ior = 1.5f;
+					bsdf->extra = extra;
+
+					bsdf->alpha_x = clearcoat_roughness * clearcoat_roughness;
+					bsdf->alpha_y = clearcoat_roughness * clearcoat_roughness;
+
+					bsdf->extra->color = make_float3(0.0f, 0.0f, 0.0f);
+					bsdf->extra->cspec0 = make_float3(0.04f, 0.04f, 0.04f);
+					bsdf->extra->clearcoat = clearcoat;
+
+					/* setup bsdf */
+					sd->flag |= bsdf_microfacet_ggx_clearcoat_setup(bsdf, sd);
 				}
 #ifdef __CAUSTICS_TRICKS__
 			}
@@ -446,12 +449,7 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 		}
 		case CLOSURE_BSDF_TRANSPARENT_ID: {
 			float3 weight = sd->svm_closure_weight * mix_weight;
-			ShaderClosure *bsdf = bsdf_alloc(sd, sizeof(ShaderClosure), weight);
-
-			if(bsdf) {
-				bsdf->N = N;
-				sd->flag |= bsdf_transparent_setup(bsdf);
-			}
+			bsdf_transparent_setup(sd, weight);
 			break;
 		}
 		case CLOSURE_BSDF_REFLECTION_ID:
@@ -466,30 +464,36 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 			float3 weight = sd->svm_closure_weight * mix_weight;
 			MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc(sd, sizeof(MicrofacetBsdf), weight);
 
-			if(bsdf) {
-				bsdf->N = N;
-				bsdf->alpha_x = param1;
-				bsdf->alpha_y = param1;
-				bsdf->ior = 0.0f;
-				bsdf->extra = NULL;
+			if(!bsdf) {
+				break;
+			}
 
-				/* setup bsdf */
-				if(type == CLOSURE_BSDF_REFLECTION_ID)
-					sd->flag |= bsdf_reflection_setup(bsdf);
-				else if(type == CLOSURE_BSDF_MICROFACET_BECKMANN_ID)
-					sd->flag |= bsdf_microfacet_beckmann_setup(bsdf);
-				else if(type == CLOSURE_BSDF_MICROFACET_GGX_ID)
-					sd->flag |= bsdf_microfacet_ggx_setup(bsdf);
-				else if(type == CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID) {
-					kernel_assert(stack_valid(data_node.z));
-					bsdf->extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
-					if(bsdf->extra) {
-						bsdf->extra->color = stack_load_float3(stack, data_node.z);
-						sd->flag |= bsdf_microfacet_multi_ggx_setup(bsdf);
-					}
+			bsdf->N = N;
+			bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+			bsdf->alpha_x = param1;
+			bsdf->alpha_y = param1;
+			bsdf->ior = 0.0f;
+			bsdf->extra = NULL;
+
+			/* setup bsdf */
+			if(type == CLOSURE_BSDF_REFLECTION_ID)
+				sd->flag |= bsdf_reflection_setup(bsdf);
+			else if(type == CLOSURE_BSDF_MICROFACET_BECKMANN_ID)
+				sd->flag |= bsdf_microfacet_beckmann_setup(bsdf);
+			else if(type == CLOSURE_BSDF_MICROFACET_GGX_ID)
+				sd->flag |= bsdf_microfacet_ggx_setup(bsdf);
+			else if(type == CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID) {
+				kernel_assert(stack_valid(data_node.z));
+				bsdf->extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
+				if(bsdf->extra) {
+					bsdf->extra->color = stack_load_float3(stack, data_node.z);
+					bsdf->extra->cspec0 = make_float3(0.0f, 0.0f, 0.0f);
+					bsdf->extra->clearcoat = 0.0f;
+					sd->flag |= bsdf_microfacet_multi_ggx_setup(bsdf);
 				}
-				else
-					sd->flag |= bsdf_ashikhmin_shirley_setup(bsdf);
+			}
+			else {
+				sd->flag |= bsdf_ashikhmin_shirley_setup(bsdf);
 			}
 
 			break;
@@ -506,6 +510,7 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 
 			if(bsdf) {
 				bsdf->N = N;
+				bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
 				bsdf->extra = NULL;
 
 				float eta = fmaxf(param2, 1e-5f);
@@ -563,6 +568,7 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 
 				if(bsdf) {
 					bsdf->N = N;
+					bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
 					bsdf->extra = NULL;
 					svm_node_glass_setup(sd, bsdf, type, eta, roughness, false);
 				}
@@ -577,6 +583,7 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 
 				if(bsdf) {
 					bsdf->N = N;
+					bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
 					bsdf->extra = NULL;
 					svm_node_glass_setup(sd, bsdf, type, eta, roughness, true);
 				}
@@ -591,25 +598,31 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 #endif
 			float3 weight = sd->svm_closure_weight * mix_weight;
 			MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc(sd, sizeof(MicrofacetBsdf), weight);
-			MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
-
-			if(bsdf && extra) {
-				bsdf->N = N;
-				bsdf->extra = extra;
-				bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
-
-				bsdf->alpha_x = param1;
-				bsdf->alpha_y = param1;
-				float eta = fmaxf(param2, 1e-5f);
-				bsdf->ior = (sd->flag & SD_BACKFACING)? 1.0f/eta: eta;
-
-				kernel_assert(stack_valid(data_node.z));
-				bsdf->extra->color = stack_load_float3(stack, data_node.z);
-
-				/* setup bsdf */
-				sd->flag |= bsdf_microfacet_multi_ggx_glass_setup(bsdf);
+			if(!bsdf) {
+				break;
 			}
 
+			MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
+			if(!extra) {
+				break;
+			}
+
+			bsdf->N = N;
+			bsdf->extra = extra;
+			bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+
+			bsdf->alpha_x = param1;
+			bsdf->alpha_y = param1;
+			float eta = fmaxf(param2, 1e-5f);
+			bsdf->ior = (sd->flag & SD_BACKFACING)? 1.0f/eta: eta;
+
+			kernel_assert(stack_valid(data_node.z));
+			bsdf->extra->color = stack_load_float3(stack, data_node.z);
+			bsdf->extra->cspec0 = make_float3(0.0f, 0.0f, 0.0f);
+			bsdf->extra->clearcoat = 0.0f;
+
+			/* setup bsdf */
+			sd->flag |= bsdf_microfacet_multi_ggx_glass_setup(bsdf);
 			break;
 		}
 		case CLOSURE_BSDF_MICROFACET_BECKMANN_ANISO_ID:
@@ -660,6 +673,8 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 					bsdf->extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
 					if(bsdf->extra) {
 						bsdf->extra->color = stack_load_float3(stack, data_node.w);
+						bsdf->extra->cspec0 = make_float3(0.0f, 0.0f, 0.0f);
+						bsdf->extra->clearcoat = 0.0f;
 						sd->flag |= bsdf_microfacet_multi_ggx_aniso_setup(bsdf);
 					}
 				}
@@ -708,18 +723,12 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 			float3 weight = sd->svm_closure_weight * mix_weight;
 			
 			if(sd->flag & SD_BACKFACING && sd->type & PRIMITIVE_ALL_CURVE) {
-				ShaderClosure *bsdf = bsdf_alloc(sd, sizeof(ShaderClosure), weight);
-
-				if(bsdf) {
-					bsdf->N = N;
-					/* todo: giving a fixed weight here will cause issues when
-					 * mixing multiple BSDFS. energy will not be conserved and
-					 * the throughput can blow up after multiple bounces. we
-					 * better figure out a way to skip backfaces from rays
-					 * spawned by transmission from the front */
-					bsdf->weight = make_float3(1.0f, 1.0f, 1.0f);
-					sd->flag |= bsdf_transparent_setup(bsdf);
-				}
+				/* todo: giving a fixed weight here will cause issues when
+				 * mixing multiple BSDFS. energy will not be conserved and
+				 * the throughput can blow up after multiple bounces. we
+				 * better figure out a way to skip backfaces from rays
+				 * spawned by transmission from the front */
+				bsdf_transparent_setup(sd, make_float3(1.0f, 1.0f, 1.0f));
 			}
 			else {
 				HairBsdf *bsdf = (HairBsdf*)bsdf_alloc(sd, sizeof(HairBsdf), weight);
@@ -756,58 +765,25 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 #ifdef __SUBSURFACE__
 		case CLOSURE_BSSRDF_CUBIC_ID:
 		case CLOSURE_BSSRDF_GAUSSIAN_ID:
-		case CLOSURE_BSSRDF_BURLEY_ID: {
-			float3 albedo = sd->svm_closure_weight;
+		case CLOSURE_BSSRDF_BURLEY_ID:
+		case CLOSURE_BSSRDF_RANDOM_WALK_ID: {
 			float3 weight = sd->svm_closure_weight * mix_weight;
-			float sample_weight = fabsf(average(weight));
-			
-			/* disable in case of diffuse ancestor, can't see it well then and
-			 * adds considerably noise due to probabilities of continuing path
-			 * getting lower and lower */
-			if(path_flag & PATH_RAY_DIFFUSE_ANCESTOR)
-				param1 = 0.0f;
+			Bssrdf *bssrdf = bssrdf_alloc(sd, weight);
 
-			if(sample_weight > CLOSURE_WEIGHT_CUTOFF) {
-				/* radius * scale */
-				float3 radius = stack_load_float3(stack, data_node.z)*param1;
-				/* sharpness */
-				float sharpness = stack_load_float(stack, data_node.w);
-				/* texture color blur */
-				float texture_blur = param2;
+			if(bssrdf) {
+				/* disable in case of diffuse ancestor, can't see it well then and
+				 * adds considerably noise due to probabilities of continuing path
+				 * getting lower and lower */
+				if(path_flag & PATH_RAY_DIFFUSE_ANCESTOR)
+					param1 = 0.0f;
 
-				/* create one closure per color channel */
-				Bssrdf *bssrdf = bssrdf_alloc(sd, make_float3(weight.x, 0.0f, 0.0f));
-				if(bssrdf) {
-					bssrdf->sample_weight = sample_weight;
-					bssrdf->radius = radius.x;
-					bssrdf->texture_blur = texture_blur;
-					bssrdf->albedo = albedo.x;
-					bssrdf->sharpness = sharpness;
-					bssrdf->N = N;
-					sd->flag |= bssrdf_setup(bssrdf, (ClosureType)type);
-				}
-
-				bssrdf = bssrdf_alloc(sd, make_float3(0.0f, weight.y, 0.0f));
-				if(bssrdf) {
-					bssrdf->sample_weight = sample_weight;
-					bssrdf->radius = radius.y;
-					bssrdf->texture_blur = texture_blur;
-					bssrdf->albedo = albedo.y;
-					bssrdf->sharpness = sharpness;
-					bssrdf->N = N;
-					sd->flag |= bssrdf_setup(bssrdf, (ClosureType)type);
-				}
-
-				bssrdf = bssrdf_alloc(sd, make_float3(0.0f, 0.0f, weight.z));
-				if(bssrdf) {
-					bssrdf->sample_weight = sample_weight;
-					bssrdf->radius = radius.z;
-					bssrdf->texture_blur = texture_blur;
-					bssrdf->albedo = albedo.z;
-					bssrdf->sharpness = sharpness;
-					bssrdf->N = N;
-					sd->flag |= bssrdf_setup(bssrdf, (ClosureType)type);
-				}
+				bssrdf->radius = stack_load_float3(stack, data_node.z)*param1;
+				bssrdf->albedo = sd->svm_closure_weight;
+				bssrdf->texture_blur = param2;
+				bssrdf->sharpness = stack_load_float(stack, data_node.w);
+				bssrdf->N = N;
+				bssrdf->roughness = 0.0f;
+				sd->flag |= bssrdf_setup(sd, bssrdf, (ClosureType)type);
 			}
 
 			break;
@@ -818,9 +794,14 @@ ccl_device void svm_node_closure_bsdf(KernelGlobals *kg, ShaderData *sd, float *
 	}
 }
 
-ccl_device void svm_node_closure_volume(KernelGlobals *kg, ShaderData *sd, float *stack, uint4 node, int path_flag)
+ccl_device void svm_node_closure_volume(KernelGlobals *kg, ShaderData *sd, float *stack, uint4 node, ShaderType shader_type, int path_flag)
 {
 #ifdef __VOLUME__
+	/* Only sum extinction for volumes, variable is shared with surface transparency. */
+	if(shader_type != SHADER_TYPE_VOLUME) {
+		return;
+	}
+
 	uint type, param1_offset, param2_offset;
 
 	uint mix_weight_offset;
@@ -831,38 +812,37 @@ ccl_device void svm_node_closure_volume(KernelGlobals *kg, ShaderData *sd, float
 		return;
 
 	float param1 = (stack_valid(param1_offset))? stack_load_float(stack, param1_offset): __uint_as_float(node.z);
-	float param2 = (stack_valid(param2_offset))? stack_load_float(stack, param2_offset): __uint_as_float(node.w);
-	float density = fmaxf(param1, 0.0f);
 
-	switch(type) {
-		case CLOSURE_VOLUME_ABSORPTION_ID: {
-			float3 weight = (make_float3(1.0f, 1.0f, 1.0f) - sd->svm_closure_weight) * mix_weight * density;
-			ShaderClosure *sc = closure_alloc(sd, sizeof(ShaderClosure), CLOSURE_NONE_ID, weight);
+	/* Compute scattering coefficient. */
+	float density = mix_weight * fmaxf(param1, 0.0f);
+	float3 weight = sd->svm_closure_weight;
 
-			if(sc) {
-				sd->flag |= volume_absorption_setup(sc);
-			}
-			break;
-		}
-		case CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID: {
-			float3 weight = sd->svm_closure_weight * mix_weight * density;
-			HenyeyGreensteinVolume *volume = (HenyeyGreensteinVolume*)bsdf_alloc(sd, sizeof(HenyeyGreensteinVolume), weight);
-
-			if(volume) {
-				volume->g = param2; /* g */
-				sd->flag |= volume_henyey_greenstein_setup(volume);
-			}
-			break;
-		}
-		default:
-			break;
+	if(type == CLOSURE_VOLUME_ABSORPTION_ID) {
+		weight = make_float3(1.0f, 1.0f, 1.0f) - weight;
 	}
+
+	weight *= density;
+
+	/* Add closure for volume scattering. */
+	if(type == CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID) {
+		float param2 = (stack_valid(param2_offset))? stack_load_float(stack, param2_offset): __uint_as_float(node.w);
+		HenyeyGreensteinVolume *volume = (HenyeyGreensteinVolume*)bsdf_alloc(sd, sizeof(HenyeyGreensteinVolume), weight);
+
+		if(volume) {
+			volume->g = param2; /* g */
+			sd->flag |= volume_henyey_greenstein_setup(volume);
+		}
+	}
+
+	/* Sum total extinction weight. */
+	volume_extinction_setup(sd, weight);
 #endif
 }
 
 ccl_device void svm_node_closure_emission(ShaderData *sd, float *stack, uint4 node)
 {
 	uint mix_weight_offset = node.y;
+	float3 weight = sd->svm_closure_weight;
 
 	if(stack_valid(mix_weight_offset)) {
 		float mix_weight = stack_load_float(stack, mix_weight_offset);
@@ -870,17 +850,16 @@ ccl_device void svm_node_closure_emission(ShaderData *sd, float *stack, uint4 no
 		if(mix_weight == 0.0f)
 			return;
 
-		closure_alloc(sd, sizeof(ShaderClosure), CLOSURE_EMISSION_ID, sd->svm_closure_weight * mix_weight);
+		weight *= mix_weight;
 	}
-	else
-		closure_alloc(sd, sizeof(ShaderClosure), CLOSURE_EMISSION_ID, sd->svm_closure_weight);
 
-	sd->flag |= SD_EMISSION;
+	emission_setup(sd, weight);
 }
 
 ccl_device void svm_node_closure_background(ShaderData *sd, float *stack, uint4 node)
 {
 	uint mix_weight_offset = node.y;
+	float3 weight = sd->svm_closure_weight;
 
 	if(stack_valid(mix_weight_offset)) {
 		float mix_weight = stack_load_float(stack, mix_weight_offset);
@@ -888,10 +867,10 @@ ccl_device void svm_node_closure_background(ShaderData *sd, float *stack, uint4 
 		if(mix_weight == 0.0f)
 			return;
 
-		closure_alloc(sd, sizeof(ShaderClosure), CLOSURE_BACKGROUND_ID, sd->svm_closure_weight * mix_weight);
+		weight *= mix_weight;
 	}
-	else
-		closure_alloc(sd, sizeof(ShaderClosure), CLOSURE_BACKGROUND_ID, sd->svm_closure_weight);
+
+	background_setup(sd, weight);
 }
 
 ccl_device void svm_node_closure_holdout(ShaderData *sd, float *stack, uint4 node)

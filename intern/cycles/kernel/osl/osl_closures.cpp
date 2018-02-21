@@ -36,7 +36,6 @@
 #include "kernel/osl/osl_closures.h"
 #include "kernel/osl/osl_shader.h"
 
-#include "util/util_debug.h"
 #include "util/util_math.h"
 #include "util/util_param.h"
 
@@ -91,9 +90,6 @@ BSDF_CLOSURE_CLASS_BEGIN(Refraction, refraction, MicrofacetBsdf, LABEL_SINGULAR)
 	CLOSURE_FLOAT3_PARAM(RefractionClosure, params.N),
 	CLOSURE_FLOAT_PARAM(RefractionClosure, params.ior),
 BSDF_CLOSURE_CLASS_END(Refraction, refraction)
-
-BSDF_CLOSURE_CLASS_BEGIN(Transparent, transparent, ShaderClosure, LABEL_SINGULAR)
-BSDF_CLOSURE_CLASS_END(Transparent, transparent)
 
 BSDF_CLOSURE_CLASS_BEGIN(AshikhminVelvet, ashikhmin_velvet, VelvetBsdf, LABEL_DIFFUSE)
 	CLOSURE_FLOAT3_PARAM(AshikhminVelvetClosure, params.N),
@@ -171,13 +167,6 @@ BSDF_CLOSURE_CLASS_BEGIN(HairTransmission, hair_transmission, HairBsdf, LABEL_GL
 	CLOSURE_FLOAT_PARAM(HairReflectionClosure, params.offset),
 BSDF_CLOSURE_CLASS_END(HairTransmission, hair_transmission)
 
-VOLUME_CLOSURE_CLASS_BEGIN(VolumeHenyeyGreenstein, henyey_greenstein, HenyeyGreensteinVolume, LABEL_VOLUME_SCATTER)
-	CLOSURE_FLOAT_PARAM(VolumeHenyeyGreensteinClosure, params.g),
-VOLUME_CLOSURE_CLASS_END(VolumeHenyeyGreenstein, henyey_greenstein)
-
-VOLUME_CLOSURE_CLASS_BEGIN(VolumeAbsorption, absorption, ShaderClosure, LABEL_SINGULAR)
-VOLUME_CLOSURE_CLASS_END(VolumeAbsorption, absorption)
-
 BSDF_CLOSURE_CLASS_BEGIN(PrincipledDiffuse, principled_diffuse, PrincipledDiffuseBsdf, LABEL_DIFFUSE)
 	CLOSURE_FLOAT3_PARAM(PrincipledDiffuseClosure, params.N),
 	CLOSURE_FLOAT_PARAM(PrincipledDiffuseClosure, params.roughness),
@@ -196,28 +185,34 @@ public:
 	MicrofacetBsdf *alloc(ShaderData *sd, int path_flag, float3 weight)
 	{
 		MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc_osl(sd, sizeof(MicrofacetBsdf), weight, &params);
-		MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
-		if(bsdf && extra) {
-			bsdf->extra = extra;
-
-			bsdf->ior = 1.5f;
-
-			bsdf->alpha_x = clearcoat_roughness;
-			bsdf->alpha_y = clearcoat_roughness;
-
-			bsdf->extra->cspec0 = make_float3(0.04f, 0.04f, 0.04f);
-			bsdf->extra->clearcoat = clearcoat;
-
-			return bsdf;
+		if(!bsdf) {
+			return NULL;
 		}
 
-		return NULL;
+		MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
+		if(!extra) {
+			return NULL;
+		}
+
+		bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+		bsdf->extra = extra;
+		bsdf->ior = 1.5f;
+		bsdf->alpha_x = clearcoat_roughness;
+		bsdf->alpha_y = clearcoat_roughness;
+		bsdf->extra->color = make_float3(0.0f, 0.0f, 0.0f);
+		bsdf->extra->cspec0 = make_float3(0.04f, 0.04f, 0.04f);
+		bsdf->extra->clearcoat = clearcoat;
+		return bsdf;
 	}
 
 	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
 		MicrofacetBsdf *bsdf = alloc(sd, path_flag, weight);
-		sd->flag |= (bsdf) ? bsdf_microfacet_ggx_clearcoat_setup(bsdf, sd) : 0;
+		if(!bsdf) {
+			return;
+		}
+
+		sd->flag |= bsdf_microfacet_ggx_clearcoat_setup(bsdf, sd);
 	}
 };
 
@@ -242,7 +237,11 @@ static void register_closure(OSL::ShadingSystem *ss, const char *name, int id, O
 	/* optimization: it's possible to not use a prepare function at all and
 	 * only initialize the actual class when accessing the closure component
 	 * data, but then we need to map the id to the class somehow */
+#if OSL_LIBRARY_VERSION_CODE >= 10900
+	ss->register_closure(name, id, params, prepare, NULL);
+#else
 	ss->register_closure(name, id, params, prepare, NULL, 16);
+#endif
 }
 
 void OSLShader::register_closures(OSLShadingSystem *ss_)
@@ -261,7 +260,7 @@ void OSLShader::register_closures(OSLShadingSystem *ss_)
 	register_closure(ss, "refraction", id++,
 		bsdf_refraction_params(), bsdf_refraction_prepare);
 	register_closure(ss, "transparent", id++,
-		bsdf_transparent_params(), bsdf_transparent_prepare);
+		closure_bsdf_transparent_params(), closure_bsdf_transparent_prepare);
 	register_closure(ss, "microfacet_ggx", id++,
 		bsdf_microfacet_ggx_params(), bsdf_microfacet_ggx_prepare);
 	register_closure(ss, "microfacet_ggx_aniso", id++,
@@ -317,14 +316,8 @@ void OSLShader::register_closures(OSLShadingSystem *ss_)
 		closure_bsdf_diffuse_ramp_params(), closure_bsdf_diffuse_ramp_prepare);
 	register_closure(ss, "phong_ramp", id++,
 		closure_bsdf_phong_ramp_params(), closure_bsdf_phong_ramp_prepare);
-	register_closure(ss, "bssrdf_cubic", id++,
-		closure_bssrdf_cubic_params(), closure_bssrdf_cubic_prepare);
-	register_closure(ss, "bssrdf_gaussian", id++,
-		closure_bssrdf_gaussian_params(), closure_bssrdf_gaussian_prepare);
-	register_closure(ss, "bssrdf_burley", id++,
-		closure_bssrdf_burley_params(), closure_bssrdf_burley_prepare);
-	register_closure(ss, "bssrdf_principled", id++,
-		closure_bssrdf_principled_params(), closure_bssrdf_principled_prepare);
+	register_closure(ss, "bssrdf", id++,
+		closure_bssrdf_params(), closure_bssrdf_prepare);
 
 	register_closure(ss, "hair_reflection", id++,
 		bsdf_hair_reflection_params(), bsdf_hair_reflection_prepare);
@@ -332,9 +325,9 @@ void OSLShader::register_closures(OSLShadingSystem *ss_)
 		bsdf_hair_transmission_params(), bsdf_hair_transmission_prepare);
 
 	register_closure(ss, "henyey_greenstein", id++,
-		volume_henyey_greenstein_params(), volume_henyey_greenstein_prepare);
+		closure_henyey_greenstein_params(), closure_henyey_greenstein_prepare);
 	register_closure(ss, "absorption", id++,
-		volume_absorption_params(), volume_absorption_prepare);
+		closure_absorption_params(), closure_absorption_prepare);
 }
 
 /* BSDF Closure */
@@ -369,18 +362,25 @@ public:
 		/* Technically, the MultiGGX Glass closure may also transmit. However,
 		* since this is set statically and only used for caustic flags, this
 		* is probably as good as it gets. */
-		if(!skip(sd, path_flag, LABEL_GLOSSY | LABEL_REFLECT)) {
-			MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc_osl(sd, sizeof(MicrofacetBsdf), weight, &params);
-			MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
-			if(bsdf && extra) {
-				bsdf->extra = extra;
-				bsdf->extra->color = color;
-				bsdf->extra->cspec0 = cspec0;
-				return bsdf;
-			}
+		if(skip(sd, path_flag, LABEL_GLOSSY | LABEL_REFLECT)) {
+			return NULL;
 		}
 
-		return NULL;
+		MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc_osl(sd, sizeof(MicrofacetBsdf), weight, &params);
+		if(!bsdf) {
+			return NULL;
+		}
+
+		MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
+		if(!extra) {
+			return NULL;
+		}
+
+		bsdf->extra = extra;
+		bsdf->extra->color = color;
+		bsdf->extra->cspec0 = cspec0;
+		bsdf->extra->clearcoat = 0.0f;
+		return bsdf;
 	}
 };
 
@@ -389,7 +389,13 @@ public:
 	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
 		MicrofacetBsdf *bsdf = alloc(sd, path_flag, weight);
-		sd->flag |= (bsdf) ? bsdf_microfacet_ggx_fresnel_setup(bsdf, sd) : 0;
+		if(!bsdf) {
+			return;
+		}
+
+		bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+		bsdf->alpha_y = bsdf->alpha_x;
+		sd->flag |= bsdf_microfacet_ggx_fresnel_setup(bsdf, sd);
 	}
 };
 
@@ -413,7 +419,11 @@ public:
 	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
 		MicrofacetBsdf *bsdf = alloc(sd, path_flag, weight);
-		sd->flag |= (bsdf) ? bsdf_microfacet_ggx_aniso_fresnel_setup(bsdf, sd) : 0;
+		if(!bsdf) {
+			return;
+		}
+
+		sd->flag |= bsdf_microfacet_ggx_aniso_fresnel_setup(bsdf, sd);
 	}
 };
 
@@ -447,17 +457,25 @@ public:
 		/* Technically, the MultiGGX closure may also transmit. However,
 		 * since this is set statically and only used for caustic flags, this
 		 * is probably as good as it gets. */
-	    if(!skip(sd, path_flag, LABEL_GLOSSY|LABEL_REFLECT)) {
-			MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc_osl(sd, sizeof(MicrofacetBsdf), weight, &params);
-			MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
-			if(bsdf && extra) {
-				bsdf->extra = extra;
-				bsdf->extra->color = color;
-				return bsdf;
-			}
+	    if(skip(sd, path_flag, LABEL_GLOSSY|LABEL_REFLECT)) {
+			return NULL;
 		}
 
-		return NULL;
+		MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc_osl(sd, sizeof(MicrofacetBsdf), weight, &params);
+		if(!bsdf) {
+			return NULL;
+		}
+
+		MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
+		if(!extra) {
+			return NULL;
+		}
+
+		bsdf->extra = extra;
+		bsdf->extra->color = color;
+		bsdf->extra->cspec0 = make_float3(0.0f, 0.0f, 0.0f);
+		bsdf->extra->clearcoat = 0.0f;
+		return bsdf;
 	}
 };
 
@@ -466,7 +484,14 @@ public:
 	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
 		MicrofacetBsdf *bsdf = alloc(sd, path_flag, weight);
-		sd->flag |= (bsdf) ? bsdf_microfacet_multi_ggx_setup(bsdf) : 0;
+		if(!bsdf) {
+			return;
+		}
+
+		bsdf->ior = 0.0f;
+		bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+		bsdf->alpha_y = bsdf->alpha_x;
+		sd->flag |= bsdf_microfacet_multi_ggx_setup(bsdf);
 	}
 };
 
@@ -488,7 +513,12 @@ public:
 	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
 		MicrofacetBsdf *bsdf = alloc(sd, path_flag, weight);
-		sd->flag |= (bsdf) ? bsdf_microfacet_multi_ggx_aniso_setup(bsdf) : 0;
+		if(!bsdf) {
+			return;
+		}
+
+		bsdf->ior = 0.0f;
+		sd->flag |= bsdf_microfacet_multi_ggx_aniso_setup(bsdf);
 	}
 };
 
@@ -514,7 +544,13 @@ public:
 	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
 		MicrofacetBsdf *bsdf = alloc(sd, path_flag, weight);
-		sd->flag |= (bsdf) ? bsdf_microfacet_multi_ggx_glass_setup(bsdf) : 0;
+		if(!bsdf) {
+			return;
+		}
+
+		bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+		bsdf->alpha_y = bsdf->alpha_x;
+		sd->flag |= bsdf_microfacet_multi_ggx_glass_setup(bsdf);
 	}
 };
 
@@ -546,18 +582,25 @@ public:
 		/* Technically, the MultiGGX closure may also transmit. However,
 		* since this is set statically and only used for caustic flags, this
 		* is probably as good as it gets. */
-		if(!skip(sd, path_flag, LABEL_GLOSSY | LABEL_REFLECT)) {
-			MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc_osl(sd, sizeof(MicrofacetBsdf), weight, &params);
-			MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
-			if(bsdf && extra) {
-				bsdf->extra = extra;
-				bsdf->extra->color = color;
-				bsdf->extra->cspec0 = cspec0;
-				return bsdf;
-			}
+		if(skip(sd, path_flag, LABEL_GLOSSY | LABEL_REFLECT)) {
+			return NULL;
 		}
 
-		return NULL;
+		MicrofacetBsdf *bsdf = (MicrofacetBsdf*)bsdf_alloc_osl(sd, sizeof(MicrofacetBsdf), weight, &params);
+		if(!bsdf) {
+			return NULL;
+		}
+
+		MicrofacetExtra *extra = (MicrofacetExtra*)closure_alloc_extra(sd, sizeof(MicrofacetExtra));
+		if(!extra) {
+			return NULL;
+		}
+
+		bsdf->extra = extra;
+		bsdf->extra->color = color;
+		bsdf->extra->cspec0 = cspec0;
+		bsdf->extra->clearcoat = 0.0f;
+		return bsdf;
 	}
 };
 
@@ -566,7 +609,13 @@ public:
 	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
 		MicrofacetBsdf *bsdf = alloc(sd, path_flag, weight);
-		sd->flag |= (bsdf) ? bsdf_microfacet_multi_ggx_fresnel_setup(bsdf, sd) : 0;
+		if(!bsdf) {
+			return;
+		}
+
+		bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+		bsdf->alpha_y = bsdf->alpha_x;
+		sd->flag |= bsdf_microfacet_multi_ggx_fresnel_setup(bsdf, sd);
 	}
 };
 
@@ -590,7 +639,11 @@ public:
 	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
 		MicrofacetBsdf *bsdf = alloc(sd, path_flag, weight);
-		sd->flag |= (bsdf) ? bsdf_microfacet_multi_ggx_aniso_fresnel_setup(bsdf, sd) : 0;
+		if(!bsdf) {
+			return;
+		}
+
+		sd->flag |= bsdf_microfacet_multi_ggx_aniso_fresnel_setup(bsdf, sd);
 	}
 };
 
@@ -618,7 +671,13 @@ public:
 	void setup(ShaderData *sd, int path_flag, float3 weight)
 	{
 		MicrofacetBsdf *bsdf = alloc(sd, path_flag, weight);
-		sd->flag |= (bsdf) ? bsdf_microfacet_multi_ggx_glass_fresnel_setup(bsdf, sd) : 0;
+		if(!bsdf) {
+			return;
+		}
+
+		bsdf->T = make_float3(0.0f, 0.0f, 0.0f);
+		bsdf->alpha_y = bsdf->alpha_x;
+		sd->flag |= bsdf_microfacet_multi_ggx_glass_fresnel_setup(bsdf, sd);
 	}
 };
 
@@ -636,6 +695,81 @@ ClosureParam *closure_bsdf_microfacet_multi_ggx_glass_fresnel_params()
 	return params;
 }
 CCLOSURE_PREPARE(closure_bsdf_microfacet_multi_ggx_glass_fresnel_prepare, MicrofacetMultiGGXGlassFresnelClosure);
+
+/* Transparent */
+
+class TransparentClosure : public CBSDFClosure {
+public:
+	ShaderClosure params;
+	float3 unused;
+
+	void setup(ShaderData *sd, int path_flag, float3 weight)
+	{
+		bsdf_transparent_setup(sd, weight);
+	}
+};
+
+ClosureParam *closure_bsdf_transparent_params()
+{
+	static ClosureParam params[] = {
+		CLOSURE_STRING_KEYPARAM(TransparentClosure, label, "label"),
+		CLOSURE_FINISH_PARAM(TransparentClosure)
+	};
+	return params;
+}
+
+CCLOSURE_PREPARE(closure_bsdf_transparent_prepare, TransparentClosure)
+
+/* Volume */
+
+class VolumeAbsorptionClosure : public CBSDFClosure {
+public:
+	void setup(ShaderData *sd, int path_flag, float3 weight)
+	{
+		volume_extinction_setup(sd, weight);
+	}
+};
+
+ClosureParam *closure_absorption_params()
+{
+	static ClosureParam params[] = {
+		CLOSURE_STRING_KEYPARAM(VolumeAbsorptionClosure, label, "label"),
+		CLOSURE_FINISH_PARAM(VolumeAbsorptionClosure)
+	};
+	return params;
+}
+
+CCLOSURE_PREPARE(closure_absorption_prepare, VolumeAbsorptionClosure)
+
+class VolumeHenyeyGreensteinClosure : public CBSDFClosure {
+public:
+	HenyeyGreensteinVolume params;
+
+	void setup(ShaderData *sd, int path_flag, float3 weight)
+	{
+		volume_extinction_setup(sd, weight);
+
+	    HenyeyGreensteinVolume *volume = (HenyeyGreensteinVolume*)bsdf_alloc_osl(sd, sizeof(HenyeyGreensteinVolume), weight, &params);
+		if(!volume) {
+			return;
+		}
+
+		sd->flag |= volume_henyey_greenstein_setup(volume);
+	}
+};
+
+ClosureParam *closure_henyey_greenstein_params()
+{
+	static ClosureParam params[] = {
+		CLOSURE_FLOAT_PARAM(VolumeHenyeyGreensteinClosure, params.g),
+		CLOSURE_STRING_KEYPARAM(VolumeHenyeyGreensteinClosure, label, "label"),
+		CLOSURE_FINISH_PARAM(VolumeHenyeyGreensteinClosure)
+	};
+	return params;
+}
+
+CCLOSURE_PREPARE(closure_henyey_greenstein_prepare, VolumeHenyeyGreensteinClosure)
+
 
 CCL_NAMESPACE_END
 
