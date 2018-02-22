@@ -161,9 +161,9 @@ class evd_file:
         else:
           evd = open(self.filename,"w")
           evd.buffer.write(struct.pack("i", len(self.buffer)))
-
           for e in self.buffer:
-              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12]),float(e[13]),float(e[14]),int(e[11])))
+              #The evd format does not allow negative object ids
+              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12]),float(e[13]),float(e[14]),max(0,int(e[11]))))
           evd.close()
 
     def appendEvdFile(self):
@@ -178,8 +178,9 @@ class evd_file:
           evd.buffer.write(struct.pack("i", len(self.buffer)))
           idx = 0
           for e in self.buffer:
+              #The evd format does not allow negative object ids
+              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12]),float(e[13]),float(e[14]),max(0,int(e[11])))) 
               idx = idx + 1
-              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12]),float(e[13]),float(e[14]),int(e[11])))
           print ("Written: %d entries"%idx)
           evd.close()
   
