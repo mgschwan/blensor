@@ -30,10 +30,10 @@
 
 #include "blensor_native_code.h"
 
-
-//extern StructRNA RNA_Camera;
-//extern StructRNA RNA_Object;
-
+/* This is needed because the shading functions in shadeoutput.c use a local copy 
+ * to speed up the processing. Without setting this here, shade_ray will segfault
+ */
+extern struct Render R;
 
 extern int blensor_initialize_from_main(Render *re, RenderData *rd, Main *bmain, Scene *scene, SceneRenderLayer *srl,
                                        Object *camera_override, unsigned int lay_override, int anim, int anim_init);
@@ -365,7 +365,6 @@ static void do_blensor(Render *re, float *rays, int raycount, int elements_per_r
     PropertyType pt;
     
 
-
     cam = (Camera *)re->scene->camera->data;
     RNA_pointer_create(&(re->scene->camera->id), &RNA_Object, re->scene->camera, &rna_cam);
 
@@ -381,7 +380,8 @@ static void do_blensor(Render *re, float *rays, int raycount, int elements_per_r
     rna_cam_prop = RNA_struct_find_property(&rna_cam, "ref_enabled");
     reflection_enabled = RNA_property_boolean_get(&rna_cam, rna_cam_prop);
 
- 
+    /* This is necessary, see explanation at the point of declaration */
+    R = *re;
 
     refractive_index = Blensor_GetIDPropertyValue_Double(&re->scene->world->id,"refractive_index", 1.0);
     printf ("The refractive index of the world is: %.6f\n",refractive_index);
@@ -556,6 +556,15 @@ static uintptr_t convert_str_to_ptr(char *ptr_str)
   return ptr;
 }
 
+/* for exec() when there is no render job
+ * note: this wont check for the escape key being pressed, but doing so isnt threadsafe */
+static int render_break(void *UNUSED(rjv))
+{
+	if (G.is_break)
+		return 1;
+	return 0;
+}
+
 
 /* #TODO@mgschwan: There is a memory leak somewhere in the raycasting code. Find it! */
 /* Setup the evnironment and call the raycaster function */
@@ -592,7 +601,7 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
     RE_Database_Free(re);
 
 	BKE_image_pool_free(re->pool);
-	re->pool = NULL;
+    re->pool = NULL;
 
     re->scene->r.subframe = 0.f;
     render_still_available = 0;
@@ -610,58 +619,64 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
 int screen_blensor_exec(bContext *C, int raycount, int elements_per_ray, int keep_render_setup, int shading, float maximum_distance, char *ray_ptr_str, char *return_ptr_str)
 {
 	Scene *scene= CTX_data_scene(C);
+    SceneRenderLayer *srl = NULL;
 	static Render *re=NULL;
 	Image *ima;
 	View3D *v3d= CTX_wm_view3d(C);
 	Main *mainp= CTX_data_main(C);
 	unsigned int lay= (v3d)? v3d->lay: scene->lay;
-  float *rays;
-  float *returns;
+    float *rays;
+    float *returns;
 
 	struct Object *camera_override= v3d ? V3D_CAMERA_LOCAL(v3d) : NULL;
 
-  rays = (float *)convert_str_to_ptr(ray_ptr_str);
-  returns = (float *)convert_str_to_ptr(return_ptr_str);
+
+    rays = (float *)convert_str_to_ptr(ray_ptr_str);
+    returns = (float *)convert_str_to_ptr(return_ptr_str);
       
-  if (raycount > 0)
-  {
+    if (raycount > 0)
+    {
+            
+        printf ("Raycount: %d\n",raycount);
         
-      printf ("Raycount: %d\n",raycount);
-      
-	    if(re==NULL) {
-		    re = RE_NewRender(scene->id.name);
-	    }
-	
-  
-      G.is_break = false;
-	    //RE_test_break_cb(re, NULL, (int (*)(void *)) blender_test_break);
+            if(re==NULL) {
+                re = RE_NewSceneRender(scene);
+            }
+        
+    
+        G.is_break = false;
+        RE_test_break_cb(re, NULL, render_break);
 
-	    ima= BKE_image_verify_viewer(IMA_TYPE_R_RESULT, "Render Result");
-	    BKE_image_signal(ima, NULL, IMA_SIGNAL_FREE);
-	    BKE_image_backup_render(scene, ima, true);
+        ima= BKE_image_verify_viewer(IMA_TYPE_R_RESULT, "Render Result");
+        BKE_image_signal(ima, NULL, IMA_SIGNAL_FREE);
+        BKE_image_backup_render(scene, ima, true);
 
-      /* cleanup sequencer caches before starting user triggered render.
-       * otherwise, invalidated cache entries can make their way into
-       * the output rendering. We can't put that into RE_BlenderFrame,
-       * since sequence rendering can call that recursively... (peter) */
-      BKE_sequencer_cache_cleanup();
+        /* cleanup sequencer caches before starting user triggered render.
+        * otherwise, invalidated cache entries can make their way into
+        * the output rendering. We can't put that into RE_BlenderFrame,
+        * since sequence rendering can call that recursively... (peter) */
+        BKE_sequencer_cache_cleanup();
 
-      //RE_SetReports(re, op->reports);
+        //RE_SetReports(re, op->reports);
 
-	    RE_BlensorFrame(re, mainp, scene, NULL, camera_override, lay, scene->r.cfra, 0, rays, raycount, elements_per_ray, returns, maximum_distance, keep_render_setup, shading);
+        BLI_threaded_malloc_begin();
 
-    	RE_SetReports(re, NULL);
+        RE_BlensorFrame(re, mainp, scene, NULL, camera_override, lay, scene->r.cfra, 0, rays, raycount, elements_per_ray, returns, maximum_distance, keep_render_setup, shading);
 
-	    // no redraw needed, we leave state as we entered it
-	    ED_update_for_newframe(mainp, scene, 1);
+        BLI_threaded_malloc_end();
 
-	    WM_event_add_notifier(C, NC_SCENE|ND_RENDER_RESULT, scene);
-      if (keep_render_setup == 0)
-      {
-        re = NULL;
-      }
+        RE_SetReports(re, NULL);
 
-  }
+            // no redraw needed, we leave state as we entered it
+        ED_update_for_newframe(mainp, scene, 1);
+
+        WM_event_add_notifier(C, NC_SCENE|ND_RENDER_RESULT, scene);
+        if (keep_render_setup == 0)
+        {
+            re = NULL;
+        }
+
+     }
 	return OPERATOR_FINISHED;
 }
 
