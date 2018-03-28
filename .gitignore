@@ -21,7 +21,7 @@ Desktop.ini
 
 # commonly used paths in blender
 /blender.bin
-/user-config.py
+/BUILD_NOTES.txt
 
 # local patches
 /*.patch
@@ -32,3 +32,7 @@ Desktop.ini
 /doc/python_api/sphinx-in-tmp/
 /doc/python_api/sphinx-in/
 /doc/python_api/sphinx-out/
+/doc/python_api/rst/bmesh.ops.rst
+
+# in-source lib downloads
+/build_files/build_environment/downloads

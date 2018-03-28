@@ -1,5 +1,4 @@
-/* 
- *
+/*
  * ***** BEGIN GPL LICENSE BLOCK *****
  *
  * This program is free software; you can redistribute it and/or
@@ -16,24 +15,20 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
- * The Original Code is Copyright (C) 2001-2002 by NaN Holding BV.
- * All rights reserved.
- *
- * This is a new part of Blender.
- *
- * Contributor(s): Michael Gschwandtner
- *
  * ***** END GPL LICENSE BLOCK *****
  */
 
-/** \file blender/python/blensor/blensor.h
- *  \ingroup blensor
+#ifndef __BLI_CONVEXHULL_2D_H__
+#define __BLI_CONVEXHULL_2D_H__
+
+/** \file BLI_convexhull_2d.h
+ *  \ingroup bli
  */
 
+int BLI_convexhull_2d_sorted(const float (*points)[2], const int n, int r_points[]);
+int BLI_convexhull_2d(const float (*points)[2], const int n, int r_points[]);
 
-#ifndef __BLENSOR_H__
-#define __BLENSOR_H__
+float BLI_convexhull_aabb_fit_hull_2d(const float (*points_hull)[2], unsigned int n);
+float BLI_convexhull_aabb_fit_points_2d(const float (*points)[2], unsigned int n);
 
-PyMODINIT_FUNC PyInit_blensor(void);
-
-#endif /* __BLENSOR_H__ */
+#endif  /* __BLI_CONVEXHULL_2D_H__ */

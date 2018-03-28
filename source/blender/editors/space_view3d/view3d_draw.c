@@ -48,7 +48,7 @@
 
 #include "BLI_blenlib.h"
 #include "BLI_math.h"
-#include "BLI_jitter.h"
+#include "BLI_jitter_2d.h"
 #include "BLI_utildefines.h"
 #include "BLI_endian_switch.h"
 #include "BLI_threads.h"
@@ -861,7 +861,7 @@ static void draw_viewport_name(ARegion *ar, View3D *v3d, rcti *rect)
  * framenum, object name, bone name (if available), marker name (if available)
  */
 
-static void draw_selected_name(Scene *scene, Object *ob, rcti *rect)
+static void draw_selected_name(Scene *scene, Object *ob, const rcti *rect)
 {
 	const int cfra = CFRA;
 	const char *msg_pin = " (Pinned)";
@@ -1318,31 +1318,30 @@ static void drawviewborder(Scene *scene, ARegion *ar, View3D *v3d)
 
 /* *********************** backdraw for selection *************** */
 
-static void backdrawview3d(Scene *scene, wmWindow *win, ARegion *ar, View3D *v3d)
+static void backdrawview3d(Scene *scene, wmWindow *win, ARegion *ar, View3D *v3d, Object *obact, Object *obedit)
 {
 	RegionView3D *rv3d = ar->regiondata;
-	struct Base *base = scene->basact;
 	int multisample_enabled;
 
 	BLI_assert(ar->regiontype == RGN_TYPE_WINDOW);
 
-	if (base && (base->object->mode & (OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT) ||
-	             BKE_paint_select_face_test(base->object)))
+	if (obact && (obact->mode & (OB_MODE_VERTEX_PAINT | OB_MODE_WEIGHT_PAINT) ||
+	             BKE_paint_select_face_test(obact)))
 	{
 		/* do nothing */
 	}
 	/* texture paint mode sampling */
-	else if (base && (base->object->mode & OB_MODE_TEXTURE_PAINT) &&
+	else if (obact && (obact->mode & OB_MODE_TEXTURE_PAINT) &&
 	         (v3d->drawtype > OB_WIRE))
 	{
 		/* do nothing */
 	}
-	else if ((base && (base->object->mode & OB_MODE_PARTICLE_EDIT)) &&
+	else if ((obact && (obact->mode & OB_MODE_PARTICLE_EDIT)) &&
 	         V3D_IS_ZBUF(v3d))
 	{
 		/* do nothing */
 	}
-	else if (scene->obedit &&
+	else if (obedit &&
 	         V3D_IS_ZBUF(v3d))
 	{
 		/* do nothing */
@@ -1417,10 +1416,11 @@ static void backdrawview3d(Scene *scene, wmWindow *win, ARegion *ar, View3D *v3d
 		ED_view3d_clipping_set(rv3d);
 	
 	G.f |= G_BACKBUFSEL;
-	
-	if (base && (base->lay & v3d->lay))
-		draw_object_backbufsel(scene, v3d, rv3d, base->object);
-	
+
+	if (obact && (obact->lay & v3d->lay)) {
+		draw_object_backbufsel(scene, v3d, rv3d, obact);
+	}
+
 	if (rv3d->gpuoffscreen)
 		GPU_offscreen_unbind(rv3d->gpuoffscreen, true);
 	else
@@ -1463,8 +1463,9 @@ static void view3d_opengl_read_Z_pixels(ARegion *ar, int x, int y, int w, int h,
 
 void ED_view3d_backbuf_validate(ViewContext *vc)
 {
-	if (vc->v3d->flag & V3D_INVALID_BACKBUF)
-		backdrawview3d(vc->scene, vc->win, vc->ar, vc->v3d);
+	if (vc->v3d->flag & V3D_INVALID_BACKBUF) {
+		backdrawview3d(vc->scene, vc->win, vc->ar, vc->v3d, vc->obact, vc->obedit);
+	}
 }
 
 /**
@@ -1555,8 +1556,10 @@ ImBuf *ED_view3d_backbuf_read(ViewContext *vc, int xmin, int ymin, int xmax, int
 	}
 }
 
-/* smart function to sample a rect spiralling outside, nice for backbuf selection */
-unsigned int ED_view3d_backbuf_sample_rect(
+/**
+ * Smart function to sample a rectangle spiral ling outside, nice for backbuf selection
+ */
+uint ED_view3d_backbuf_sample_rect(
         ViewContext *vc, const int mval[2], int size,
         unsigned int min, unsigned int max, float *r_dist)
 {

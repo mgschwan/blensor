@@ -62,6 +62,8 @@
 
 #include "BLT_translation.h"
 
+#include "BLF_api.h"
+
 #include "DNA_mesh_types.h" /* only for USE_BMESH_SAVE_AS_COMPAT */
 #include "DNA_object_types.h"
 #include "DNA_space_types.h"
@@ -315,10 +317,8 @@ static void wm_window_match_do(bContext *C, ListBase *oldwmlist)
 }
 
 /* in case UserDef was read, we re-initialize all, and do versioning */
-static void wm_init_userdef(bContext *C, const bool read_userdef_from_memory)
+static void wm_init_userdef(Main *bmain, const bool read_userdef_from_memory)
 {
-	Main *bmain = CTX_data_main(C);
-
 	/* versioning is here */
 	UI_init_userdef();
 	
@@ -341,6 +341,8 @@ static void wm_init_userdef(bContext *C, const bool read_userdef_from_memory)
 
 	/* update tempdir from user preferences */
 	BKE_tempdir_init(U.tempdir);
+
+	BLF_antialias_set((U.text_render & USER_TEXT_DISABLE_AA) == 0);
 }
 
 
@@ -484,6 +486,8 @@ static void wm_file_read_post(bContext *C, const bool is_startup_file, const boo
 		BPY_python_reset(C);
 		addons_loaded = true;
 	}
+#else
+	UNUSED_VARS(use_userdef);
 #endif  /* WITH_PYTHON */
 
 	WM_operatortype_last_properties_clear_all();
@@ -579,7 +583,7 @@ bool WM_file_read(bContext *C, const char *filepath, ReportList *reports)
 
 		if (retval == BKE_BLENDFILE_READ_OK_USERPREFS) {
 			/* in case a userdef is read from regular .blend */
-			wm_init_userdef(C, false);
+			wm_init_userdef(G.main, false);
 		}
 		
 		if (retval != BKE_BLENDFILE_READ_FAIL) {
@@ -840,7 +844,7 @@ int wm_homefile_read(
 	
 	if (use_userdef) {
 		/* check userdef before open window, keymaps etc */
-		wm_init_userdef(C, read_userdef_from_memory);
+		wm_init_userdef(CTX_data_main(C), read_userdef_from_memory);
 	}
 	
 	/* match the read WM with current WM */
@@ -1351,13 +1355,13 @@ void wm_open_init_use_scripts(wmOperator *op, bool use_prefs)
 
 /** \} */
 
-void WM_file_tag_modified(const bContext *C)
+void WM_file_tag_modified(void)
 {
-	wmWindowManager *wm = CTX_wm_manager(C);
+	wmWindowManager *wm = G.main->wm.first;
 	if (wm->file_saved) {
 		wm->file_saved = 0;
 		/* notifier that data changed, for save-over warning or header */
-		WM_event_add_notifier(C, NC_WM | ND_DATACHANGED, NULL);
+		WM_main_add_notifier(NC_WM | ND_DATACHANGED, NULL);
 	}
 }
 
@@ -2075,6 +2079,10 @@ static int wm_save_as_mainfile_exec(bContext *C, wmOperator *op)
 
 	WM_event_add_notifier(C, NC_WM | ND_FILESAVE, NULL);
 
+	if (RNA_boolean_get(op->ptr, "exit")) {
+		wm_exit_schedule_delayed(C);
+	}
+
 	return OPERATOR_FINISHED;
 }
 
@@ -2146,11 +2154,13 @@ static int wm_save_mainfile_invoke(bContext *C, wmOperator *op, const wmEvent *U
 		char path[FILE_MAX];
 
 		RNA_string_get(op->ptr, "filepath", path);
-		if (BLI_exists(path)) {
+		if (RNA_boolean_get(op->ptr, "check_existing") && BLI_exists(path)) {
 			ret = WM_operator_confirm_message_ex(C, op, IFACE_("Save Over?"), ICON_QUESTION, path);
 		}
 		else {
 			ret = wm_save_as_mainfile_exec(C, op);
+			/* Without this there is no feedback the file was saved. */
+			BKE_reportf(op->reports, RPT_INFO, "Saved \"%s\"", BLI_path_basename(path));
 		}
 	}
 	else {
@@ -2172,12 +2182,16 @@ void WM_OT_save_mainfile(wmOperatorType *ot)
 	ot->check = blend_save_check;
 	/* omit window poll so this can work in background mode */
 
+	PropertyRNA *prop;
 	WM_operator_properties_filesel(
 	        ot, FILE_TYPE_FOLDER | FILE_TYPE_BLENDER, FILE_BLENDER, FILE_SAVE,
 	        WM_FILESEL_FILEPATH, FILE_DEFAULTDISPLAY, FILE_SORT_ALPHA);
 	RNA_def_boolean(ot->srna, "compress", false, "Compress", "Write compressed .blend file");
 	RNA_def_boolean(ot->srna, "relative_remap", false, "Remap Relative",
 	                "Remap relative paths when saving in a different directory");
+
+	prop = RNA_def_boolean(ot->srna, "exit", false, "Exit", "Exit Blender after saving");
+	RNA_def_property_flag(prop, PROP_HIDDEN | PROP_SKIP_SAVE);
 }
 
 /** \} */

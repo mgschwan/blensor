@@ -58,7 +58,7 @@
 #include "BLI_utildefines.h"
 #include "BLI_edgehash.h"
 #include "BLI_rand.h"
-#include "BLI_jitter.h"
+#include "BLI_jitter_2d.h"
 #include "BLI_math.h"
 #include "BLI_blenlib.h"
 #include "BLI_kdtree.h"
@@ -93,6 +93,7 @@
 #include "PIL_time.h"
 
 #include "RE_shader_ext.h"
+#include "DEG_depsgraph.h"
 
 /* fluid sim particle import */
 #ifdef WITH_MOD_FLUID
@@ -4405,8 +4406,6 @@ void BKE_particle_system_eval_init(EvaluationContext *UNUSED(eval_ctx),
                                    Scene *scene,
                                    Object *ob)
 {
-	if (G.debug & G_DEBUG_DEPSGRAPH) {
-		printf("%s on %s\n", __func__, ob->id.name);
-	}
+	DEG_debug_print_eval(__func__, ob->id.name, ob);
 	BKE_ptcache_object_reset(scene, ob, PTCACHE_RESET_DEPSGRAPH);
 }

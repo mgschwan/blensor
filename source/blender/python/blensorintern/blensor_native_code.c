@@ -168,8 +168,7 @@ static int cast_ray(RayObject *tree, float sx, float sy, float sz, float vx, flo
                   shi.lay = re->scene->lay; //#TODO get the layers that are really active
                   shi.depth = isect.dist;
                   shi.volume_depth = 0;
-                	shi.passflag |= SCE_PASS_RGBA | SCE_PASS_COMBINED | SCE_PASS_DIFFUSE | SCE_PASS_SPEC;
-                	
+                  shi.passflag |= SCE_PASS_RGBA | SCE_PASS_COMBINED | SCE_PASS_DIFFUSE | SCE_PASS_SPEC;
                   shi.mat_override= NULL;
                   shi.light_override= NULL;
                   shi.combinedflag= 0xFFFF;
@@ -448,12 +447,16 @@ static void do_blensor(Render *re, float *rays, int raycount, int elements_per_r
                     float in_ray[] = {vx,vy,vz};
                     float v1[3];
                     float angle;
-                    
+
                     reflection = 1;
                     reflect_v3_v3v3(out_ray, in_ray, &intersection[7]);
 
-                    v1[0] = sx-intersection[1];v1[1]=sy-intersection[2];v1[2]=sz-intersection[3];
+                    v1[0] = sx-intersection[1];
+                    v1[1] = sy-intersection[2];
+                    v1[2] = sz-intersection[3];
+
                     angle = angle_v3v3(v1,&intersection[7]);
+                    
                     vx=out_ray[0];
                     vy=out_ray[1];
                     vz=out_ray[2];
@@ -488,8 +491,7 @@ static void do_blensor(Render *re, float *rays, int raycount, int elements_per_r
             sx = intersection[1];  //And set up the new starting point            
             sy = intersection[2];
             sz = intersection[3];
-        } while((reflection || transmission) && raydistance <= maxdist);
-        
+        } while((reflection || transmission) && raydistance <= maxdist && !valid_signal);
 
         returns[idx*BLENSOR_ELEMENTS_PER_RETURN+5] = intersection[12]; //r-value
         returns[idx*BLENSOR_ELEMENTS_PER_RETURN+6] = intersection[13]; //g-value
@@ -575,7 +577,9 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
     BKE_scene_camera_switch_update(re->scene);
     
     //BLI_callback_exec(re->main, (ID *)scene, BLI_CB_EVT_RENDER_PRE);
-    
+
+    re->pool = BKE_image_pool_new();
+
     // moved here from the do_blensor function 
     re->scene->r.subframe = re->mblur_offs + re->field_offs;
     RE_Database_FromScene(re, re->main, re->scene, re->lay, 1); //Sets up all the stuff
@@ -586,7 +590,10 @@ void RE_BlensorFrame(Render *re, Main *bmain, Scene *scene, SceneRenderLayer *sr
     // moved here from the end of do_blensor 
     // free all render verts etc 
     RE_Database_Free(re);
-    
+
+	BKE_image_pool_free(re->pool);
+	re->pool = NULL;
+
     re->scene->r.subframe = 0.f;
     render_still_available = 0;
 

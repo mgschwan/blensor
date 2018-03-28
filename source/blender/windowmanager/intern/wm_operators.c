@@ -58,7 +58,7 @@
 #include "PIL_time.h"
 
 #include "BLI_blenlib.h"
-#include "BLI_dial.h"
+#include "BLI_dial_2d.h"
 #include "BLI_dynstr.h" /*for WM_operator_pystring */
 #include "BLI_math.h"
 #include "BLI_utildefines.h"
@@ -2160,13 +2160,20 @@ static void WM_OT_window_fullscreen_toggle(wmOperatorType *ot)
 	ot->poll = WM_operator_winactive;
 }
 
-static int wm_exit_blender_exec(bContext *C, wmOperator *op)
+static int wm_exit_blender_exec(bContext *C, wmOperator *UNUSED(op))
 {
-	WM_operator_free(op);
-	
-	WM_exit(C);
-	
+	wm_quit_with_optional_confirmation_prompt(C, CTX_wm_window(C));
 	return OPERATOR_FINISHED;
+}
+
+static int wm_exit_blender_invoke(bContext *C, wmOperator *op, const wmEvent *event)
+{
+	if (U.uiflag & USER_QUIT_PROMPT) {
+		return wm_exit_blender_exec(C, op);
+	}
+	else {
+		return WM_operator_confirm(C, op, event);
+	}
 }
 
 static void WM_OT_quit_blender(wmOperatorType *ot)
@@ -2175,7 +2182,7 @@ static void WM_OT_quit_blender(wmOperatorType *ot)
 	ot->idname = "WM_OT_quit_blender";
 	ot->description = "Quit Blender";
 
-	ot->invoke = WM_operator_confirm;
+	ot->invoke = wm_exit_blender_invoke;
 	ot->exec = wm_exit_blender_exec;
 }
 
@@ -3027,26 +3034,38 @@ static void WM_OT_radial_control(wmOperatorType *ot)
 	ot->flag = OPTYPE_REGISTER | OPTYPE_UNDO | OPTYPE_BLOCKING;
 
 	/* all paths relative to the context */
-	RNA_def_string(ot->srna, "data_path_primary", NULL, 0, "Primary Data Path", "Primary path of property to be set by the radial control");
+	PropertyRNA *prop;
+	prop = RNA_def_string(ot->srna, "data_path_primary", NULL, 0, "Primary Data Path", "Primary path of property to be set by the radial control");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
-	RNA_def_string(ot->srna, "data_path_secondary", NULL, 0, "Secondary Data Path", "Secondary path of property to be set by the radial control");
+	prop = RNA_def_string(ot->srna, "data_path_secondary", NULL, 0, "Secondary Data Path", "Secondary path of property to be set by the radial control");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
-	RNA_def_string(ot->srna, "use_secondary", NULL, 0, "Use Secondary", "Path of property to select between the primary and secondary data paths");
+	prop = RNA_def_string(ot->srna, "use_secondary", NULL, 0, "Use Secondary", "Path of property to select between the primary and secondary data paths");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
-	RNA_def_string(ot->srna, "rotation_path", NULL, 0, "Rotation Path", "Path of property used to rotate the texture display");
+	prop = RNA_def_string(ot->srna, "rotation_path", NULL, 0, "Rotation Path", "Path of property used to rotate the texture display");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
-	RNA_def_string(ot->srna, "color_path", NULL, 0, "Color Path", "Path of property used to set the color of the control");
+	prop = RNA_def_string(ot->srna, "color_path", NULL, 0, "Color Path", "Path of property used to set the color of the control");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
-	RNA_def_string(ot->srna, "fill_color_path", NULL, 0, "Fill Color Path", "Path of property used to set the fill color of the control");
+	prop = RNA_def_string(ot->srna, "fill_color_path", NULL, 0, "Fill Color Path", "Path of property used to set the fill color of the control");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
-	RNA_def_string(ot->srna, "fill_color_override_path", NULL, 0, "Fill Color Override Path", "");
-	RNA_def_string(ot->srna, "fill_color_override_test_path", NULL, 0, "Fill Color Override Test", "");
+	prop = RNA_def_string(ot->srna, "fill_color_override_path", NULL, 0, "Fill Color Override Path", "");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
+	prop = RNA_def_string(ot->srna, "fill_color_override_test_path", NULL, 0, "Fill Color Override Test", "");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
-	RNA_def_string(ot->srna, "zoom_path", NULL, 0, "Zoom Path", "Path of property used to set the zoom level for the control");
+	prop = RNA_def_string(ot->srna, "zoom_path", NULL, 0, "Zoom Path", "Path of property used to set the zoom level for the control");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
-	RNA_def_string(ot->srna, "image_id", NULL, 0, "Image ID", "Path of ID that is used to generate an image for the control");
+	prop = RNA_def_string(ot->srna, "image_id", NULL, 0, "Image ID", "Path of ID that is used to generate an image for the control");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 
-	RNA_def_boolean(ot->srna, "secondary_tex", false, "Secondary Texture", "Tweak brush secondary/mask texture");
+	prop = RNA_def_boolean(ot->srna, "secondary_tex", false, "Secondary Texture", "Tweak brush secondary/mask texture");
+	RNA_def_property_flag(prop, PROP_SKIP_SAVE);
 }
 
 /* ************************** timer for testing ***************** */
@@ -3873,6 +3892,7 @@ static const EnumPropertyItem *rna_id_itemf(
 
 	for (; id; id = id->next) {
 		if ((filter_ids != NULL) && filter_ids(user_data, id) == false) {
+			i++;
 			continue;
 		}
 		if (local == false || !ID_IS_LINKED(id)) {

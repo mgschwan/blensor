@@ -292,6 +292,8 @@ class evd_file:
         evd.buffer.write(struct.pack("i", -1))
         evd.close()
 
+    def isEmpty(self):
+      return (len(self.buffer) == 0)
 
 class evd_reader:
   rayIndex = 0

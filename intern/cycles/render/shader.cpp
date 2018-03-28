@@ -191,6 +191,7 @@ Shader::Shader()
 	has_surface_spatial_varying = false;
 	has_volume_spatial_varying = false;
 	has_object_dependency = false;
+	has_attribute_dependency = false;
 	has_integrator_dependency = false;
 	has_volume_connected = false;
 
@@ -431,14 +432,12 @@ void ShaderManager::device_update_common(Device *device,
                                          Scene *scene,
                                          Progress& /*progress*/)
 {
-	dscene->shader_flag.free();
+	dscene->shaders.free();
 
 	if(scene->shaders.size() == 0)
 		return;
 
-	uint shader_flag_size = scene->shaders.size()*SHADER_SIZE;
-	uint *shader_flag = dscene->shader_flag.alloc(shader_flag_size);
-	uint i = 0;
+	KernelShader *kshader = dscene->shaders.alloc(scene->shaders.size());
 	bool has_volumes = false;
 	bool has_transparent_shadow = false;
 
@@ -463,6 +462,8 @@ void ShaderManager::device_update_common(Device *device,
 			flag |= SD_HAS_ONLY_VOLUME;
 		if(shader->heterogeneous_volume && shader->has_volume_spatial_varying)
 			flag |= SD_HETEROGENEOUS_VOLUME;
+		if(shader->has_attribute_dependency)
+			flag |= SD_NEED_ATTRIBUTES;
 		if(shader->has_bssrdf_bump)
 			flag |= SD_HAS_BSSRDF_BUMP;
 		if(device->info.has_volume_decoupled) {
@@ -484,16 +485,17 @@ void ShaderManager::device_update_common(Device *device,
 			flag |= SD_HAS_CONSTANT_EMISSION;
 
 		/* regular shader */
-		shader_flag[i++] = flag;
-		shader_flag[i++] = shader->pass_id;
-		shader_flag[i++] = __float_as_int(constant_emission.x);
-		shader_flag[i++] = __float_as_int(constant_emission.y);
-		shader_flag[i++] = __float_as_int(constant_emission.z);
+		kshader->flags = flag;
+		kshader->pass_id = shader->pass_id;
+		kshader->constant_emission[0] = constant_emission.x;
+		kshader->constant_emission[1] = constant_emission.y;
+		kshader->constant_emission[2] = constant_emission.z;
+		kshader++;
 
 		has_transparent_shadow |= (flag & SD_HAS_TRANSPARENT_SHADOW) != 0;
 	}
 
-	dscene->shader_flag.copy_to_device();
+	dscene->shaders.copy_to_device();
 
 	/* lookup tables */
 	KernelTables *ktables = &dscene->data.tables;
@@ -522,7 +524,7 @@ void ShaderManager::device_free_common(Device *, DeviceScene *dscene, Scene *sce
 {
 	scene->lookup_tables->remove_table(&beckmann_table_offset);
 
-	dscene->shader_flag.free();
+	dscene->shaders.free();
 }
 
 void ShaderManager::add_default(Scene *scene)

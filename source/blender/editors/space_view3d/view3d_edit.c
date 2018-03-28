@@ -2082,7 +2082,7 @@ static int viewzoom_modal(bContext *C, wmOperator *op, const wmEvent *event)
 		viewzoom_apply(
 		        vod, &event->x, U.viewzoom,
 		        (U.uiflag & USER_ZOOM_INVERT) != 0,
-		        (use_mouse_init && (U.uiflag & USER_ZOOM_TO_MOUSEPOS)) ? vod->prev.event_xy : NULL);
+		        (use_mouse_init && (U.uiflag & USER_ZOOM_TO_MOUSEPOS)));
 		if (ED_screen_animation_playing(CTX_wm_manager(C))) {
 			use_autokey = true;
 		}
@@ -4468,7 +4468,7 @@ static int view3d_clipping_exec(bContext *C, wmOperator *op)
 	/* note; otherwise opengl won't work */
 	view3d_operator_needs_opengl(C);
 
-	view3d_set_viewcontext(C, &vc);
+	ED_view3d_viewcontext_init(C, &vc);
 	view3d_get_transformation(vc.ar, vc.rv3d, NULL, &mats); /* NULL because we don't want it in object space */
 	ED_view3d_clipping_calc(rv3d->clipbb, rv3d->clip, &mats, &rect);
 

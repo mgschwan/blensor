@@ -14,42 +14,32 @@
 # along with this program; if not, write to the Free Software Foundation,
 # Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
-# Contributor(s): Campbell Barton
+# Contributor(s): Jacques Beaurain.
 #
 # ***** END GPL LICENSE BLOCK *****
 
-set(INC 
-	.
-  ../../render/extern/include
-  ../../render/intern/include
-  ../../blenfont
-  ../../blenkernel
-  ../../blenlib
-  ../../blenloader
-  ../../editors/include
-  ../../editors/render
-  ../../imbuf
-  ../../gpu
-  ../../python/intern
-  ../../makesdna
-  ../../makesrna
-  ../../makesrna/intern
-  ../../windowmanager
-  ../../../../intern/guardedalloc
-  ../../../../intern/mikktspace
-  ../../../../intern/smoke/extern
+set(INC
+	../include
+	../../blenkernel
+	../../blenlib
+	../../makesdna
+	../../makesrna
+	../../render/extern/include
+	../../windowmanager
+	../../../../intern/guardedalloc
 )
 
 set(INC_SYS
-	${PYTHON_INCLUDE_DIRS}
+
 )
 
 set(SRC
-	blensor.c
-	blensor.h
-	blensor_native_code.c
-	blensor_native_code.h
+	editlattice_select.c
+	editlattice_tools.c
+	editlattice_undo.c
+	lattice_ops.c
+
+	lattice_intern.h
 )
 
-
-blender_add_lib(bf_python_blensor "${SRC}" "${INC}" "${INC_SYS}")
+blender_add_lib(bf_editor_lattice "${SRC}" "${INC}" "${INC_SYS}")

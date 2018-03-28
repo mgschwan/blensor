@@ -358,7 +358,6 @@ void psys_apply_child_modifiers(ParticleThreadContext *ctx, struct ListBase *mod
 		totkeys = ctx->segments + 1;
 		max_length = ptex->length;
 
-		printf("%f\n", ptex->twist);
 		for (k = 0, key = keys; k < totkeys; k++, key++) {
 			ParticlePathIterator iter;
 			psys_path_iter_get(&iter, keys, totkeys, parent_keys, k);
@@ -395,7 +394,7 @@ void psys_apply_child_modifiers(ParticleThreadContext *ctx, struct ListBase *mod
 					get_strand_normal(ma, ornor, cur_length, (key-1)->vel);
 			}
 
-			if (use_length_check && k > 1) {
+			if (use_length_check && k > 0) {
 				float dvec[3];
 				/* check if path needs to be cut before actual end of data points */
 				if (!check_path_length(k, keys, key, max_length, step_length, &cur_length, dvec)) {

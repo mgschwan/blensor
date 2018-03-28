@@ -53,6 +53,7 @@ extern "C" {
 #include "BKE_mesh.h"
 #include "BKE_scene.h"
 #include "BKE_DerivedMesh.h"
+#include "BKE_main.h"
 
 #include "ED_armature.h"
 
@@ -130,6 +131,25 @@ int bc_set_parent(Object *ob, Object *par, bContext *C, bool is_parent_space)
 #endif
 
 	return true;
+}
+
+Main *bc_get_main()
+{
+	return G.main;
+}
+
+EvaluationContext *bc_get_evaluation_context()
+{
+	Main *bmain = G.main;
+	return bmain->eval_ctx;
+}
+
+void bc_update_scene(Scene *scene, float ctime)
+{
+	BKE_scene_frame_set(scene, ctime);
+	Main *bmain = bc_get_main();
+	EvaluationContext *ev_context = bc_get_evaluation_context();
+	BKE_scene_update_for_newframe(ev_context, bmain, scene, scene->lay);
 }
 
 Object *bc_add_object(Scene *scene, int type, const char *name)
@@ -375,6 +395,35 @@ void bc_decompose(float mat[4][4], float *loc, float eul[3], float quat[4], floa
 	if (loc) {
 		copy_v3_v3(loc, mat[3]);
 	}
+}
+
+/*
+* Create rotation_quaternion from a delta rotation and a reference quat
+*
+* Input:
+* mat_from: The rotation matrix before rotation
+* mat_to  : The rotation matrix after rotation
+* qref    : the quat corresponding to mat_from
+*
+* Output:
+* rot     : the calculated result (quaternion)
+*
+*/
+void bc_rotate_from_reference_quat(float quat_to[4], float quat_from[4], float mat_to[4][4])
+{
+	float qd[4];
+	float matd[4][4];
+	float mati[4][4];
+	float mat_from[4][4];
+	quat_to_mat4(mat_from, quat_from);
+
+	// Calculate the difference matrix matd between mat_from and mat_to
+	invert_m4_m4(mati, mat_from);
+	mul_m4_m4m4(matd, mati, mat_to);
+
+	mat4_to_quat(qd, matd);
+
+	mul_qt_qtqt(quat_to, qd, quat_from); // rot is the final rotation corresponding to mat_to
 }
 
 void bc_triangulate_mesh(Mesh *me)
@@ -833,6 +882,28 @@ void bc_sanitize_mat(float mat[4][4], int precision)
 	for (int i = 0; i < 4; i++)
 		for (int j = 0; j < 4; j++)
 			mat[i][j] = double_round(mat[i][j], precision);
+}
+
+void bc_sanitize_mat(double mat[4][4], int precision)
+{
+	for (int i = 0; i < 4; i++)
+		for (int j = 0; j < 4; j++)
+			mat[i][j] = double_round(mat[i][j], precision);
+}
+
+void bc_copy_m4_farray(float r[4][4], float *a)
+{
+	for (int i = 0; i < 4; i++)
+		for (int j = 0; j < 4; j++)
+			r[i][j] = *a++;
+}
+
+void bc_copy_farray_m4(float *r, float a[4][4])
+{
+	for (int i = 0; i < 4; i++)
+		for (int j = 0; j < 4; j++)
+			*r++ = a[i][j];
+
 }
 
 /*

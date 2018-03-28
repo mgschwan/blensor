@@ -45,7 +45,7 @@ ccl_device_inline bool volume_shader_extinction_sample(KernelGlobals *kg,
                                                        float3 *extinction)
 {
 	sd->P = P;
-	shader_eval_volume(kg, sd, state, state->volume_stack, PATH_RAY_SHADOW, 0);
+	shader_eval_volume(kg, sd, state, state->volume_stack, PATH_RAY_SHADOW);
 
 	if(sd->flag & SD_EXTINCTION) {
 		*extinction = sd->closure_transparent_extinction;
@@ -64,7 +64,7 @@ ccl_device_inline bool volume_shader_sample(KernelGlobals *kg,
                                             VolumeShaderCoefficients *coeff)
 {
 	sd->P = P;
-	shader_eval_volume(kg, sd, state, state->volume_stack, state->flag, kernel_data.integrator.max_closures);
+	shader_eval_volume(kg, sd, state, state->volume_stack, state->flag);
 
 	if(!(sd->flag & (SD_EXTINCTION|SD_SCATTER|SD_EMISSION)))
 		return false;
@@ -76,18 +76,11 @@ ccl_device_inline bool volume_shader_sample(KernelGlobals *kg,
 	                                            make_float3(0.0f, 0.0f, 0.0f);
 
 	if(sd->flag & SD_SCATTER) {
-		if(state->bounce < kernel_data.integrator.max_bounce &&
-		   state->volume_bounce < kernel_data.integrator.max_volume_bounce) {
-			for(int i = 0; i < sd->num_closure; i++) {
-				const ShaderClosure *sc = &sd->closure[i];
+		for(int i = 0; i < sd->num_closure; i++) {
+			const ShaderClosure *sc = &sd->closure[i];
 
-				if(CLOSURE_IS_VOLUME(sc->type))
-					coeff->sigma_s += sc->weight;
-			}
-		}
-		else {
-			/* When at the max number of bounces, clear scattering. */
-			sd->flag &= ~SD_SCATTER;
+			if(CLOSURE_IS_VOLUME(sc->type))
+				coeff->sigma_s += sc->weight;
 		}
 	}
 
@@ -111,10 +104,23 @@ ccl_device float kernel_volume_channel_get(float3 value, int channel)
 ccl_device bool volume_stack_is_heterogeneous(KernelGlobals *kg, ccl_addr_space VolumeStack *stack)
 {
 	for(int i = 0; stack[i].shader != SHADER_NONE; i++) {
-		int shader_flag = kernel_tex_fetch(__shader_flag, (stack[i].shader & SHADER_MASK)*SHADER_SIZE);
+		int shader_flag = kernel_tex_fetch(__shaders, (stack[i].shader & SHADER_MASK)).flags;
 
-		if(shader_flag & SD_HETEROGENEOUS_VOLUME)
+		if(shader_flag & SD_HETEROGENEOUS_VOLUME) {
 			return true;
+		}
+		else if(shader_flag & SD_NEED_ATTRIBUTES) {
+			/* We want to render world or objects without any volume grids
+			 * as homogenous, but can only verify this at runtime since other
+			 * heterogenous volume objects may be using the same shader. */
+			int object = stack[i].object;
+			if(object != OBJECT_NONE) {
+				int object_flag = kernel_tex_fetch(__object_flag, object);
+				if(object_flag & SD_OBJECT_HAS_VOLUME_ATTRIBUTES) {
+					return true;
+				}
+			}
+		}
 	}
 
 	return false;
@@ -128,7 +134,7 @@ ccl_device int volume_stack_sampling_method(KernelGlobals *kg, VolumeStack *stac
 	int method = -1;
 
 	for(int i = 0; stack[i].shader != SHADER_NONE; i++) {
-		int shader_flag = kernel_tex_fetch(__shader_flag, (stack[i].shader & SHADER_MASK)*SHADER_SIZE);
+		int shader_flag = kernel_tex_fetch(__shaders, (stack[i].shader & SHADER_MASK)).flags;
 
 		if(shader_flag & SD_VOLUME_MIS) {
 			return SD_VOLUME_MIS;
@@ -148,6 +154,24 @@ ccl_device int volume_stack_sampling_method(KernelGlobals *kg, VolumeStack *stac
 	}
 
 	return method;
+}
+
+ccl_device_inline void kernel_volume_step_init(KernelGlobals *kg,
+                                               ccl_addr_space PathState *state,
+                                               float t,
+                                               float *step_size,
+                                               float *step_offset)
+{
+	const int max_steps = kernel_data.integrator.volume_max_steps;
+	float step = min(kernel_data.integrator.volume_step_size, t);
+
+	/* compute exact steps in advance for malloc */
+	if(t > max_steps * step) {
+		step = t / (float)max_steps;
+	}
+
+	*step_size = step;
+	*step_offset = path_state_rng_1D_hash(kg, state, 0x1e31d8a4) * step;
 }
 
 /* Volume Shadows
@@ -182,8 +206,8 @@ ccl_device void kernel_volume_shadow_heterogeneous(KernelGlobals *kg,
 
 	/* prepare for stepping */
 	int max_steps = kernel_data.integrator.volume_max_steps;
-	float step = kernel_data.integrator.volume_step_size;
-	float random_jitter_offset = lcg_step_float_addrspace(&state->rng_congruential) * step;
+	float step_offset, step_size;
+	kernel_volume_step_init(kg, state, ray->t, &step_size, &step_offset);
 
 	/* compute extinction at the start */
 	float t = 0.0f;
@@ -192,14 +216,15 @@ ccl_device void kernel_volume_shadow_heterogeneous(KernelGlobals *kg,
 
 	for(int i = 0; i < max_steps; i++) {
 		/* advance to new position */
-		float new_t = min(ray->t, (i+1) * step);
-		float dt = new_t - t;
+		float new_t = min(ray->t, (i+1) * step_size);
 
-		/* use random position inside this segment to sample shader */
-		if(new_t == ray->t)
-			random_jitter_offset = lcg_step_float_addrspace(&state->rng_congruential) * dt;
+		/* use random position inside this segment to sample shader, adjust
+		 * for last step that is shorter than other steps. */
+		if(new_t == ray->t) {
+			step_offset *= (new_t - t) / step_size;
+		}
 
-		float3 new_P = ray->P + ray->D * (t + random_jitter_offset);
+		float3 new_P = ray->P + ray->D * (t + step_offset);
 		float3 sigma_t;
 
 		/* compute attenuation over segment */
@@ -498,8 +523,8 @@ ccl_device VolumeIntegrateResult kernel_volume_integrate_heterogeneous_distance(
 
 	/* prepare for stepping */
 	int max_steps = kernel_data.integrator.volume_max_steps;
-	float step_size = kernel_data.integrator.volume_step_size;
-	float random_jitter_offset = lcg_step_float_addrspace(&state->rng_congruential) * step_size;
+	float step_offset, step_size;
+	kernel_volume_step_init(kg, state, ray->t, &step_size, &step_offset);
 
 	/* compute coefficients at the start */
 	float t = 0.0f;
@@ -516,11 +541,13 @@ ccl_device VolumeIntegrateResult kernel_volume_integrate_heterogeneous_distance(
 		float new_t = min(ray->t, (i+1) * step_size);
 		float dt = new_t - t;
 
-		/* use random position inside this segment to sample shader */
-		if(new_t == ray->t)
-			random_jitter_offset = lcg_step_float_addrspace(&state->rng_congruential) * dt;
+		/* use random position inside this segment to sample shader,
+		* for last shorter step we remap it to fit within the segment. */
+		if(new_t == ray->t) {
+			step_offset *= (new_t - t) / step_size;
+		}
 
-		float3 new_P = ray->P + ray->D * (t + random_jitter_offset);
+		float3 new_P = ray->P + ray->D * (t + step_offset);
 		VolumeShaderCoefficients coeff;
 
 		/* compute segment */
@@ -688,19 +715,12 @@ ccl_device void kernel_volume_decoupled_record(KernelGlobals *kg, PathState *sta
 
 	/* prepare for volume stepping */
 	int max_steps;
-	float step_size, random_jitter_offset;
+	float step_size, step_offset;
 
 	if(heterogeneous) {
-		const int global_max_steps = kernel_data.integrator.volume_max_steps;
-		step_size = kernel_data.integrator.volume_step_size;
-		/* compute exact steps in advance for malloc */
-		if(ray->t > global_max_steps*step_size) {
-			max_steps = global_max_steps;
-			step_size = ray->t / (float)max_steps;
-		}
-		else {
-			max_steps = max((int)ceilf(ray->t/step_size), 1);
-		}
+		max_steps = kernel_data.integrator.volume_max_steps;
+		kernel_volume_step_init(kg, state, ray->t, &step_size, &step_offset);
+
 #ifdef __KERNEL_CPU__
 		/* NOTE: For the branched path tracing it's possible to have direct
 		 * and indirect light integration both having volume segments allocated.
@@ -717,19 +737,18 @@ ccl_device void kernel_volume_decoupled_record(KernelGlobals *kg, PathState *sta
 		               sizeof(*kg->decoupled_volume_steps));
 		if(kg->decoupled_volume_steps[index] == NULL) {
 			kg->decoupled_volume_steps[index] =
-			        (VolumeStep*)malloc(sizeof(VolumeStep)*global_max_steps);
+			        (VolumeStep*)malloc(sizeof(VolumeStep)*max_steps);
 		}
 		segment->steps = kg->decoupled_volume_steps[index];
 		++kg->decoupled_volume_steps_index;
 #else
 		segment->steps = (VolumeStep*)malloc(sizeof(VolumeStep)*max_steps);
 #endif
-		random_jitter_offset = lcg_step_float(&state->rng_congruential) * step_size;
 	}
 	else {
 		max_steps = 1;
 		step_size = ray->t;
-		random_jitter_offset = 0.0f;
+		step_offset = 0.0f;
 		segment->steps = &segment->stack_step;
 	}
 	
@@ -751,11 +770,13 @@ ccl_device void kernel_volume_decoupled_record(KernelGlobals *kg, PathState *sta
 		float new_t = min(ray->t, (i+1) * step_size);
 		float dt = new_t - t;
 
-		/* use random position inside this segment to sample shader */
-		if(heterogeneous && new_t == ray->t)
-			random_jitter_offset = lcg_step_float(&state->rng_congruential) * dt;
+		/* use random position inside this segment to sample shader,
+		* for last shorter step we remap it to fit within the segment. */
+		if(new_t == ray->t) {
+			step_offset *= (new_t - t) / step_size;
+		}
 
-		float3 new_P = ray->P + ray->D * (t + random_jitter_offset);
+		float3 new_P = ray->P + ray->D * (t + step_offset);
 		VolumeShaderCoefficients coeff;
 
 		/* compute segment */
@@ -812,7 +833,7 @@ ccl_device void kernel_volume_decoupled_record(KernelGlobals *kg, PathState *sta
 		step->accum_transmittance = accum_transmittance;
 		step->cdf_distance = cdf_distance;
 		step->t = new_t;
-		step->shade_t = t + random_jitter_offset;
+		step->shade_t = t + step_offset;
 
 		/* stop if at the end of the volume */
 		t = new_t;

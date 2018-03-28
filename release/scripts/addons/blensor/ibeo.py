@@ -180,18 +180,19 @@ def scan_advanced(scanner_object, rotation_speed = 25.0, simulation_fps=24, angl
     if evd_file:
         evd_storage.appendEvdFile()
 
-    scan_data = numpy.array(evd_storage.buffer)
-    additional_data = None
-    if scanner_object.store_data_in_mesh:
-        additional_data = evd_storage.buffer
+    if not evd_storage.isEmpty():
+        scan_data = numpy.array(evd_storage.buffer)
+        additional_data = None
+        if scanner_object.store_data_in_mesh:
+            additional_data = evd_storage.buffer
 
-    if add_blender_mesh:
-        mesh_utils.add_mesh_from_points_tf(scan_data[:,5:8], "Scan", world_transformation, buffer=additional_data)
+        if add_blender_mesh:
+            mesh_utils.add_mesh_from_points_tf(scan_data[:,5:8], "Scan", world_transformation, buffer=additional_data)
 
-    if add_noisy_blender_mesh:
-        mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "NoisyScan", world_transformation, buffer=additional_data) 
+        if add_noisy_blender_mesh:
+            mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "NoisyScan", world_transformation, buffer=additional_data) 
 
-    bpy.context.scene.update()
+        bpy.context.scene.update()
 
     end_time = time.time()
     scan_time = end_time-start_time

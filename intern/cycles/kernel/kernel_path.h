@@ -400,6 +400,13 @@ ccl_device void kernel_path_indirect(KernelGlobals *kg,
                                      PathState *state,
                                      PathRadiance *L)
 {
+#ifdef __SUBSURFACE__
+	SubsurfaceIndirectRays ss_indirect;
+	kernel_path_subsurface_init_indirect(&ss_indirect);
+
+	for(;;) {
+#endif  /* __SUBSURFACE__ */
+
 	/* path iteration */
 	for(;;) {
 		/* Find intersection with objects in scene. */
@@ -438,12 +445,16 @@ ccl_device void kernel_path_indirect(KernelGlobals *kg,
 			break;
 		}
 
-		/* Setup and evaluate shader. */
-		shader_setup_from_ray(kg,
-		                      sd,
-		                      &isect,
-		                      ray);
-		shader_eval_surface(kg, sd, state, state->flag, kernel_data.integrator.max_closures);
+		/* Setup shader data. */
+		shader_setup_from_ray(kg, sd, &isect, ray);
+
+		/* Skip most work for volume bounding surface. */
+#ifdef __VOLUME__
+		if(!(sd->flag & SD_HAS_ONLY_VOLUME)) {
+#endif
+
+		/* Evaluate shader. */
+		shader_eval_surface(kg, sd, state, state->flag);
 		shader_prepare_closures(sd, state);
 
 		/* Apply shadow catcher, holdout, emission. */
@@ -485,29 +496,21 @@ ccl_device void kernel_path_indirect(KernelGlobals *kg,
 		}
 #endif  /* __AO__ */
 
+
 #ifdef __SUBSURFACE__
 		/* bssrdf scatter to a different location on the same object, replacing
 		 * the closures with a diffuse BSDF */
 		if(sd->flag & SD_BSSRDF) {
-			float bssrdf_u, bssrdf_v;
-			path_state_rng_2D(kg,
-			                  state,
-			                  PRNG_BSDF_U,
-			                  &bssrdf_u, &bssrdf_v);
-
-			const ShaderClosure *sc = shader_bssrdf_pick(sd, &throughput, &bssrdf_u);
-
-			/* do bssrdf scatter step if we picked a bssrdf closure */
-			if(sc) {
-				uint lcg_state = lcg_state_init(state, 0x68bc21eb);
-
-				subsurface_scatter_step(kg,
-				                        sd,
-				                        state,
-				                        sc,
-				                        &lcg_state,
-				                        bssrdf_u, bssrdf_v,
-				                        false);
+			if(kernel_path_subsurface_scatter(kg,
+			                                  sd,
+			                                  emission_sd,
+			                                  L,
+			                                  state,
+			                                  ray,
+			                                  &throughput,
+			                                  &ss_indirect))
+			{
+				break;
 			}
 		}
 #endif  /* __SUBSURFACE__ */
@@ -527,9 +530,31 @@ ccl_device void kernel_path_indirect(KernelGlobals *kg,
 		}
 #endif  /* defined(__EMISSION__) */
 
+#ifdef __VOLUME__
+		}
+#endif
+
 		if(!kernel_path_surface_bounce(kg, sd, &throughput, state, &L->state, ray))
 			break;
 	}
+
+#ifdef __SUBSURFACE__
+		/* Trace indirect subsurface rays by restarting the loop. this uses less
+		 * stack memory than invoking kernel_path_indirect.
+		 */
+		if(ss_indirect.num_rays) {
+			kernel_path_subsurface_setup_indirect(kg,
+			                                      &ss_indirect,
+			                                      state,
+			                                      ray,
+			                                      L,
+			                                      &throughput);
+		}
+		else {
+			break;
+		}
+	}
+#endif  /* __SUBSURFACE__ */
 }
 
 #endif /* defined(__BRANCHED_PATH__) || defined(__BAKING__) */
@@ -591,9 +616,16 @@ ccl_device_forceinline void kernel_path_integrate(
 			break;
 		}
 
-		/* Setup and evaluate shader. */
+		/* Setup shader data. */
 		shader_setup_from_ray(kg, &sd, &isect, ray);
-		shader_eval_surface(kg, &sd, state, state->flag, kernel_data.integrator.max_closures);
+
+		/* Skip most work for volume bounding surface. */
+#ifdef __VOLUME__
+		if(!(sd.flag & SD_HAS_ONLY_VOLUME)) {
+#endif
+
+		/* Evaluate shader. */
+		shader_eval_surface(kg, &sd, state, state->flag);
 		shader_prepare_closures(&sd, state);
 
 		/* Apply shadow catcher, holdout, emission. */
@@ -654,6 +686,10 @@ ccl_device_forceinline void kernel_path_integrate(
 
 		/* direct lighting */
 		kernel_path_surface_connect_light(kg, &sd, emission_sd, throughput, state, L);
+
+#ifdef __VOLUME__
+		}
+#endif
 
 		/* compute direct lighting and next bounce */
 		if(!kernel_path_surface_bounce(kg, &sd, &throughput, state, &L->state, ray))

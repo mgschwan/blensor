@@ -480,7 +480,13 @@ ccl_device void kernel_branched_path_integrate(KernelGlobals *kg,
 
 		/* Setup and evaluate shader. */
 		shader_setup_from_ray(kg, &sd, &isect, &ray);
-		shader_eval_surface(kg, &sd, &state, state.flag, kernel_data.integrator.max_closures);
+
+		/* Skip most work for volume bounding surface. */
+#ifdef __VOLUME__
+		if(!(sd.flag & SD_HAS_ONLY_VOLUME)) {
+#endif
+
+		shader_eval_surface(kg, &sd, &state, state.flag);
 		shader_merge_closures(&sd);
 
 		/* Apply shadow catcher, holdout, emission. */
@@ -533,36 +539,42 @@ ccl_device void kernel_branched_path_integrate(KernelGlobals *kg,
 		}
 #endif  /* __SUBSURFACE__ */
 
-		if(!(sd.flag & SD_HAS_ONLY_VOLUME)) {
-			PathState hit_state = state;
+		PathState hit_state = state;
 
 #ifdef __EMISSION__
-			/* direct light */
-			if(kernel_data.integrator.use_direct_light) {
-				int all = (kernel_data.integrator.sample_all_lights_direct) ||
-				          (state.flag & PATH_RAY_SHADOW_CATCHER);
-				kernel_branched_path_surface_connect_light(kg,
-					&sd, emission_sd, &hit_state, throughput, 1.0f, L, all);
-			}
+		/* direct light */
+		if(kernel_data.integrator.use_direct_light) {
+			int all = (kernel_data.integrator.sample_all_lights_direct) ||
+					  (state.flag & PATH_RAY_SHADOW_CATCHER);
+			kernel_branched_path_surface_connect_light(kg,
+				&sd, emission_sd, &hit_state, throughput, 1.0f, L, all);
+		}
 #endif  /* __EMISSION__ */
 
-			/* indirect light */
-			kernel_branched_path_surface_indirect_light(kg,
-				&sd, &indirect_sd, emission_sd, throughput, 1.0f, &hit_state, L);
+		/* indirect light */
+		kernel_branched_path_surface_indirect_light(kg,
+			&sd, &indirect_sd, emission_sd, throughput, 1.0f, &hit_state, L);
 
-			/* continue in case of transparency */
-			throughput *= shader_bsdf_transparency(kg, &sd);
+		/* continue in case of transparency */
+		throughput *= shader_bsdf_transparency(kg, &sd);
 
-			if(is_zero(throughput))
-				break;
-		}
+		if(is_zero(throughput))
+			break;
 
 		/* Update Path State */
 		path_state_next(kg, &state, LABEL_TRANSPARENT);
 
+#ifdef __VOLUME__
+		}
+		else {
+			if(!path_state_volume_next(kg, &state)) {
+				break;
+			}
+		}
+#endif
+
 		ray.P = ray_offset(sd.P, -sd.Ng);
 		ray.t -= sd.ray_length; /* clipping works through transparent */
-
 
 #ifdef __RAY_DIFFERENTIALS__
 		ray.dP = sd.dP;

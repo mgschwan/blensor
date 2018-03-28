@@ -368,10 +368,8 @@ MINLINE int compare_ff_relative(float a, float b, const float max_diff, const in
 {
 	union {float f; int i;} ua, ub;
 
-#if 0  /* No BLI_assert in INLINE :/ */
 	BLI_assert(sizeof(float) == sizeof(int));
 	BLI_assert(max_ulps < (1 << 22));
-#endif
 
 	if (fabsf(a - b) <= max_diff) {
 		return 1;
@@ -475,7 +473,7 @@ MALWAYS_INLINE __m128 _bli_math_fastpow24(const __m128 arg)
 	 */
 	/* 0x3F4CCCCD = 4/5 */
 	/* 0x4F55A7FB = 2^(127/(4/5) - 127) * 0.994^(1/(4/5)) */
-	/* error max = 0.17	avg = 0.0018	|avg| = 0.05 */
+	/* error max = 0.17, avg = 0.0018, |avg| = 0.05 */
 	__m128 x = _bli_math_fastpow(0x3F4CCCCD, 0x4F55A7FB, arg);
 	__m128 arg2 = _mm_mul_ps(arg, arg);
 	__m128 arg4 = _mm_mul_ps(arg2, arg2);

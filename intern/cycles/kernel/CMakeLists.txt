@@ -254,6 +254,7 @@ set(SRC_UTIL_HEADERS
 	../util/util_math_int3.h
 	../util/util_math_int4.h
 	../util/util_math_matrix.h
+	../util/util_projection.h
 	../util/util_rect.h
 	../util/util_static_assert.h
 	../util/util_transform.h
@@ -316,12 +317,8 @@ set(SRC_SPLIT_HEADERS
 # CUDA module
 
 if(WITH_CYCLES_CUDA_BINARIES)
-	# 32 bit or 64 bit
-	if(CUDA_64_BIT_DEVICE_CODE)
-		set(CUDA_BITS 64)
-	else()
-		set(CUDA_BITS 32)
-	endif()
+	# 64 bit only
+	set(CUDA_BITS 64)
 
 	# CUDA version
 	execute_process(COMMAND ${CUDA_NVCC_EXECUTABLE} "--version" OUTPUT_VARIABLE NVCC_OUT)
@@ -420,17 +417,17 @@ if(WITH_CYCLES_CUDA_BINARIES)
 	endmacro()
 
 	foreach(arch ${CYCLES_CUDA_BINARIES_ARCH})
-		if(CUDA_VERSION GREATER "89" AND ${arch} MATCHES "sm_2.")
-			message(STATUS "CUDA binaries for ${arch} disabled, not supported by CUDA 9.")
+		if(${arch} MATCHES "sm_2.")
+			message(STATUS "CUDA binaries for ${arch} are no longer supported, skipped.")
 		else()
 			# Compile regular kernel
 			CYCLES_CUDA_KERNEL_ADD(${arch} filter "" "${cuda_filter_sources}" FALSE)
 			CYCLES_CUDA_KERNEL_ADD(${arch} kernel "" "${cuda_sources}" FALSE)
+		endif()
 
-			if(WITH_CYCLES_CUDA_SPLIT_KERNEL_BINARIES)
-				# Compile split kernel
-				CYCLES_CUDA_KERNEL_ADD(${arch} kernel_split "-D __SPLIT__" ${cuda_sources} FALSE)
-			endif()
+		if(WITH_CYCLES_CUDA_SPLIT_KERNEL_BINARIES)
+			# Compile split kernel
+			CYCLES_CUDA_KERNEL_ADD(${arch} kernel_split "-D __SPLIT__" ${cuda_sources} FALSE)
 		endif()
 	endforeach()
 

@@ -52,6 +52,7 @@
 #include "ED_particle.h"
 #include "ED_curve.h"
 #include "ED_gpencil.h"
+#include "ED_lattice.h"
 #include "ED_mball.h"
 #include "ED_mesh.h"
 #include "ED_object.h"
@@ -110,7 +111,7 @@ void ED_undo_push(bContext *C, const char *str)
 		BKE_undo_write(C, str);
 	}
 
-	WM_file_tag_modified(C);
+	WM_file_tag_modified();
 }
 
 /* note: also check undo_history_exec() in bottom if you change notifiers */

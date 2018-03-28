@@ -73,11 +73,11 @@
 #include "IMB_imbuf.h"
 #include "IMB_moviecache.h"
 
+#include "DEG_depsgraph.h"
+
 #ifdef WITH_OPENEXR
 #  include "intern/openexr/openexr_multi.h"
 #endif
-
-#define DEBUG_PRINT if (G.debug & G_DEBUG_DEPSGRAPH) printf
 
 /*********************** movieclip buffer loaders *************************/
 
@@ -1202,6 +1202,23 @@ int BKE_movieclip_get_duration(MovieClip *clip)
 	return clip->len;
 }
 
+float BKE_movieclip_get_fps(MovieClip *clip)
+{
+	if (clip->source != MCLIP_SRC_MOVIE) {
+		return 0.0f;
+	}
+	movieclip_open_anim_file(clip);
+	if (clip->anim == NULL) {
+		return 0.0f;
+	}
+	short frs_sec;
+	float frs_sec_base;
+	if (IMB_anim_get_fps(clip->anim, &frs_sec, &frs_sec_base, true)) {
+		return (float)frs_sec / frs_sec_base;
+	}
+	return 0.0f;
+}
+
 void BKE_movieclip_get_aspect(MovieClip *clip, float *aspx, float *aspy)
 {
 	*aspx = 1.0;
@@ -1594,6 +1611,6 @@ bool BKE_movieclip_put_frame_if_possible(MovieClip *clip,
 
 void BKE_movieclip_eval_update(struct EvaluationContext *UNUSED(eval_ctx), MovieClip *clip)
 {
-	DEBUG_PRINT("%s on %s (%p)\n", __func__, clip->id.name, clip);
+	DEG_debug_print_eval(__func__, clip->id.name, clip);
 	BKE_tracking_dopesheet_tag_update(&clip->tracking);
 }
