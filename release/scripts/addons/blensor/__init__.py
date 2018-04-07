@@ -8,6 +8,7 @@ import types
 import bpy
 
 
+from . import not_implemented_handler
 from . import gaussian_error_model
 from . import advanced_error_model
 from . import blendodyne
@@ -21,6 +22,7 @@ from . import exportmotion
 from . import mesh_utils
 from . import noise
 from . import raycast
+
 
 """If the blensor module is reloaded, reload all submodules as well
    This will reload all modules at the initial import as well but 
@@ -807,6 +809,26 @@ def show_in_frame(obj, frame):
 
 ########################################################
 
+ 
+class NativeWarningMessageBox(bpy.types.Operator):
+    bl_idname = "message.nativewarningmessagebox"
+    bl_label = ""
+ 
+    def execute(self, context):
+        return {'FINISHED'}
+ 
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width = 600)
+
+    def draw(self, context):
+        self.layout.label("Warning: The functionality you are trying to use is not available in this blender version")
+        self.layout.label("This blender version does not have native Blensor support.")
+        self.layout.label()
+ 
+
+
+########################################################
+
 
 def info():
 	return str("Not for standalone use")
@@ -827,6 +849,8 @@ def register():
     bpy.utils.register_class(OBJECT_OT_exportmotion)
     bpy.utils.register_class(OBJECT_OT_exporthandler)
     bpy.utils.register_class(OBJECT_OT_scanrange_handler)
+    bpy.utils.register_class(NativeWarningMessageBox)
+
     cType = bpy.types.Object
        
 
@@ -882,4 +906,6 @@ def unregister():
     bpy.utils.unregister_class(OBJECT_OT_exporthandler)
     bpy.utils.unregister_class(OBJECT_OT_scanrange_handler)
     bpy.utils.unregister_class(GenericFloatCollection)
+    bpy.utils.unregister_class(NativeWarningMessageBox)
+
 

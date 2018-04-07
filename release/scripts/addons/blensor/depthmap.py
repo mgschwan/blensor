@@ -10,12 +10,13 @@ import random
 import bpy
 import blensor.globals
 from blensor import mesh_utils
+from blensor.not_implemented_handler import NotImplemented
 
 try:
     import blensorintern
 except:
     print ("Warning: This blender version does not have native Blensor support. Some methods may not work")
-    blensorintern = object()
+    blensorintern = NotImplemented()
 
 from mathutils import Vector, Euler, Matrix
 
@@ -24,9 +25,6 @@ parameters = {"max_dist":200}
 def addProperties(cType):
     global parameters
     cType.depthmap_max_dist = bpy.props.FloatProperty( name = "Scan distance", default = parameters["max_dist"], min = 0, max = 1000, description = "How far the laser can see" )
-
-
-
 
 def deg2rad(deg):
     return deg*math.pi/180.0

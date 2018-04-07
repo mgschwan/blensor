@@ -8,12 +8,13 @@ import time
 import random
 import bpy
 from mathutils import Vector, Euler
+import blensor.scan_interface_pure
 
 try:
     import blensorintern
 except:
     print ("Warning: This blender version does not have native Blensor support. Some methods may not work")
-    blensorintern = object()
+    blensorintern = None
 
 
 """The number of elements per return depends on the version of the blensor
@@ -49,9 +50,14 @@ def scan_rays(rays, max_distance, ray_origins=False, keep_render_setup=False, do
     array_of_returns = []
     if True:
     #try:
-      blensorintern.scan(numberOfRays, max_distance, elementsPerRay, keep_render_setup, do_shading,                 
+      if blensorintern:
+          blensorintern.scan(numberOfRays, max_distance, elementsPerRay, keep_render_setup, do_shading,                 
                 "%016X"%(ctypes.addressof(rays_buffer)), "%016X"%(ctypes.addressof(returns_buffer)))
-      
+      else:
+          blensor.scan_interface_pure.scan(numberOfRays, max_distance, elementsPerRay, keep_render_setup, do_shading,                 
+                rays, returns_buffer, ELEMENTS_PER_RETURN)
+
+
       x_multiplier = -1.0 if inv_scan_x else 1.0
       y_multiplier = -1.0 if inv_scan_y else 1.0
       z_multiplier = -1.0 if inv_scan_z else 1.0

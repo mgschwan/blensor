@@ -1,21 +1,104 @@
 from .octrees import octrees
 from .octrees import blob_octrees
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 import numpy as np
 
 machineEpsilon = np.finfo(float).eps
 
+"""Raycast scene with individual rays
+   Return per hit:
+   distance,
+   hit_x
+   hit_y
+   hit_z
+   object_id
+   R
+   G
+   B
+"""
+
+"""This is the fallback scan interface if native blensor support is not available"""
+def scan(numberOfRays, max_distance, elementsPerRay, keep_render_setup, do_shading, rays_buffer, returns_buffer, ELEMENTS_PER_RETURN): 
+    if ELEMENTS_PER_RETURN != 8:
+        raise Exception("Scan interface incompatible")
+    
+    # Step 1: Scene to polygons / store face indices and materials
+    tris = []
+    faces = []
+    face_array,obj_array = scene_to_mesh()
+
+    for idx,f in enumerate(face_array):
+        tris.append(list(f[0]))
+        tris.append(list(f[1]))
+        tris.append(list(f[2]))
+        faces.append([idx*3,idx*3+1,idx*3+2])
+
+    # Step 2: Polygons to BVH tree
+    scene_bvh = BVHTree.FromPolygons(tris, faces, all_triangles = True)
+
+    # Step 3: Raycast rays
+    scanner = bpy.context.scene.camera
+
+    origin = Vector([0.0,0.0,0.0])
+    direction = Vector([0.0,0.0,0.0])
+
+    for idx in range(numberOfRays):
+        direction.x = rays_buffer[idx*elementsPerRay]
+        direction.y = rays_buffer[idx*elementsPerRay+1]
+        direction.z = rays_buffer[idx*elementsPerRay+2]
+        
+        if elementsPerRay>=6:
+            origin.x = rays_buffer[idx*elementsPerRay+3]
+            origin.y = rays_buffer[idx*elementsPerRay+4]
+            origin.z = rays_buffer[idx*elementsPerRay+5]
+        else:
+            origin.x = bpy.context.scene.camera.location.x
+            origin.y = bpy.context.scene.camera.location.y
+            origin.z = bpy.context.scene.camera.location.z
+
+        direction.rotate (scanner.matrix_world)
+
+        (hit_loc, hit_normal, hit_idx, hit_distance) = scene_bvh.ray_cast(origin,direction,max_distance)
+
+        if hit_loc:
+            returns_buffer[idx*ELEMENTS_PER_RETURN] = hit_distance
+            returns_buffer[idx*ELEMENTS_PER_RETURN+1] = hit_loc.x
+            returns_buffer[idx*ELEMENTS_PER_RETURN+2] = hit_loc.y
+            returns_buffer[idx*ELEMENTS_PER_RETURN+3] = hit_loc.z
+
+            obj = obj_array[hit_idx]
+            name = obj.name
+            returns_buffer[idx*ELEMENTS_PER_RETURN+4] = ord(name[0]) + (ord(name[1])<<8) + (ord(name[2])<<16) + (ord(name[3])<<24)
+            
+            returns_buffer[idx*ELEMENTS_PER_RETURN+5] = 255.0
+            returns_buffer[idx*ELEMENTS_PER_RETURN+6] = 255.0
+            returns_buffer[idx*ELEMENTS_PER_RETURN+7] = 255.0
+
+        else:
+            for r in range(ELEMENTS_PER_RETURN):
+                returns_buffer[idx*ELEMENTS_PER_RETURN+r] = 0.0
+
+    # Step 3: Shade rays
+    # TODO: Implement material solver
+    if do_shading:
+        pass
+
 def scene_to_mesh():
+    # TODO: Return materials per face as well
     global_matrix = Matrix() #identity
 
     scene_faces = []
+    scene_obj = []
 
+    idx = 0
     for ob in bpy.data.objects:
         faces = faces_from_mesh(ob,Matrix(), use_mesh_modifiers=True, triangulate=True)
         for f in faces:
             scene_faces.append(list(map(list,f)))
-    return scene_faces
+            scene_obj.append(ob)
+    return scene_faces, scene_obj
 
 def faces_from_mesh(ob, global_matrix, use_mesh_modifiers=False, triangulate=True):
     """
