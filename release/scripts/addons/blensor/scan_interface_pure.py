@@ -5,6 +5,19 @@ import numpy as np
 
 machineEpsilon = np.finfo(float).eps
 
+
+# Calculate the minimum reflectivty that will cause a laser return
+def blensor_calculate_reflectivity_limit(dist, 
+                                         reflectivity_distance,
+                                         reflectivity_limit,
+                                         reflectivity_slope):
+    min_reflectivity = -1.0
+    if dist >= reflectivity_distance:
+        min_reflectivity = reflectivity_limit + reflectivity_slope * (dist-reflectivity_distance)
+    
+    return min_reflectivity
+
+
 """Raycast scene with individual rays
    Return per hit:
    distance,
@@ -38,6 +51,9 @@ def scan(numberOfRays, max_distance, elementsPerRay, keep_render_setup, do_shadi
 
     # Step 3: Raycast rays
     scanner = bpy.context.scene.camera
+    reflectivity_distance = scanner.ref_dist
+    reflectivity_limit = scanner.ref_limit
+    reflectivity_slope = scanner.ref_slope
 
     origin = Vector([0.0,0.0,0.0])
     direction = Vector([0.0,0.0,0.0])
@@ -62,23 +78,41 @@ def scan(numberOfRays, max_distance, elementsPerRay, keep_render_setup, do_shadi
 
         (hit_loc, hit_normal, hit_idx, hit_distance) = scene_bvh.ray_cast(origin,direction,max_distance)
 
+        valid_return = False
         if hit_loc:
-            returns_buffer[idx*ELEMENTS_PER_RETURN] = hit_distance
-            returns_buffer[idx*ELEMENTS_PER_RETURN+1] = hit_loc.x
-            returns_buffer[idx*ELEMENTS_PER_RETURN+2] = hit_loc.y
-            returns_buffer[idx*ELEMENTS_PER_RETURN+3] = hit_loc.z
+            mat = mat_array[hit_idx]
 
-            obj = obj_array[hit_idx]
-            name = obj.name
-            returns_buffer[idx*ELEMENTS_PER_RETURN+4] = ord(name[0]) + (ord(name[1])<<8) + (ord(name[2])<<16) + (ord(name[3])<<24)
-            
-            returns_buffer[idx*ELEMENTS_PER_RETURN+5] = 1.0
-            returns_buffer[idx*ELEMENTS_PER_RETURN+6] = 1.0
-            returns_buffer[idx*ELEMENTS_PER_RETURN+7] = 1.0
+            diffuse_intensity = 1.0
+            if mat:
+                diffuse_intensity = mat.diffuse_intensity
 
-            hit_indices[idx] = hit_idx
+            #Calculate the required diffuse reflectivity of the material to create a return
+            ref_limit = blensor_calculate_reflectivity_limit(hit_distance, reflectivity_distance, reflectivity_limit, reflectivity_slope)
 
-        else:
+            if diffuse_intensity > ref_limit:
+                valid_return = True
+                if mat:
+                    color = mat.diffuse_color
+                    returns_buffer[idx*ELEMENTS_PER_RETURN+5] = color.r
+                    returns_buffer[idx*ELEMENTS_PER_RETURN+6] = color.g
+                    returns_buffer[idx*ELEMENTS_PER_RETURN+7] = color.b
+                else:
+                    returns_buffer[idx*ELEMENTS_PER_RETURN+5] = 1.0
+                    returns_buffer[idx*ELEMENTS_PER_RETURN+6] = 1.0
+                    returns_buffer[idx*ELEMENTS_PER_RETURN+7] = 1.0
+
+                returns_buffer[idx*ELEMENTS_PER_RETURN] = hit_distance
+                returns_buffer[idx*ELEMENTS_PER_RETURN+1] = hit_loc.x
+                returns_buffer[idx*ELEMENTS_PER_RETURN+2] = hit_loc.y
+                returns_buffer[idx*ELEMENTS_PER_RETURN+3] = hit_loc.z
+
+                obj = obj_array[hit_idx]
+                name = obj.name
+                returns_buffer[idx*ELEMENTS_PER_RETURN+4] = ord(name[0]) + (ord(name[1])<<8) + (ord(name[2])<<16) + (ord(name[3])<<24)  
+
+                hit_indices[idx] = hit_idx
+
+        if not valid_return:
             for r in range(ELEMENTS_PER_RETURN):
                 returns_buffer[idx*ELEMENTS_PER_RETURN+r] = 0.0
 
@@ -87,12 +121,8 @@ def scan(numberOfRays, max_distance, elementsPerRay, keep_render_setup, do_shadi
     if do_shading:
         for idx,mat_idx in enumerate(hit_indices):
             if mat_idx >= 0:
-                color = mat_array[mat_idx].diffuse_color
-                returns_buffer[idx*ELEMENTS_PER_RETURN+5] = color.r
-                returns_buffer[idx*ELEMENTS_PER_RETURN+6] = color.g
-                returns_buffer[idx*ELEMENTS_PER_RETURN+7] = color.b
-
-
+                #shade hit point
+                pass
             
 
 def scene_to_mesh():
