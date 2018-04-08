@@ -135,11 +135,12 @@ def scene_to_mesh():
 
     idx = 0
     for ob in bpy.data.objects:
-        faces = faces_from_mesh(ob,Matrix(), use_mesh_modifiers=True)
-        for f in faces:
-            scene_faces.append(list(map(list,f[0:3])))
-            scene_obj.append(ob)
-            scene_materials.append(f[3])
+        if not ob.hide_render:
+            faces = faces_from_mesh(ob,Matrix(), use_mesh_modifiers=True)
+            for f in faces:
+                scene_faces.append(list(map(list,f[0:3])))
+                scene_obj.append(ob)
+                scene_materials.append(f[3])
     return scene_faces, scene_obj, scene_materials
 
 def faces_from_mesh(ob, global_matrix, use_mesh_modifiers=False):
