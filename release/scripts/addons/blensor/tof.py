@@ -136,20 +136,23 @@ def scan_advanced(scanner_object, max_distance = 10.0, evd_file=None, add_blende
 
     evd_storage = evd.evd_file(evd_file, tof_res_x, tof_res_y, max_distance)
 
-    reusable_vector = Vector([0.0,0.0,0.0,0.0])
+    reusable_vector = Vector([0.0,0.0,0.0,1.0])
+    vp = (world_transformation * reusable_vector).xyz
+
     for i in range(len(returns)):
         idx = returns[i][-1]
         distance_noise =  random.gauss(noise_mu, noise_sigma)
         #If everything works substitute the previous line with this
         #distance_noise =  pixel_noise[returns[idx][-1]] + random.gauss(noise_mu, noise_sigma) 
 
+        # Calculate noise-free point.
         reusable_vector.xyzw = [returns[i][1],returns[i][2],returns[i][3],1.0]
         vt = (world_transformation * reusable_vector).xyz
         v = [returns[i][1],returns[i][2],returns[i][3]]
         vector_length = math.sqrt(v[0]**2+v[1]**2+v[2]**2)
         norm_vector = [v[0]/vector_length, v[1]/vector_length, v[2]/vector_length]
 
-
+        # Calculate noisy point.
         vector_length_noise = vector_length+distance_noise
         if backfolding:
            #Distances > max_distance/2..max_distance are mapped to 0..max_distance/2
@@ -159,7 +162,7 @@ def scan_advanced(scanner_object, max_distance = 10.0, evd_file=None, add_blende
         reusable_vector.xyzw = [norm_vector[0]*vector_length_noise, norm_vector[1]*vector_length_noise, norm_vector[2]*vector_length_noise,1.0]
         v_noise = (world_transformation * reusable_vector).xyz
         
-        evd_storage.addEntry(timestamp = ray_info[idx][2], yaw =(ray_info[idx][0]+math.pi)%(2*math.pi), pitch=ray_info[idx][1], distance=vector_length, distance_noise=vector_length_noise, x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=returns[i][4], color=returns[i][5], idx=returns[i][-1])
+        evd_storage.addEntry(timestamp = ray_info[idx][2], yaw =(ray_info[idx][0]+math.pi)%(2*math.pi), pitch=ray_info[idx][1], distance=vector_length, distance_noise=vector_length_noise, vp_x=vp[0], vp_y=vp[1], vp_z=vp[2], x=vt[0], y=vt[1], z=vt[2], x_noise=v_noise[0], y_noise=v_noise[1], z_noise=v_noise[2], object_id=returns[i][4], color=returns[i][5], idx=returns[i][-1])
 
     if evd_file:
         evd_storage.appendEvdFile()
@@ -171,10 +174,10 @@ def scan_advanced(scanner_object, max_distance = 10.0, evd_file=None, add_blende
             additional_data = evd_storage.buffer
 
         if add_blender_mesh:
-            mesh_utils.add_mesh_from_points_tf(scan_data[:,5:8], "Scan", world_transformation, buffer=additional_data)
+            mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "Scan", world_transformation, buffer=additional_data)
 
         if add_noisy_blender_mesh:
-            mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "NoisyScan", world_transformation, buffer=additional_data) 
+            mesh_utils.add_mesh_from_points_tf(scan_data[:,11:14], "NoisyScan", world_transformation, buffer=additional_data)
 
         bpy.context.scene.update()
 

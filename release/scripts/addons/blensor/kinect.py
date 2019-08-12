@@ -216,13 +216,11 @@ def scan_advanced(scanner_object, evd_file=None,
             """Calculate a vector that originates at the principal point
                and points to the pixel in the sensor. This vector is then
                scaled to the maximum scanning distance 
-            """ 
-
+            """
             physical_x = float(x-cx) * pixel_width
             physical_y = float(y-cy) * pixel_height
             physical_z = -float(flength)
 
-            #ray = Vector([physical_x, physical_y, physical_z])
             ray.xyz=[physical_x, physical_y, physical_z]
             ray.normalize()
             final_ray = max_distance*ray
@@ -259,6 +257,7 @@ def scan_advanced(scanner_object, evd_file=None,
     kinect_image = numpy.zeros((res_x*res_y,16))
     kinect_image[:,3:11] = float('NaN')
     kinect_image[:,11] = -1.0
+
     """Calculate the rays from the camera to the hit points of the projector rays"""
     for i in range(len(returns)):
         idx = returns[i][-1]
@@ -295,20 +294,20 @@ def scan_advanced(scanner_object, evd_file=None,
             abs(camera_rays[idx*3+2]-camera_returns[i][3]) < thresh and
             abs(camera_returns[i][3]) <= max_distance and
             abs(camera_returns[i][3]) >= min_distance):
-            """The ray hit the projected ray, so this is a valid measurement"""
-            projector_point = get_uv_from_idx(projector_idx, res_x,res_y)
 
-            camera_x = get_pixel_from_world(camera_rays[idx*3],camera_rays[idx*3+2],
+            """The ray hit the projected ray, so this is a valid measurement"""
+            projector_point = get_uv_from_idx(projector_idx, res_x, res_y)
+
+            camera_x = get_pixel_from_world(camera_rays[idx*3], camera_rays[idx*3+2],
                                    flength/pixel_width) + random.gauss(noise_mu, noise_sigma)
 
-            camera_y = get_pixel_from_world(camera_rays[idx*3+1],camera_rays[idx*3+2],
+            camera_y = get_pixel_from_world(camera_rays[idx*3+1], camera_rays[idx*3+2],
                                    flength/pixel_width)
 
             """ Kinect calculates the disparity with an accuracy of 1/8 pixel"""
-
             camera_x_quantized = round(camera_x*8.0)/8.0
             
-            #I don't know if this accurately represents the kinect 
+            # I don't know if this accurately represents the kinect.
             camera_y_quantized = round(camera_y*8.0)/8.0 
 
             disparity_quantized = camera_x_quantized + projector_point[0]
@@ -370,10 +369,9 @@ def scan_advanced(scanner_object, evd_file=None,
 
     for e in kinect_image:
       evd_storage.addEntry(timestamp = e[0], yaw = e[1], pitch=e[2], 
-        distance=e[3], distance_noise=e[4], x=e[5], y=e[6], z=e[7], 
+        distance=e[3], distance_noise=e[4], vp_x=float('NaN'), vp_y=float('NaN'), vp_z=float('NaN'), x=e[5], y=e[6], z=e[7], 
         x_noise=e[8], y_noise=e[9], z_noise=e[10], object_id=e[11], 
         color=[e[12],e[13],e[14]], idx=e[15])
-        
 
     if evd_file:
         evd_storage.appendEvdFile()
@@ -385,10 +383,10 @@ def scan_advanced(scanner_object, evd_file=None,
             additional_data = evd_storage.buffer
 
         if add_blender_mesh:
-            mesh_utils.add_mesh_from_points_tf(scan_data[:,5:8], "Scan", world_transformation, buffer=additional_data)
+            mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "Scan", world_transformation, buffer=additional_data)
 
         if add_noisy_blender_mesh:
-            mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "NoisyScan", world_transformation, buffer=additional_data) 
+            mesh_utils.add_mesh_from_points_tf(scan_data[:,11:14], "NoisyScan", world_transformation, buffer=additional_data)
 
         bpy.context.scene.update()  
         
