@@ -383,10 +383,10 @@ def scan_advanced(scanner_object, evd_file=None,
             additional_data = evd_storage.buffer
 
         if add_blender_mesh:
-            mesh_utils.add_mesh_from_points_tf(scan_data[:,5:8], "Scan", world_transformation, buffer=additional_data)
+            mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "Scan", world_transformation, buffer=additional_data)
 
         if add_noisy_blender_mesh:
-            mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "NoisyScan", world_transformation, buffer=additional_data) 
+            mesh_utils.add_mesh_from_points_tf(scan_data[:,11:14], "NoisyScan", world_transformation, buffer=additional_data)
 
         bpy.context.scene.update()  
         

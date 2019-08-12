@@ -193,7 +193,6 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
     
     reusable_vector = Vector([0.0,0.0,0.0,1.0])
     vp = (world_transformation * reusable_vector).xyz
-    print(world_transformation)
 
     for i in range(len(returns)):
         idx = returns[i][-1]
@@ -227,10 +226,10 @@ def scan_advanced(scanner_object, rotation_speed = 10.0, simulation_fps=24, angl
             additional_data = evd_storage.buffer
 
         if add_blender_mesh:
-            mesh_utils.add_mesh_from_points_tf(scan_data[:,5:8], "Scan", world_transformation, buffer=additional_data)
+            mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "Scan", world_transformation, buffer=additional_data)
 
         if add_noisy_blender_mesh:
-            mesh_utils.add_mesh_from_points_tf(scan_data[:,8:11], "NoisyScan", world_transformation, buffer=additional_data) 
+            mesh_utils.add_mesh_from_points_tf(scan_data[:,11:14], "NoisyScan", world_transformation, buffer=additional_data)
             
         bpy.context.scene.update()
 
