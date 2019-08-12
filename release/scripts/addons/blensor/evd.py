@@ -2,13 +2,14 @@ import sys
 import traceback
 import struct
 import math
+import bpy
 
 PCL_HEADER = """# .PCD v.7 - Exported by BlenSor
 VERSION .7
-FIELDS x y z rgb
-SIZE 4 4 4 4
-TYPE F F F F
-COUNT 1 1 1 1
+FIELDS x y z rgb vp_x vp_y vp_z
+SIZE 4 4 4 4 4 4 4
+TYPE F F F F F F F
+COUNT 1 1 1 1 1 1 1
 WIDTH %d
 HEIGHT %d
 VIEWPOINT 0 0 0 1 0 0 0
@@ -18,18 +19,16 @@ DATA ascii
 
 PCL_HEADER_WITH_LABELS = """# .PCD v0.7 - Point Cloud Data file format
 VERSION 0.7
-FIELDS x y z rgb label
-SIZE 4 4 4 4 4
-TYPE F F F F U
-COUNT 1 1 1 1 1
+FIELDS x y z rgb vp_x vp_y vp_z label
+SIZE 4 4 4 4 4 4 4 4
+TYPE F F F F F F F U
+COUNT 1 1 1 1 1 1 1 1
 WIDTH %d
 HEIGHT %d
 VIEWPOINT 0 0 0 1 0 0 0
 POINTS %d
 DATA ascii
 """
-
-
 
 PGM_VALUE_RANGE = 65535
 
@@ -110,7 +109,6 @@ class evd_file:
                      "object_id": None, 
                      "point_index": None}
 
-
       data = dict.fromkeys(data_layers.keys(), 0.0)
 
       for i in range(len(bm.verts.layers.float)):
@@ -125,10 +123,12 @@ class evd_file:
         for dk in data_layers.keys():
           if data_layers[dk]:
             data[dk] = v[data_layers[dk]]
+
         self.addEntry(timestamp=data.get("timestamp",0.0),
                       yaw=data.get("yaw",0.0),
                       pitch=data.get("pitch",0.0),
                       distance=data.get("distance",0.0),
+                      vp_x=float('NaN'), vp_y=float('NaN'), vp_z=float('NaN'),
                       x=x,y=y,z=z,
                       object_id=data.get("object_id",0.0),
                       color=(data.get("color_red",0.0),
@@ -139,17 +139,16 @@ class evd_file:
       bm.free()
 
     def addEntry(self, timestamp=0.0, yaw=0.0, pitch=0.0, distance=0.0, 
-                 distance_noise=0.0, x=0.0, y=0.0, z=0.0,
+                 distance_noise=0.0, vp_x=0.0, vp_y=0.0, vp_z=0.0, x=0.0, y=0.0, z=0.0,
                  x_noise = 0.0, y_noise = 0.0, z_noise = 0.0, object_id=0, color=(1.0,1.0,1.0), idx=0):
         idx = int(idx) #If the index is a numpy.float (from the kinect)
         if self.mode == WRITER_MODE_PGM:
           if idx >=0 and idx < len(self.image):
             self.image[idx]=distance
             self.image_noisy[idx]=distance_noise
-        
-        
+
         self.buffer.append([timestamp, yaw, pitch, distance,distance_noise,
-                       x,y,z,x_noise,y_noise,z_noise,object_id,int(255*color[0]),int(255*color[1]),int(255*color[2]),idx])
+                       vp_x,vp_y,vp_z,x,y,z,x_noise,y_noise,z_noise,object_id,int(255*color[0]),int(255*color[1]),int(255*color[2]),idx])
 
     def writeEvdFile(self):
         if self.mode == WRITER_MODE_PCL:
@@ -163,7 +162,7 @@ class evd_file:
           evd.buffer.write(struct.pack("i", len(self.buffer)))
           for e in self.buffer:
               #The evd format does not allow negative object ids
-              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12]),float(e[13]),float(e[14]),max(0,int(e[11]))))
+              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[8]),float(e[9]),float(e[10]),float(e[11]),float(e[12]),float(e[13]), float(e[15]),float(e[16]),float(e[17]),max(0,int(e[14]))))
           evd.close()
 
     def appendEvdFile(self):
@@ -179,7 +178,7 @@ class evd_file:
           idx = 0
           for e in self.buffer:
               #The evd format does not allow negative object ids
-              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12]),float(e[13]),float(e[14]),max(0,int(e[11])))) 
+              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[8]),float(e[9]),float(e[10]),float(e[11]),float(e[12]),float(e[13]), float(e[15]),float(e[16]),float(e[17]),max(0,int(e[14])))) 
               idx = idx + 1
           print ("Written: %d entries"%idx)
           evd.close()
@@ -187,16 +186,18 @@ class evd_file:
     def write_point(self, pcl, pcl_noisy, e, output_labels):
       #Storing color values packed into a single floating point number??? 
       #That is really required by the pcl library!
-      color_uint32 = (e[12]<<16) | (e[13]<<8) | (e[14])
+      color_uint32 = (e[15]<<16) | (e[16]<<8) | (e[17])
       values=struct.unpack("f",struct.pack("I",color_uint32))
 
-      if output_labels:
-        pcl.write("%f %f %f %.15e %d\n"%(float(e[5]),float(e[6]),float(e[7]), values[0], int(e[11])))        
-        pcl_noisy.write("%f %f %f %.15e %d\n"%(float(e[8]),float(e[9]),float(e[10]), values[0], int(e[11])))        
-      else:
-        pcl.write("%f %f %f %.15e\n"%(float(e[5]),float(e[6]),float(e[7]), values[0]))        
-        pcl_noisy.write("%f %f %f %.15e\n"%(float(e[8]),float(e[9]),float(e[10]), values[0]))        
+      # Get the camera location.
+      cam_loc = bpy.context.scene.camera.location
 
+      if output_labels:
+        pcl.write("%f %f %f %.15e %f %f %f %d\n"%(float(e[8]),float(e[9]),float(e[10]), values[0], float(e[5]),float(e[6]),float(e[7]), int(e[14])))
+        pcl_noisy.write("%f %f %f %.15e %f %f %f %d\n"%(float(e[11]),float(e[12]),float(e[13]), values[0], float(e[5]),float(e[6]),float(e[7]), int(e[14])))
+      else:
+        pcl.write("%f %f %f %.15e %f %f %f\n"%(float(e[8]),float(e[9]),float(e[10]), values[0], float(e[5]),float(e[6]),float(e[7])))
+        pcl_noisy.write("%f %f %f %.15e %f %f %f\n"%(float(e[11]),float(e[12]),float(e[13]), values[0], float(e[5]),float(e[6]),float(e[7])))
 
     def writePCLFile(self):
       global frame_counter    #Not nice to have it global but it needs to persist
@@ -220,8 +221,8 @@ class evd_file:
           pcl_noisy.write(PCL_HEADER%(width,height,width*height))
         idx = 0
         for e in self.buffer:
-          if e[15] > idx and not sparse_mode: # e[15] is the idx of the point
-            for i in range(idx, e[15]):
+          if e[18] > idx and not sparse_mode: # e[18] is the idx of the point
+            for i in range(idx, e[18]):
               self.write_point(pcl, pcl_noisy, INVALID_POINT, self.output_labels)
               idx += 1
           
@@ -231,7 +232,7 @@ class evd_file:
         if idx < width*height:
           for i in range(idx, width*height):
             self.write_point(pcl, pcl_noisy, INVALID_POINT, self.output_labels)
-      
+      # TODO continue here
       
         pcl.close()
         pcl_noisy.close()
