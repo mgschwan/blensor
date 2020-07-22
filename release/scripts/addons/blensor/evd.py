@@ -99,15 +99,15 @@ class evd_file:
       bm = bmesh.new()
       bm.from_mesh(mesh)
       bm.verts.ensure_lookup_table()
-      
+
       data_layers = {"timestamp": None,
                      "yaw": None,
                      "pitch": None,
                      "distance": None,
-                     "color_red": None, 
-                     "color_green": None, 
+                     "color_red": None,
+                     "color_green": None,
                      "color_blue": None,
-                     "object_id": None, 
+                     "object_id": None,
                      "point_index": None}
 
 
@@ -117,7 +117,7 @@ class evd_file:
         l = bm.verts.layers.float[i]
         if l.name in data_layers:
               data_layers[l.name] = l
-      
+
       print ("Data layers: %s"%str(data_layers))
 
       for v in bm.verts:
@@ -138,7 +138,7 @@ class evd_file:
 
       bm.free()
 
-    def addEntry(self, timestamp=0.0, yaw=0.0, pitch=0.0, distance=0.0, 
+    def addEntry(self, timestamp=0.0, yaw=0.0, pitch=0.0, distance=0.0,
                  distance_noise=0.0, x=0.0, y=0.0, z=0.0,
                  x_noise = 0.0, y_noise = 0.0, z_noise = 0.0, object_id=0, color=(1.0,1.0,1.0), idx=0):
         idx = int(idx) #If the index is a numpy.float (from the kinect)
@@ -146,8 +146,8 @@ class evd_file:
           if idx >=0 and idx < len(self.image):
             self.image[idx]=distance
             self.image_noisy[idx]=distance_noise
-        
-        
+
+
         self.buffer.append([timestamp, yaw, pitch, distance,distance_noise,
                        x,y,z,x_noise,y_noise,z_noise,object_id,int(255*color[0]),int(255*color[1]),int(255*color[2]),idx])
 
@@ -179,7 +179,7 @@ class evd_file:
           idx = 0
           for e in self.buffer:
               #The evd format does not allow negative object ids
-              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12]),float(e[13]),float(e[14]),max(0,int(e[11])))) 
+              evd.buffer.write(struct.pack("14dQ", float(e[0]),float(e[1]),float(e[2]),float(e[3]),float(e[4]),float(e[5]),float(e[6]),float(e[7]),float(e[8]),float(e[9]),float(e[10]), float(e[12]),float(e[13]),float(e[14]),max(0,int(e[11]))))
               idx = idx + 1
           print ("Written: %d entries"%idx)
           evd.close()
@@ -187,20 +187,24 @@ class evd_file:
     def write_point(self, pcl, pcl_noisy, e, output_labels):
       #Storing color values packed into a single floating point number??? 
       #That is really required by the pcl library!
-      color_uint32 = (e[12]<<16) | (e[13]<<8) | (e[14])
+      # print(f"Data type: {type(e)}, length: {len(e)}, {type(e[12])}")
+      if isinstance(e[12], tuple):
+        color_uint32 = e[12][0]<<16 | e[12][1]<<8 | e[12][2]
+      else:
+          color_uint32 = e[12]<<16 | e[13]<<8 | e[14]
       values=struct.unpack("f",struct.pack("I",color_uint32))
 
       if output_labels:
-        pcl.write("%f %f %f %.15e %d\n"%(float(e[5]),float(e[6]),float(e[7]), values[0], int(e[11])))        
-        pcl_noisy.write("%f %f %f %.15e %d\n"%(float(e[8]),float(e[9]),float(e[10]), values[0], int(e[11])))        
+        pcl.write("%f %f %f %.15e %d\n"%(float(e[5]),float(e[6]),float(e[7]), values[0], int(e[11])))
+        pcl_noisy.write("%f %f %f %.15e %d\n"%(float(e[8]),float(e[9]),float(e[10]), values[0], int(e[11])))
       else:
-        pcl.write("%f %f %f %.15e\n"%(float(e[5]),float(e[6]),float(e[7]), values[0]))        
-        pcl_noisy.write("%f %f %f %.15e\n"%(float(e[8]),float(e[9]),float(e[10]), values[0]))        
+        pcl.write("%f %f %f %.15e\n"%(float(e[5]),float(e[6]),float(e[7]), values[0]))
+        pcl_noisy.write("%f %f %f %.15e\n"%(float(e[8]),float(e[9]),float(e[10]), values[0]))
 
 
     def writePCLFile(self):
       global frame_counter    #Not nice to have it global but it needs to persist
-      
+
       sparse_mode = True #Write only valid points
       if self.width == 0 or self.height == 0:
         width=len(self.buffer)
@@ -224,23 +228,23 @@ class evd_file:
             for i in range(idx, e[15]):
               self.write_point(pcl, pcl_noisy, INVALID_POINT, self.output_labels)
               idx += 1
-          
+
           idx += 1
           self.write_point(pcl, pcl_noisy, e, self.output_labels)
-      
+
         if idx < width*height:
           for i in range(idx, width*height):
             self.write_point(pcl, pcl_noisy, INVALID_POINT, self.output_labels)
-      
-      
+
+
         pcl.close()
         pcl_noisy.close()
       except Exception as e:
-        traceback.print_exc()      
+        traceback.print_exc()
 
     def writeNUMPYFile(self):
       global frame_counter    #Not nice to have it global but it needs to persist
-      
+
       sparse_mode = True #Write only valid points
       if self.width == 0 or self.height == 0:
         width=len(self.buffer)
@@ -258,7 +262,7 @@ class evd_file:
           data = tmp
         np.savetxt("%s%05d%s"%(self.filename,frame_counter,self.extension), data)
       except Exception as e:
-        traceback.print_exc()      
+        traceback.print_exc()
 
     def writePGMFile(self):
       global frame_counter    #Not nice to have it global but it needs to persist
@@ -280,7 +284,7 @@ class evd_file:
           else:
             ival = 0
           pgm_noisy.write("%d\n"%(ival if ival < PGM_VALUE_RANGE else PGM_VALUE_RANGE))
-        
+
         pgm.close()
         pgm_noisy.close()
       except Exception as e:
@@ -304,7 +308,7 @@ class evd_reader:
 
   def openEvdFile(self, filename):
     self.fileHandle = open(filename,"rb")
-    
+
   def getNextRay(self):
     if self.rayIndex >= self.raysInScan:
       data = struct.unpack("i", self.fileHandle.read(4))
@@ -312,6 +316,6 @@ class evd_reader:
     ray = struct.unpack("14dQ", self.fileHandle.read(15*8))
     self.rayIndex += 1
     return ray
-    
 
-        
+
+
